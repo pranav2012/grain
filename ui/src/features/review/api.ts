@@ -2,6 +2,8 @@ import { post, put, request, serverFetch } from '@/lib/http'
 import type { AskRequest } from '@/types/generated/AskRequest'
 import type { AskResponse } from '@/types/generated/AskResponse'
 import type { Conversation } from '@/types/generated/Conversation'
+import type { NavigateRequest } from '@/types/generated/NavigateRequest'
+import type { NavigateResponse } from '@/types/generated/NavigateResponse'
 import type { LocalRepo } from '@/types/generated/LocalRepo'
 import type { SubmitRequest } from '@/types/generated/SubmitRequest'
 import type { SubmitResponse } from '@/types/generated/SubmitResponse'
@@ -27,6 +29,8 @@ export const reviewApi = {
   status: (id: string) => request<Status>(`/api/reviews/${id}/status`),
   summaries: (id: string) => request<Record<string, Summary | LayerSummary>>(`/api/reviews/${id}/files/summaries.json`),
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),
+  /** Definition or references of the name at a position in the new version of a file. */
+  navigate: (id: string, req: NavigateRequest) => post<NavigateResponse>(`/api/reviews/${id}/navigate`, req),
   /** Asks the reviewer's agent about one change; can take a while. */
   ask: (id: string, req: AskRequest) => post<AskResponse>(`/api/reviews/${id}/ask`, req),
   /** `fullRepo` is `owner/repo`. */

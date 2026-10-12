@@ -115,6 +115,45 @@ pub(crate) struct Status {
     pub head_sha: Option<String>,
 }
 
+/// Go to definition or find references for the name at a position in the new version of a file.
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct NavigateRequest {
+    pub file: String,
+    /// 1-based line in the new version.
+    pub line: u32,
+    /// 0-based column of the name.
+    pub character: u32,
+    pub name: String,
+    pub references: bool,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct NavigateResponse {
+    /// False when found by name search (other languages, or the language server is unavailable).
+    pub precise: bool,
+    pub results: Vec<NavLocation>,
+    /// More matches than shown.
+    pub truncated: bool,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct NavLocation {
+    pub file: String,
+    /// 1-based.
+    pub line: u32,
+    /// The lines around it, starting at `snippet_start` (1-based).
+    pub snippet: Vec<String>,
+    pub snippet_start: u32,
+    /// The change in this review that holds this line, if any.
+    pub block: Option<usize>,
+}
+
 /// A reviewer's question to their agent about one change.
 #[derive(Debug, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

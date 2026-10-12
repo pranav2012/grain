@@ -37,6 +37,8 @@ pub(crate) struct App {
     pub(crate) build: String,
     /// Latest working-tree snapshot per local review, re-taken at most every few seconds.
     local_heads: Mutex<HashMap<PrRef, (Instant, String)>>,
+    /// TypeScript servers for go-to-definition, one per open review, started on first use.
+    pub(crate) navigators: Mutex<HashMap<PrRef, Arc<grain_lsp::TsUsage>>>,
 }
 
 pub(crate) type Shared = Arc<App>;
@@ -70,6 +72,7 @@ impl App {
             enriching: Mutex::new(HashSet::new()),
             patches: crate::patch_index::PatchCache::default(),
             local_heads: Mutex::new(HashMap::new()),
+            navigators: Mutex::new(HashMap::new()),
             build,
         })
     }

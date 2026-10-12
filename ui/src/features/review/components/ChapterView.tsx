@@ -8,18 +8,20 @@ import { Segmented } from '@/components/ui/Segmented'
 import { formatMinutes, minutesFor, shortPath } from '@/lib/format'
 import type { Chapter } from '@/types/generated/Chapter'
 import type { ReviewThread } from '@/types/generated/ReviewThread'
+import { reviewApi } from '../api'
 import { useStepDiff } from '../hooks/useStepDiff'
-import { chapterSummaryOf } from '../model/describe'
+import { blockTitle, chapterSummaryOf } from '../model/describe'
 import { modes } from '../model/modes'
 import { chapterBlocks, chapterHighlights, kindLabel, linesOf } from '../model/story'
 import { newLines } from '../model/suggestion'
 import type { Ask, BlockState, CommentKind, DiffStyle, LoadedPr, Mode, ReviewComment, Side } from '../model/types'
 import { BlockCard } from './BlockCard'
+import { CodePeek, type Peek } from './CodePeek'
 import { CommentCard } from './CommentCard'
 import { Composer } from './Composer'
 import { ThreadCard } from './ThreadCard'
 
-type Note = { kind: 'draft' } | { kind: 'note'; id: string } | { kind: 'thread'; id: string }
+type Note = { kind: 'draft' } | { kind: 'peek' } | { kind: 'note'; id: string } | { kind: 'thread'; id: string }
 type NewComment = Omit<ReviewComment, 'id' | 'createdAt' | 'blockId' | 'blockKey'>
 
 interface Draft {
@@ -28,6 +30,36 @@ interface Draft {
   side: Side
   line: number
   endLine: number
+}
+
+/** A name in the diff, for right-click and ⌘-click. */
+interface Token {
+  itemId: string
+  line: number
+  character: number
+  name: string
+  side: 'additions' | 'deletions'
+}
+
+/**
+ * The name under a pointer event, read from the diff's DOM: the text span, its line row
+ * (`data-line`) and the file's header (`data-item`). The viewer renders in a shadow root, so this
+ * walks the composed path.
+ */
+function tokenAt(e: React.MouseEvent): Token | null {
+  const path = e.nativeEvent.composedPath().filter((n): n is HTMLElement => n instanceof HTMLElement)
+  const span = path[0]
+  const name = span?.textContent?.trim() ?? ''
+  if (!span || span.children.length || !/^[A-Za-z_$][\w$]*$/.test(name)) return null
+  const row = path.find((el) => el.dataset.line !== undefined && el.dataset.lineType !== undefined)
+  const host = path.find((el) => el.tagName === 'DIFFS-CONTAINER')
+  const itemId = host?.querySelector('[data-item]')?.getAttribute('data-item')
+  if (!row || !itemId) return null
+  let character = 0
+  const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT)
+  for (let n = walker.nextNode(); n && !span.contains(n); n = walker.nextNode()) character += n.textContent?.length ?? 0
+  character += (span.textContent?.length ?? 0) - (span.textContent?.trimStart().length ?? 0)
+  return { itemId, line: Number(row.dataset.line), character, name, side: row.dataset.lineType!.includes('deletion') ? 'deletions' : 'additions' }
 }
 
 interface ChapterViewProps {
@@ -50,6 +82,8 @@ interface ChapterViewProps {
   /** Scrolls to this change when it (or `n`) changes. */
   focusRequest: { blockId: number; n: number } | null
   onFocus(blockId: number): void
+  /** Opens a change anywhere in the review (its chapter, scrolled to it). */
+  onGo(blockId: number): void
   onMark(blockId: number, state: BlockState | null): void
   onExplain(blockId: number): void
   onApproveAll(): void
@@ -86,6 +120,19 @@ export function ChapterView(p: ChapterViewProps) {
   const nextFiles = useMemo(() => p.next && chapterBlocks(p.next).slice(0, 3).flatMap((id) => data.blocks.get(id)!.files), [p.next, data])
   const { parts, error } = useStepDiff(data.id, data.pr?.headSha ?? '', blocks, undefined, nextFiles)
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [peek, setPeek] = useState<Peek | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; token: Token } | null>(null)
+  const mainRef = useRef<HTMLElement>(null)
+
+  const lookup = (token: Token, references: boolean) => {
+    const file = token.itemId.split('|').slice(1).join('|')
+    const next: Peek = { itemId: token.itemId, line: token.line, side: token.side, name: token.name, references }
+    setPeek(next)
+    reviewApi.navigate(data.id, { file, line: token.line, character: token.character, name: token.name, references }).then(
+      (result) => setPeek((cur) => (cur === next ? { ...next, result } : cur)),
+      (e: Error) => setPeek((cur) => (cur === next ? { ...next, error: e.message } : cur)),
+    )
+  }
   const options = useMemo(() => ({ ...baseOptions, diffStyle: p.diffStyle }), [p.diffStyle])
   const intro = chapterSummaryOf(data, chapter)
   const view = useRef<CodeViewHandle<Note, undefined>>(null)
@@ -110,14 +157,15 @@ export function ChapterView(p: ChapterViewProps) {
             if (t.path === fileDiff.name && t.line && !t.outdated)
               annotations.push({ side: t.side === 'LEFT' ? 'deletions' : 'additions', lineNumber: t.line, metadata: { kind: 'thread', id: t.id } })
           if (draft?.blockId === blockId && draft.file === fileDiff.name) annotations.push({ side: draft.side, lineNumber: draft.endLine, metadata: { kind: 'draft' } })
+          if (peek?.itemId === id) annotations.push({ side: peek.side, lineNumber: peek.line, metadata: { kind: 'peek' } })
           // The viewer re-renders an item only when its version changes, so it covers everything the card shows.
-          const shown = [p.states[blockId], p.stale[blockId], p.currentBlock === blockId, p.summaryPending(block.key), !!data.summaries[block.key], p.composeTick, p.comments.filter((c) => c.blockKey === block.key).length, annotations.length, draft ? `${draft.blockId}:${draft.line}` : '']
+          const shown = [p.states[blockId], p.stale[blockId], p.currentBlock === blockId, p.summaryPending(block.key), !!data.summaries[block.key], p.composeTick, p.comments.filter((c) => c.blockKey === block.key).length, annotations.length, draft ? `${draft.blockId}:${draft.line}` : '', p.asksFor(block.key).map((a) => !!(a.answer ?? a.error)), peek?.itemId === id && [peek.line, peek.references, !!peek.result, !!peek.error]]
           items.push({ id, type: 'diff', fileDiff, annotations, version: hash(JSON.stringify(shown)) })
         })
       })
     }
     return { items, meta }
-  }, [parts, chapter, data, p, draft])
+  }, [parts, chapter, data, p, draft, peek])
 
   const ready = items.length > 0
   useEffect(() => {
@@ -209,8 +257,51 @@ export function ChapterView(p: ChapterViewProps) {
       </main>
     )
 
+  const onContextMenu = (e: React.MouseEvent) => {
+    const t = tokenAt(e)
+    if (!t) return
+    e.preventDefault()
+    const box = mainRef.current!.getBoundingClientRect()
+    setMenu({ x: Math.min(e.clientX - box.left, box.width - 240), y: e.clientY - box.top, token: t })
+  }
+  // ⌘/Ctrl-click jumps straight to the definition, like in an editor.
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (!(e.metaKey || e.ctrlKey)) return
+    const t = tokenAt(e)
+    if (!t || t.side === 'deletions') return
+    e.preventDefault()
+    e.stopPropagation()
+    lookup(t, false)
+  }
+
   return (
-    <main className="flex min-h-0 min-w-0 flex-col [grid-area:main]">
+    <main ref={mainRef} onContextMenu={onContextMenu} onClickCapture={onClickCapture} className="relative flex min-h-0 min-w-0 flex-col [grid-area:main]">
+      {menu && (
+        <>
+          <div className="fixed inset-0 z-10" onMouseDown={() => setMenu(null)} onContextMenu={(e) => (e.preventDefault(), setMenu(null))} />
+          <div role="menu" style={{ left: menu.x, top: menu.y }} className="absolute z-20 min-w-56 rounded-lg border border-line-strong bg-raised p-1 font-sans shadow-overlay">
+            {menu.token.side === 'deletions' ? (
+              <p className="px-2.5 py-1.5 text-sm text-fg-subtle">Navigation works on the new version of the code.</p>
+            ) : (
+              <>
+                <MenuItem label="Go to definition" hint="⌘ click" onClick={() => (lookup(menu.token, false), setMenu(null))} />
+                <MenuItem label="Find references" onClick={() => (lookup(menu.token, true), setMenu(null))} />
+              </>
+            )}
+            {p.agentName && (
+              <MenuItem
+                label={`Explain ${menu.token.name}`}
+                hint="AI"
+                onClick={() => {
+                  const [blockId, ...rest] = menu.token.itemId.split('|')
+                  p.onAsk(Number(blockId), `What is \`${menu.token.name}\` here and what does it do?`, undefined, `${rest.join('|').split('/').pop()}:${menu.token.line}`)
+                  setMenu(null)
+                }}
+              />
+            )}
+          </div>
+        </>
+      )}
       <CodeView<Note, undefined>
         ref={view}
         key={`${chapter.key}-${p.diffStyle}`}
@@ -227,7 +318,7 @@ export function ChapterView(p: ChapterViewProps) {
           const added = fileDiff?.hunks.reduce((n, h) => n + h.additionLines, 0) ?? 0
           const removed = fileDiff?.hunks.reduce((n, h) => n + h.deletionLines, 0) ?? 0
           return (
-            <div className="font-sans">
+            <div className="font-sans" data-item={item.id}>
               {m.section && (
                 <h3 className="mx-4 mt-7 flex items-baseline gap-2 text-sm font-semibold text-fg-muted">
                   {m.section}
@@ -281,7 +372,22 @@ export function ChapterView(p: ChapterViewProps) {
         renderAnnotation={(a) => {
           const meta = a.metadata
           if (!meta) return null
-          const wrap = (node: React.ReactNode) => <div className="flex max-w-[760px] flex-col gap-1.5 py-2 pr-3 pl-16 font-sans">{node}</div>
+          const wrap = (node: React.ReactNode) => <div className="flex max-w-[860px] flex-col gap-1.5 py-2 pr-3 pl-16 font-sans">{node}</div>
+          if (meta.kind === 'peek' && peek)
+            return wrap(
+              <CodePeek
+                peek={peek}
+                titleOf={(id) => {
+                  const b = data.blocks.get(id)
+                  return b && blockTitle(data, b)
+                }}
+                onGo={(id) => {
+                  setPeek(null)
+                  p.onGo(id)
+                }}
+                onClose={() => setPeek(null)}
+              />,
+            )
           if (meta.kind === 'thread') {
             const t = threadById(meta.id)
             return t ? wrap(<ThreadCard thread={t} />) : null
@@ -320,5 +426,14 @@ export function ChapterView(p: ChapterViewProps) {
         }}
       />
     </main>
+  )
+}
+
+function MenuItem({ label, hint, onClick }: { label: string; hint?: string; onClick(): void }) {
+  return (
+    <button role="menuitem" onClick={onClick} className="flex w-full items-center gap-4 rounded-md px-2.5 py-1.5 text-left text-sm text-fg hover:bg-line">
+      {label}
+      {hint && <span className="ml-auto text-xs text-fg-faint">{hint}</span>}
+    </button>
   )
 }

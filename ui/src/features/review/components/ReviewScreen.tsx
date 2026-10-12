@@ -197,6 +197,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           onAsk={ask}
           focusRequest={focusRequest}
           onFocus={(id) => focus(id, false)}
+          onGo={(id) => focus(id)}
           onMark={mark}
           onExplain={explain}
           onApproveAll={() => chapterBlocks(chapter).forEach((id) => mark(id, 'ok'))}
