@@ -5,7 +5,10 @@ use axum::response::IntoResponse;
 use grain_github::PrRef;
 use grain_store::read_json;
 
-use crate::contract::{DiffRequest, Job, OpenRequest, OpenResponse, RecentReview, Stage, Status, SummarizeRequest};
+use crate::contract::{
+    DiffRequest, Job, OpenRequest, OpenResponse, RecentReview, Stage, Status, SubmitRequest, SubmitResponse,
+    SummarizeRequest,
+};
 use crate::error::{ApiError, ApiResult, blocking};
 use crate::state::Shared;
 
@@ -118,4 +121,50 @@ pub(super) async fn diff(
 pub(super) async fn conversation(Path(p): Path<(String, String, u64)>) -> ApiResult<Json<grain_github::Conversation>> {
     let pr = pr_of(p);
     blocking(move || Ok(Json(grain_github::conversation(&pr)?))).await
+}
+
+/// Posts one GitHub review. Line comments outside the diff can't be anchored on GitHub, so they
+/// are moved into the review text instead of failing the whole review.
+pub(super) async fn submit(
+    State(app): State<Shared>,
+    Path(p): Path<(String, String, u64)>,
+    Json(req): Json<SubmitRequest>,
+) -> ApiResult<Json<SubmitResponse>> {
+    let pr = pr_of(p);
+    let patch = app.home.review_dir(&pr).join("diff.patch");
+    blocking(move || {
+        let index = app.patches.get(&patch)?;
+        let mut comments = Vec::new();
+        let mut outside = Vec::new();
+        for c in req.comments {
+            let left = c.side == "LEFT";
+            let start = c.start_line.unwrap_or(c.line).min(c.line);
+            if index.in_hunk(&c.path, left, start, c.line) {
+                let multi = start != c.line;
+                comments.push(grain_github::PayloadComment {
+                    path: c.path,
+                    line: c.line,
+                    side: c.side.clone(),
+                    start_line: multi.then_some(start),
+                    start_side: multi.then_some(c.side),
+                    body: c.body,
+                });
+            } else {
+                let lines = if start == c.line { c.line.to_string() } else { format!("{start}-{}", c.line) };
+                outside.push(format!("- `{}:{lines}`: {}", c.path, c.body));
+            }
+        }
+        let mut body = req.body.trim().to_string();
+        if !outside.is_empty() {
+            if !body.is_empty() {
+                body.push_str("\n\n");
+            }
+            body.push_str("**Comments on lines outside the diff**\n");
+            body.push_str(&outside.join("\n"));
+        }
+        let payload = grain_github::ReviewPayload { commit_id: req.commit_id, event: req.event, body, comments };
+        let url = if req.dry_run { None } else { Some(grain_github::submit_review(&pr, &payload)?) };
+        Ok(Json(SubmitResponse { url, payload, moved_to_body: outside.len() }))
+    })
+    .await
 }

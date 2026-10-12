@@ -195,7 +195,15 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
       />
       {overlay === 'palette' && <CommandPalette commands={commands} onClose={() => setOverlay(null)} />}
       {overlay === 'finish' && (
-        <FinishDialog data={data} mode={state.mode} states={state.states} comments={state.comments} reviewable={reviewable} onClose={() => setOverlay(null)} />
+        <FinishDialog
+          data={data}
+          mode={state.mode}
+          states={state.states}
+          comments={state.comments}
+          reviewable={reviewable}
+          onPosted={(ids) => dispatch({ type: 'posted', ids })}
+          onClose={() => setOverlay(null)}
+        />
       )}
       {overlay === 'help' && <ShortcutsDialog onClose={() => setOverlay(null)} />}
       {status?.headSha && base.pr && status.headSha !== base.pr.headSha && <NewCommitsNotice onReload={() => location.reload()} />}

@@ -21,6 +21,8 @@ export interface ReviewComment {
   line?: number
   endLine?: number
   createdAt: number
+  /** Set once the comment was posted to GitHub; posted comments are never sent again. */
+  postedAt?: number
 }
 
 /** `pr.json`: GitHub details plus what the server knows about this review. */

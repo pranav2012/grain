@@ -5,6 +5,7 @@ mod gh;
 mod pr_ref;
 mod pulls;
 mod repos;
+mod submit;
 mod threads;
 
 pub use clone::clone_partial;
@@ -13,4 +14,5 @@ pub use pulls::{
     Author, PrDetails, PrSummary, my_open_prs, pr_details, pr_is_open, repo_open_prs, review_requests, viewer,
 };
 pub use repos::{RepoSummary, repos};
+pub use submit::{LineComment, PayloadComment, ReviewEvent, ReviewPayload, submit_review};
 pub use threads::{Conversation, ReviewThread, SubmittedReview, ThreadComment, conversation};

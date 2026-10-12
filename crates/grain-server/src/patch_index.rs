@@ -27,6 +27,25 @@ impl PatchIndex {
         PatchIndex { text, files }
     }
 
+    /// True when lines `start..=end` of `path` lie inside one hunk on the given side, which is
+    /// where GitHub accepts review comments (`left` = removed code, otherwise new code).
+    pub(crate) fn in_hunk(&self, path: &str, left: bool, start: u32, end: u32) -> bool {
+        let Some(&(a, b)) = self.files.get(path) else { return false };
+        self.text[a..b].lines().filter_map(|l| l.strip_prefix("@@ ")).any(|header| {
+            let mut parts = header.split_whitespace();
+            let (old, new) = (parts.next().unwrap_or("-0"), parts.next().unwrap_or("+0"));
+            let range = |s: &str| -> (u32, u32) {
+                let s = &s[1..];
+                match s.split_once(',') {
+                    Some((from, len)) => (from.parse().unwrap_or(0), len.parse().unwrap_or(0)),
+                    None => (s.parse().unwrap_or(0), 1),
+                }
+            };
+            let (from, len) = if left { range(old) } else { range(new) };
+            len > 0 && from <= start && end < from + len
+        })
+    }
+
     /// Concatenated sections for `paths`, each file once, in the given order.
     pub(crate) fn sections(&self, paths: &[String]) -> String {
         let mut seen = Vec::new();

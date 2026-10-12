@@ -1,7 +1,7 @@
 //! Request and response bodies of the HTTP API, exported to TypeScript for the UI.
 
 use grain_agent::Agent;
-use grain_github::PrSummary;
+use grain_github::{LineComment, PrSummary, ReviewEvent, ReviewPayload};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -121,4 +121,30 @@ pub(crate) struct LocalRepo {
 pub(crate) struct LocalRepoRequest {
     /// Path of an existing clone, or `null` to download a copy.
     pub path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct SubmitRequest {
+    pub event: ReviewEvent,
+    /// Overall review text (already including block-level notes).
+    pub body: String,
+    pub comments: Vec<LineComment>,
+    /// The head commit the reviewer actually looked at.
+    pub commit_id: String,
+    /// Build and return the payload without posting anything.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct SubmitResponse {
+    /// Link to the posted review; `null` for a dry run.
+    pub url: Option<String>,
+    pub payload: ReviewPayload,
+    /// Line comments outside the diff, moved into the review text so GitHub accepts the review.
+    pub moved_to_body: usize,
 }

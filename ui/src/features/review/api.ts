@@ -1,6 +1,8 @@
 import { post, put, request } from '@/lib/http'
 import type { Conversation } from '@/types/generated/Conversation'
 import type { LocalRepo } from '@/types/generated/LocalRepo'
+import type { SubmitRequest } from '@/types/generated/SubmitRequest'
+import type { SubmitResponse } from '@/types/generated/SubmitResponse'
 import type { OpenResponse } from '@/types/generated/OpenResponse'
 import type { Review } from '@/types/generated/Review'
 import type { Status } from '@/types/generated/Status'
@@ -22,6 +24,7 @@ export const reviewApi = {
   /** `fullRepo` is `owner/repo`. */
   localRepo: (fullRepo: string) => request<LocalRepo>(`/api/repos/${fullRepo}/local`),
   setLocalRepo: (fullRepo: string, path: string | null) => put<LocalRepo>(`/api/repos/${fullRepo}/local`, { path }),
+  submit: (id: string, req: SubmitRequest) => post<SubmitResponse>(`/api/reviews/${id}/submit`, req),
   conversation: (id: string) => request<Conversation>(`/api/reviews/${id}/conversation`),
   review: (id: string) => request<Review>(`/api/reviews/${id}/files/review.json`),
   /** Unified diff sections for just these files. */

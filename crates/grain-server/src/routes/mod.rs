@@ -23,6 +23,7 @@ pub(crate) fn router(app: Shared) -> Router {
         .route("/api/reviews/{owner}/{repo}/{number}/summarize", post(reviews::summarize))
         .route("/api/reviews/{owner}/{repo}/{number}/diff", post(reviews::diff))
         .route("/api/reviews/{owner}/{repo}/{number}/conversation", get(reviews::conversation))
+        .route("/api/reviews/{owner}/{repo}/{number}/submit", post(reviews::submit))
         .route("/api/settings", get(settings::get).put(settings::put))
         .with_state(app)
 }

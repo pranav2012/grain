@@ -15,9 +15,13 @@ export function CommentCard({ c, onDelete }: { c: ReviewComment; onDelete(): voi
             {c.endLine && c.endLine !== c.line ? `–${c.endLine}` : ''}
           </span>
         )}
-        <button onClick={onDelete} className="ml-auto underline decoration-seam underline-offset-[3px] hover:text-chalk">
-          Delete
-        </button>
+        {c.postedAt ? (
+          <span className="ml-auto text-sage">Posted</span>
+        ) : (
+          <button onClick={onDelete} className="ml-auto underline decoration-seam underline-offset-[3px] hover:text-chalk">
+            Delete
+          </button>
+        )}
       </div>
       {c.body}
     </div>

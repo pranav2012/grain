@@ -14,6 +14,7 @@ export type ReviewAction =
   | { type: 'mark'; id: number; state: BlockState | null }
   | { type: 'comment'; comment: ReviewComment }
   | { type: 'deleteComment'; id: string }
+  | { type: 'posted'; ids: string[] }
 
 function reducer(s: ReviewState, a: ReviewAction): ReviewState {
   switch (a.type) {
@@ -31,6 +32,10 @@ function reducer(s: ReviewState, a: ReviewAction): ReviewState {
       return { ...s, comments: [...s.comments, a.comment] }
     case 'deleteComment':
       return { ...s, comments: s.comments.filter((c) => c.id !== a.id) }
+    case 'posted': {
+      const at = Date.now()
+      return { ...s, comments: s.comments.map((c) => (a.ids.includes(c.id) ? { ...c, postedAt: at } : c)) }
+    }
   }
 }
 
