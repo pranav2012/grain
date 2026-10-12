@@ -9,6 +9,8 @@ edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
 publish = false
+repository = "https://github.com/pranav2012/grain"
+homepage = "https://github.com/pranav2012/grain"
 
 [workspace.dependencies]
 grain-agent = { path = "crates/grain-agent" }
@@ -28,6 +30,11 @@ sha2 = "0.10"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.7.1", features = ["fs"] }
 ts-rs = "12.0.1"
+which = "8.0.6"
+dirs = "7.0.0"
+open = "5.4.4"
+mime_guess = "2.0.5"
+rust-embed = "8.13.0"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing = "0.1.44"
 
@@ -60,3 +67,9 @@ unwrap_used = "warn"
 
 [profile.release]
 lto = "thin"
+
+# Profile used by `dist` for release binaries.
+[profile.dist]
+inherits = "release"
+lto = "thin"
+strip = "symbols"

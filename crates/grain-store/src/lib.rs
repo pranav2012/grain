@@ -16,7 +16,7 @@ impl Home {
     pub fn locate() -> Home {
         let root = std::env::var_os("GRAIN_HOME")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".grain"));
+            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".grain"));
         std::fs::create_dir_all(&root).ok();
         Home { root }
     }

@@ -1,0 +1,30 @@
+[workspace]
+members = ["cargo:."]
+
+# Release configuration for `dist` (https://opensource.axo.dev/cargo-dist/).
+# Pushing a tag like `v0.1.0` builds every target, creates a GitHub Release with the
+# archives and installers, and runs the publish jobs. Nothing runs until a tag is pushed.
+[dist]
+cargo-dist-version = "0.33.0"
+ci = "github"
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+]
+installers = ["shell", "powershell", "homebrew", "npm"]
+# curl/PowerShell installs go to the user's bin dir, like uv and ruff.
+install-path = ["$XDG_BIN_HOME/", "$XDG_DATA_HOME/../bin", "~/.local/bin"]
+install-updater = false
+# Homebrew formula is pushed to this tap (needs the HOMEBREW_TAP_TOKEN secret).
+tap = "pranav2012/homebrew-tap"
+formula = "grain"
+# npm package (works for npm, pnpm, yarn and bun; needs the NPM_TOKEN secret).
+# `grain` is taken on npm; the installed command is `grain` regardless.
+npm-package = "grain-review"
+publish-jobs = ["homebrew", "npm"]
+# The UI is embedded in the binary, so build it before every target's Rust build.
+github-build-setup = "../build-setup.yml"
+pr-run-mode = "plan"

@@ -5,6 +5,7 @@ mod error;
 mod jobs;
 mod routes;
 mod state;
+mod ui;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -16,8 +17,8 @@ use tower_http::services::{ServeDir, ServeFile};
 
 pub struct Options {
     pub port: u16,
-    /// Built UI to serve (`ui/dist`).
-    pub ui_dir: PathBuf,
+    /// Serve the UI from this folder instead of the embedded copy (UI development).
+    pub ui_dir: Option<PathBuf>,
     /// Start preparing this PR right away.
     pub open_pr: Option<PrRef>,
 }
@@ -32,8 +33,12 @@ pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
     if let Some(pr) = &opts.open_pr {
         app.open(pr.clone());
     }
-    let ui = ServeDir::new(&opts.ui_dir).fallback(ServeFile::new(opts.ui_dir.join("index.html")));
-    let router = routes::router(app).fallback_service(ui);
+    let router = match &opts.ui_dir {
+        Some(dir) => {
+            routes::router(app).fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))))
+        }
+        None => routes::router(app).fallback(ui::embedded),
+    };
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], opts.port))).await?;
     on_ready(&format!("http://localhost:{}", opts.port));
     axum::serve(listener, router).await?;

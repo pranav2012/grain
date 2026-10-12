@@ -40,12 +40,12 @@ mod tests {
 
     #[test]
     fn parses_pr_refs() {
-        let want = Some(PrRef { owner: "acme".into(), repo: "widgets".into(), number: 2613 });
-        assert_eq!(PrRef::parse("https://github.com/acme/widgets/pull/2613"), want);
-        assert_eq!(PrRef::parse("https://github.com/acme/widgets/pull/2613/files?x=1"), want);
-        assert_eq!(PrRef::parse("acme/widgets#2613"), want);
-        assert_eq!(PrRef::parse("acme/widgets/2613"), want);
-        assert_eq!(PrRef::parse("github.com/acme/widgets/pull/2613"), want);
+        let want = Some(PrRef { owner: "acme".into(), repo: "widgets".into(), number: 42 });
+        assert_eq!(PrRef::parse("https://github.com/acme/widgets/pull/42"), want);
+        assert_eq!(PrRef::parse("https://github.com/acme/widgets/pull/42/files?x=1"), want);
+        assert_eq!(PrRef::parse("acme/widgets#42"), want);
+        assert_eq!(PrRef::parse("acme/widgets/42"), want);
+        assert_eq!(PrRef::parse("github.com/acme/widgets/pull/42"), want);
         assert_eq!(PrRef::parse("nonsense"), None);
     }
 }

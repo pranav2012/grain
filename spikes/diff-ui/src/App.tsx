@@ -13,7 +13,7 @@ declare global {
 
 const params = new URLSearchParams(location.search)
 const lib = params.get('lib') ?? 'pierre'
-const pr = params.get('pr') ?? 'widgets-2671'
+const pr = params.get('pr') ?? 'small'
 const t0 = performance.now()
 
 window.__bench = { lib, pr, files: 0, fetchMs: 0, parseMs: 0, longTasksMs: 0 }

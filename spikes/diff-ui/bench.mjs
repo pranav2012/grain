@@ -2,7 +2,7 @@
 import { chromium } from 'playwright'
 
 const base = process.argv[2] ?? 'http://localhost:4173'
-const prs = (process.argv[3] ?? 'widgets-2613,storefront-218,widgets-2526').split(',')
+const prs = (process.argv[3] ?? 'small,medium,large').split(',')
 const libs = ['pierre', 'gdv']
 const browser = await chromium.launch({ channel: 'chrome', args: ['--enable-precise-memory-info'] })
 const rows = []

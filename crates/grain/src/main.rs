@@ -1,5 +1,7 @@
 //! `grain`: local-first semantic code review.
 
+mod doctor;
+
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -26,6 +28,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Check that everything Grain needs is installed and signed in.
+    Doctor {
+        /// Print the checks as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Print the engine's grouping for a git range in a checkout of `head`.
     Analyze {
         repo: PathBuf,
@@ -37,22 +45,35 @@ enum Command {
     },
 }
 
-/// The built UI: `GRAIN_UI_DIR`, or `ui/dist` in the source tree during development.
-fn ui_dir() -> PathBuf {
-    std::env::var_os("GRAIN_UI_DIR")
-        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ui/dist"), PathBuf::from)
-}
-
 #[tokio::main]
 #[allow(clippy::print_stdout, reason = "the CLI's output")]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter(std::env::var("GRAIN_LOG").unwrap_or_else(|_| "info".into())).init();
     let cli = Cli::parse();
-    if let Some(Command::Analyze { repo, base, head, json }) = cli.command {
-        let analysis = grain_engine::analyze(&repo, &base, &head)?;
-        let out = if json { serde_json::to_string_pretty(&analysis.review)? } else { analysis.summary };
-        println!("{out}");
-        return Ok(());
+    match cli.command {
+        Some(Command::Analyze { repo, base, head, json }) => {
+            let analysis = grain_engine::analyze(&repo, &base, &head)?;
+            let out = if json { serde_json::to_string_pretty(&analysis.review)? } else { analysis.summary };
+            println!("{out}");
+            return Ok(());
+        }
+        Some(Command::Doctor { json }) => {
+            let checks = doctor::full(cli.port);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&checks)?);
+            } else {
+                print!("{}", doctor::render(&checks));
+            }
+            std::process::exit(i32::from(doctor::has_blockers(&checks)));
+        }
+        None => {}
+    }
+
+    let checks = doctor::preflight();
+    if doctor::has_blockers(&checks) {
+        print!("{}", doctor::render(&checks));
+        println!("Run `grain doctor` again after fixing these.");
+        std::process::exit(1);
     }
 
     let open_pr = match cli.pr.as_deref() {
@@ -62,12 +83,14 @@ async fn main() -> Result<()> {
         None => None,
     };
     let path = open_pr.as_ref().map(|p| format!("/?pr={}/{}", p.full_repo(), p.number)).unwrap_or_default();
-    let opts = grain_server::Options { port: cli.port, ui_dir: ui_dir(), open_pr };
+    // GRAIN_UI_DIR serves a UI folder from disk instead of the embedded one (UI development).
+    let ui_dir = std::env::var_os("GRAIN_UI_DIR").map(PathBuf::from);
+    let opts = grain_server::Options { port: cli.port, ui_dir, open_pr };
     grain_server::serve(opts, |base| {
         let url = format!("{base}{path}");
         println!("Grain is running at {url}");
         if !cli.no_open {
-            let _ = std::process::Command::new("open").arg(&url).spawn();
+            let _ = open::that_detached(&url);
         }
     })
     .await

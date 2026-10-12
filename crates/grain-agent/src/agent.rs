@@ -35,6 +35,10 @@ impl Agent {
 
     /// Whether the agent's CLI is installed and on PATH.
     pub fn installed(self) -> bool {
-        std::process::Command::new(self.binary()).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+        std::process::Command::new(crate::resolve_program(self.binary()))
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
     }
 }

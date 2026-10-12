@@ -12,6 +12,11 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 pub use agent::Agent;
+
+/// Finds a program on PATH, including Windows `.cmd`/`.exe` shims that npm installs.
+pub fn resolve_program(name: &str) -> std::path::PathBuf {
+    which::which(name).unwrap_or_else(|_| std::path::PathBuf::from(name))
+}
 pub use policy::policy_check;
 pub use prompt::Summary;
 use prompt::{PROMPT, SCHEMA};

@@ -38,7 +38,7 @@ pub(crate) fn claude(
     schema: &str,
     model: Option<&str>,
 ) -> std::io::Result<(Option<serde_json::Value>, CliOutput)> {
-    let mut cmd = Command::new("claude");
+    let mut cmd = Command::new(crate::resolve_program("claude"));
     cmd.args(["-p", "--output-format", "json", "--json-schema", schema, "--tools", "", "--strict-mcp-config"]).args([
         "--permission-mode",
         "dontAsk",
@@ -63,7 +63,7 @@ pub(crate) fn codex(
     let (schema_path, out_path) = (dir.join("schema.json"), dir.join("last.txt"));
     std::fs::write(&schema_path, schema)?;
     let _ = std::fs::remove_file(&out_path);
-    let mut cmd = Command::new("codex");
+    let mut cmd = Command::new(crate::resolve_program("codex"));
     cmd.args(["exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "--color", "never"])
         .arg("--output-schema")
         .arg(&schema_path)
@@ -79,7 +79,7 @@ pub(crate) fn codex(
 
 /// `opencode run --format json`; collects text parts from the event stream.
 pub(crate) fn opencode(prompt: &str, model: Option<&str>) -> std::io::Result<(Option<serde_json::Value>, CliOutput)> {
-    let mut cmd = Command::new("opencode");
+    let mut cmd = Command::new(crate::resolve_program("opencode"));
     cmd.args(["run", "--format", "json"]);
     if let Some(m) = model {
         cmd.args(["-m", m]);
@@ -97,7 +97,7 @@ pub(crate) fn opencode(prompt: &str, model: Option<&str>) -> std::io::Result<(Op
 /// True when the user's OpenCode has an Anthropic *subscription* (OAuth) login, which Anthropic
 /// does not allow third-party harnesses to use.
 pub(crate) fn opencode_has_anthropic_oauth() -> bool {
-    Command::new("opencode")
+    Command::new(crate::resolve_program("opencode"))
         .args(["auth", "list"])
         .output()
         .map(|o| {

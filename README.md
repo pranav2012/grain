@@ -7,18 +7,34 @@ Grain groups a PR into chapters and blocks by what the code does, puts low-atten
 
 Everything runs on your machine. GitHub access goes through your `gh` login.
 
-## Run it
+## Install
 
-Requirements: Rust (stable), Node with pnpm, the GitHub CLI signed in (`gh auth login`), and git.
+> Not published yet. These commands work after the first release; see [RELEASING.md](RELEASING.md).
 
 ```bash
-pnpm --dir ui install && pnpm --dir ui build   # build the UI once
-cargo run --release -p grain                    # opens http://localhost:7420
-cargo run --release -p grain -- acme/widgets#2671   # straight to a PR
+brew install pranav2012/tap/grain                                                        # Homebrew
+curl -LsSf https://github.com/pranav2012/grain/releases/latest/download/grain-installer.sh | sh   # macOS, Linux
+npm i -g grain-review     # or: pnpm add -g grain-review · yarn global add grain-review · bun add -g grain-review
 ```
 
-In the app, press `⌘O` to switch pull requests: review requests, your PRs, recently opened, any repo's open PRs, or paste a link.
-Press `,` for settings, including which AI agent to use, or none.
+Windows: `powershell -c "irm https://github.com/pranav2012/grain/releases/latest/download/grain-installer.ps1 | iex"`
+
+Then check your setup. Grain needs `git` and the GitHub CLI signed in (`gh auth login`); `grain doctor` says exactly what's missing and how to fix it:
+
+```bash
+grain doctor
+grain                       # opens http://localhost:7420
+grain owner/repo#123        # straight to a PR
+```
+
+AI summaries are optional. Press `,` in the app to pick Claude Code, Codex or OpenCode if you have one installed.
+
+## Run from source
+
+```bash
+pnpm --dir ui install && pnpm --dir ui build   # build the UI (it gets embedded into the binary)
+cargo run --release -p grain                   # opens http://localhost:7420
+```
 
 ### Developing the UI
 

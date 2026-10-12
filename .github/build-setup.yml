@@ -1,0 +1,10 @@
+- name: Install pnpm
+  uses: pnpm/action-setup@v4
+  with:
+    package_json_file: ui/package.json
+- name: Install Node
+  uses: actions/setup-node@v5
+  with:
+    node-version: 24
+- name: Build the UI (embedded into the binary)
+  run: pnpm --dir ui install --frozen-lockfile && pnpm --dir ui build
