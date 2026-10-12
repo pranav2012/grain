@@ -151,3 +151,31 @@ Every block is reviewable without an agent. The engine computes these itself, an
 On the medium and large PRs the removed-code check raises no false alarms. On the 400K-line release merge it reports 31 places where removed code is still mentioned.
 
 The diff can be shown unified or side by side (`s`). The choice is remembered across PRs.
+
+## LSP for "used by" facts (TypeScript 7 language server)
+
+Question: would a language server give better "who outside this PR uses this code" facts than the
+tree-sitter entity graph, and what does it cost? Setup: TypeScript 7's native `tsc --lsp --stdio`
+on the same partial worktrees Grain uses (no `node_modules`), `textDocument/references` for every
+modified production entity, compared per block with Grain's `usedBy` and with `git grep -lw`.
+
+| | Large PR | Medium PR |
+|---|---|---|
+| Entities queried | 78 | 112 |
+| Server ready / first query | 0.01 s / 0.08 s | 0.01 s / 0.23 s |
+| Per query, median / p90 | 3 / 4 ms | 9 / 11 ms |
+| All queries | 0.3 s | 1.1 s |
+| Outside files: LSP vs `git grep` | 58 vs 271 | 219 vs 5,316 |
+| Blocks: both say "used outside" | 13 of 19 | 14 of 23 |
+| Blocks: LSP only / Grain only | 1 / 2 | 0 / 2 |
+
+- **Cost is negligible.** It fits easily in the background enrich stage.
+- **Text search is unusable.** Same-named but unrelated symbols inflate it 5–25×.
+- **Mostly agrees with Grain's graph.** Grain's extra hits look like name collisions (e.g. a
+  `render` method in another file); LSP found one real user Grain missed. Not every disagreement
+  was checked by hand.
+- **Limits:** TypeScript/JavaScript only (other languages need their own servers), and it needs a
+  TypeScript 7 binary on the machine (the repo's own, or a global one); Grain can't bundle it.
+
+Recommendation: optional precise usage for TS/JS during enrichment when a TypeScript 7 binary is
+found, falling back to the tree-sitter graph otherwise.
