@@ -473,7 +473,7 @@ fn group_v2(
     // Weighted file-to-file edges.
     let id_to_file: HashMap<&str, usize> = changes.iter().map(|c| (c.entity_id.as_str(), fidx[c.file_path.as_str()])).collect();
     let mut w: HashMap<(usize, usize), f64> = HashMap::new();
-    let mut add = |a: usize, b: usize, x: f64, w: &mut HashMap<(usize, usize), f64>| {
+    let add = |a: usize, b: usize, x: f64, w: &mut HashMap<(usize, usize), f64>| {
         if a != b {
             *w.entry((a.min(b), a.max(b))).or_default() += x;
         }
@@ -493,7 +493,7 @@ fn group_v2(
     edges.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     let mut csize = size.clone();
-    let mut merge = |uf: &mut Uf, a: usize, b: usize, cap: usize, csize: &mut Vec<usize>| -> bool {
+    let merge = |uf: &mut Uf, a: usize, b: usize, cap: usize, csize: &mut Vec<usize>| -> bool {
         let (ra, rb) = (uf.find(a), uf.find(b));
         if ra == rb || frozen[ra] || frozen[rb] || csize[ra] + csize[rb] > cap {
             return false;
