@@ -10,8 +10,11 @@ pub(crate) fn prepare(home: &Home, pr: &PrRef, viewer: &str, settings: &Settings
     report("Looking up the pull request");
     let details = grain_github::pr_details(pr)?;
     let out_dir = home.review_dir(pr);
-    let prev_head = read_json(&out_dir.join("pr.json")).and_then(|v| v["headSha"].as_str().map(str::to_string));
-    if prev_head.as_deref() == Some(details.head_sha.as_str()) && out_dir.join("review.json").exists() {
+    let prev = read_json(&out_dir.join("pr.json"));
+    let prev_head = prev.as_ref().and_then(|v| v["headSha"].as_str().map(str::to_string));
+    let same_format =
+        prev.as_ref().and_then(|v| v["reviewFormat"].as_u64()) == Some(u64::from(grain_engine::REVIEW_FORMAT));
+    if same_format && prev_head.as_deref() == Some(details.head_sha.as_str()) && out_dir.join("review.json").exists() {
         return write_pr_json(&out_dir, &details, viewer, settings, None);
     }
 
@@ -57,6 +60,7 @@ fn write_pr_json(
         .map(str::to_string)
         .or_else(|| read_json(&out_dir.join("pr.json")).and_then(|p| p["mergeBase"].as_str().map(str::to_string)));
     v["mergeBase"] = merge_base.into();
+    v["reviewFormat"] = grain_engine::REVIEW_FORMAT.into();
     write_atomic(&out_dir.join("pr.json"), serde_json::to_string(&v)?.as_bytes())?;
     Ok(())
 }

@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+
+@theme {
+  --color-graphite: #16181d;
+  --color-slate: #1d2027;
+  --color-slate-2: #232731;
+  --color-seam: #2b2f38;
+  --color-chalk: #e4e6ea;
+  --color-soft: #c7cad1;
+  --color-fog: #8a909b;
+  --color-dim: #5d636e;
+  --color-sage: #62b58c;
+  --color-coral: #e46a5e;
+  --color-amber: #d8a443;
+  --color-periwinkle: #8592f5;
+
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --animate-rise: rise 140ms ease-out;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+}
+
+/* One band of the grain map: horizontal hairlines in --grain, like wood grain. */
+@utility grain-stripes {
+  background: repeating-linear-gradient(to bottom, var(--grain) 0 1px, transparent 1px 3px);
+}
+
+@utility grain-hatch {
+  background: repeating-linear-gradient(135deg, var(--grain) 0 1px, transparent 1px 4px);
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --diffs-font-family: var(--font-mono);
+    --diffs-header-font-family: var(--font-sans);
+  }
+
+  html {
+    @apply bg-graphite font-sans text-[13px] leading-[1.45] text-chalk antialiased;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-periwinkle);
+    outline-offset: 1px;
+    border-radius: 4px;
+  }
+}

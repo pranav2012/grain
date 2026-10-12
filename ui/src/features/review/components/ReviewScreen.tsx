@@ -1,0 +1,171 @@
+import { useMemo, useState } from 'react'
+import { CommandPalette, type Command } from '@/components/CommandPalette'
+import { useHotkeys } from '@/lib/useHotkeys'
+import { useSummaries } from '../hooks/useSummaries'
+import { agentName as agentNameOf, blockTitle } from '../model/describe'
+import { modeOrder, modes } from '../model/modes'
+import { sectionsFor } from '../model/sections'
+import type { CommentKind, LoadedPr, Mode, ReviewComment } from '../model/types'
+import { usePrefs } from '../state/usePrefs'
+import { useReviewState } from '../state/useReviewState'
+import { BlockView } from './BlockView'
+import { ContextPanel } from './ContextPanel'
+import { FinishDialog } from './FinishDialog'
+import { GrainMap } from './GrainMap'
+import { KeyHints } from './KeyHints'
+import { Outline } from './Outline'
+import { ShortcutsDialog } from './ShortcutsDialog'
+import { TopBar } from './TopBar'
+
+interface ReviewScreenProps {
+  base: LoadedPr
+  settingsVersion: number
+  onSwitch(): void
+  onSettings(): void
+}
+
+export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: ReviewScreenProps) {
+  const viewer = base.pr?.viewer
+  const [state, dispatch] = useReviewState(base.id, viewer && viewer === base.pr?.author.login ? 'self' : 'peer')
+  const [prefs, setPrefs] = usePrefs()
+  const [overlay, setOverlay] = useState<'palette' | 'finish' | 'help' | null>(null)
+  const [showContext, setShowContext] = useState(true)
+  const [composing, setComposing] = useState<CommentKind | null>(null)
+  const copy = modes[state.mode]
+
+  const baseSections = useMemo(() => sectionsFor(base, state.mode), [base, state.mode])
+  const baseOrder = useMemo(() => baseSections.flatMap((s) => s.blocks), [baseSections])
+  const current = state.current && base.blocks.has(state.current) ? state.current : baseOrder[0]
+  const { data, note } = useSummaries(base, baseOrder, current, settingsVersion)
+
+  const sections = useMemo(() => sectionsFor(data, state.mode), [data, state.mode])
+  const order = useMemo(() => sections.flatMap((s) => s.blocks), [sections])
+  const reviewable = useMemo(() => order.filter((id) => !data.blocks.get(id)!.skim), [order, data])
+  const block = data.blocks.get(current)!
+  const section = sections.find((s) => s.blocks.includes(current))!
+  const blockComments = state.comments.filter((c) => c.blockId === current)
+
+  const go = (id: number | undefined) => id !== undefined && dispatch({ type: 'go', id })
+  const step = (d: number) => go(order[Math.min(order.length - 1, Math.max(0, order.indexOf(current) + d))])
+  const stepChapter = (d: number) => go(sections[sections.indexOf(section) + d]?.blocks[0])
+  const nextOpen = () => order.slice(order.indexOf(current) + 1).find((id) => !state.states[id]) ?? order.find((id) => !state.states[id])
+  const setMode = (mode: Mode) => dispatch({ type: 'mode', mode })
+  const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
+  const compose = (kind: CommentKind) => {
+    setShowContext(true)
+    setComposing(kind)
+  }
+  const primary = () => {
+    const done = state.states[current] === 'ok'
+    dispatch({ type: 'mark', id: current, state: done ? null : 'ok' })
+    if (!done) go(nextOpen())
+  }
+  const secondary = () => {
+    dispatch({ type: 'mark', id: current, state: 'change' })
+    compose(copy.secondaryKind)
+  }
+  const addComment = (c: Omit<ReviewComment, 'id' | 'createdAt' | 'blockId'>) =>
+    dispatch({ type: 'comment', comment: { ...c, blockId: current, id: crypto.randomUUID(), createdAt: Date.now() } })
+
+  useHotkeys({
+    j: () => step(1),
+    k: () => step(-1),
+    J: () => stepChapter(1),
+    K: () => stepChapter(-1),
+    ' ': primary,
+    x: secondary,
+    c: () => compose(copy.kinds[0][0]),
+    s: toggleDiffStyle,
+    '1': () => setMode('self'),
+    '2': () => setMode('peer'),
+    '3': () => setMode('maintainer'),
+    ']': () => setShowContext((v) => !v),
+    '?': () => setOverlay((o) => (o === 'help' ? null : 'help')),
+    ',': onSettings,
+    o: onSwitch,
+    'Mod+o': onSwitch,
+    'Mod+k': () => setOverlay((o) => (o === 'palette' ? null : 'palette')),
+    'Shift+Enter': () => setOverlay('finish'),
+  })
+
+  const lines = (ids: number[]) => ids.reduce((n, id) => n + data.blocks.get(id)!.lines, 0)
+  const progress = {
+    done: reviewable.filter((id) => state.states[id]).length,
+    total: reviewable.length,
+    okLines: lines(reviewable.filter((id) => state.states[id] === 'ok')),
+    changeLines: lines(reviewable.filter((id) => state.states[id] === 'change')),
+    reviewLines: lines(reviewable),
+  }
+  const agentName = agentNameOf(data)
+  const commands: Command[] = [
+    { id: 'finish', label: copy.finish, hint: 'Shift Enter', run: () => setOverlay('finish') },
+    { id: 'switch', label: 'Open another pull request', hint: '⌘O', run: onSwitch },
+    { id: 'settings', label: 'Settings: AI summaries', hint: ',', run: onSettings },
+    ...modeOrder.map((m, i) => ({ id: `mode-${m}`, label: `Switch to ${modes[m].label.toLowerCase()}`, hint: String(i + 1), run: () => setMode(m) })),
+    { id: 'next-open', label: 'Go to next unreviewed block', run: () => go(nextOpen()) },
+    { id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show side-by-side diff', hint: 's', run: toggleDiffStyle },
+    { id: 'context', label: showContext ? 'Hide context panel' : 'Show context panel', hint: ']', run: () => setShowContext((v) => !v) },
+    ...order.map((id) => ({ id: `b${id}`, label: blockTitle(data, data.blocks.get(id)!), hint: sections.find((s) => s.blocks.includes(id))?.title, run: () => go(id) })),
+  ]
+
+  return (
+    <div
+      className={`grid h-screen grid-rows-[48px_1fr_30px] [grid-template-areas:'top_top_top_top'_'map_outline_main_context'_'keys_keys_keys_keys'] max-[1100px]:grid-cols-[34px_240px_minmax(0,1fr)_0] max-[760px]:grid-cols-[0_0_minmax(0,1fr)_0] ${
+        showContext ? 'grid-cols-[34px_288px_minmax(0,1fr)_320px]' : 'grid-cols-[34px_288px_minmax(0,1fr)_0]'
+      }`}
+    >
+      <TopBar
+        data={data}
+        mode={state.mode}
+        onMode={setMode}
+        progress={progress}
+        onSwitch={onSwitch}
+        onPalette={() => setOverlay('palette')}
+        onSettings={onSettings}
+        onFinish={() => setOverlay('finish')}
+      />
+      <GrainMap data={data} sections={sections} states={state.states} current={current} onGo={go} />
+      <Outline data={data} sections={sections} states={state.states} current={current} onGo={go} />
+      <BlockView
+        data={data}
+        block={block}
+        mode={state.mode}
+        chapterTitle={section.title}
+        position={`Block ${section.blocks.indexOf(current) + 1} of ${section.blocks.length}`}
+        diffStyle={prefs.diffStyle}
+        onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
+        state={state.states[current]}
+        comments={blockComments}
+        onPrimary={primary}
+        onSecondary={secondary}
+        onComment={addComment}
+        onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
+      />
+      {showContext ? (
+        <ContextPanel
+          data={data}
+          block={block}
+          mode={state.mode}
+          comments={blockComments}
+          composing={composing}
+          agentName={agentName}
+          onCompose={setComposing}
+          onComment={addComment}
+          onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
+        />
+      ) : (
+        <div />
+      )}
+      <KeyHints
+        copy={copy}
+        diffStyle={prefs.diffStyle}
+        note={[copy.order, agentName ? (note ?? `Summaries by ${agentName}`) : 'Working without AI', 'Progress is saved on this machine'].map((s) => s.replace(/\.$/, '')).join('. ') + '.'}
+      />
+      {overlay === 'palette' && <CommandPalette commands={commands} onClose={() => setOverlay(null)} />}
+      {overlay === 'finish' && (
+        <FinishDialog data={data} mode={state.mode} states={state.states} comments={state.comments} reviewable={reviewable} onClose={() => setOverlay(null)} />
+      )}
+      {overlay === 'help' && <ShortcutsDialog onClose={() => setOverlay(null)} />}
+    </div>
+  )
+}

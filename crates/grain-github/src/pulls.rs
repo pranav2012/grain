@@ -10,6 +10,7 @@ use crate::pr_ref::PrRef;
 #[ts(export)]
 pub struct PrSummary {
     pub repo: String,
+    #[ts(type = "number")]
     pub number: u64,
     pub title: String,
     pub author: String,
@@ -94,14 +95,18 @@ pub struct Author {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct PrDetails {
+    #[ts(type = "number")]
     pub number: u64,
     pub title: String,
     pub url: String,
     pub author: Author,
     pub head_ref_name: String,
     pub base_ref_name: String,
+    #[ts(type = "number")]
     pub additions: u64,
+    #[ts(type = "number")]
     pub deletions: u64,
+    #[ts(type = "number")]
     pub changed_files: u64,
     pub base_sha: String,
     pub head_sha: String,

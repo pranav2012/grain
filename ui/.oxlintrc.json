@@ -1,8 +1,46 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
+  "plugins": ["react", "typescript", "oxc", "import"],
+  "ignorePatterns": ["src/types/generated/**", "dist/**"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "import/no-cycle": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          { "group": ["@/features/*/*"], "message": "Import a feature through its public index: @/features/<name>." },
+          { "group": ["../../*/*", "../../../*"], "message": "Use the @/ alias instead of reaching up across folders." }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/features/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              { "group": ["@/app", "@/app/*"], "message": "Features must not depend on the app shell." },
+              { "group": ["@/features/*"], "message": "Features must not import other features; compose them in src/app." }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/**", "src/lib/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [{ "group": ["@/features/*", "@/app/*"], "message": "Shared code must not depend on features or the app shell." }]
+          }
+        ]
+      }
+    }
+  ]
 }

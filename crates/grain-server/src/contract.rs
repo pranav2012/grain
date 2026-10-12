@@ -26,6 +26,7 @@ pub(crate) struct Inbox {
 #[ts(export)]
 pub(crate) struct RecentReview {
     pub repo: String,
+    #[ts(type = "number")]
     pub number: u64,
     pub title: String,
     pub author: String,

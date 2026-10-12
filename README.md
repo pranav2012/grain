@@ -29,14 +29,6 @@ pnpm --dir ui dev --port 5174        # UI with hot reload, proxies /api to :7420
 
 ## Layout
 
-| Path | What it is |
-|---|---|
-| `crates/grain-engine` | Turns a git range into chapters, blocks, skim, facts, checks and estimated risk |
-| `crates/grain-github` | PR and repo lookups through the `gh` CLI |
-| `crates/grain-agent` | Optional block summaries from your own `claude` / `codex` / `opencode` CLI |
-| `crates/grain` | The `grain` binary: local server, PR preparation, summarizer queue |
-| `ui/` | React review app (`@pierre/diffs` for diffs) |
-| `docs/` | Spike results, provider-terms compliance |
-| `spikes/` | Phase 0 experiments, kept for reference |
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the crate map, UI structure and the rules the checks enforce, and [CONTRIBUTING.md](CONTRIBUTING.md) for setup and conventions.
 
 Data lives in `~/.grain` (set `GRAIN_HOME` to change it): read-only partial clones, worktrees, prepared reviews, summary cache and settings.
