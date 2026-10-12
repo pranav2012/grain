@@ -96,7 +96,14 @@ fn remove_unused_clones(home: &Home, everything: bool, freed: &mut u64) -> usize
     let mut removed = 0;
     for owner in dirs(&home.repos_root()) {
         for clone in dirs(&owner) {
-            if everything || grain_git::worktree_count(&clone) == 0 {
+            // A clone being created (or just prepared) has no checkout yet; never take it away.
+            let recent = clone
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age < Duration::from_hours(1));
+            if everything || (!recent && grain_git::worktree_count(&clone) == 0) {
                 *freed += grain_store::disk_usage(&clone);
                 if std::fs::remove_dir_all(&clone).is_ok() {
                     removed += 1;
