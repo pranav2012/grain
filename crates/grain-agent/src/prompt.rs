@@ -24,10 +24,11 @@ pub struct Summary {
     pub reviewer_questions: Vec<String>,
 }
 
-pub(crate) const LAYER_PROMPT: &str = "You are helping a human review one layer of a pull request: a few related \
-blocks meant to be read together, after the layers they build on.\n\
-Answer only from the diff below; do not use tools.\n\
-title: <= 8 words, what this layer does. intent: 1-2 sentences on how these changes fit together.\n\
+pub(crate) const LAYER_PROMPT: &str = "You are helping a human review one chapter of a pull request: the changed \
+code that one user flow (a page or screen) runs, or one area of the codebase.\n\
+Answer only from the diff below; do not use tools. The diff may be cut short.\n\
+title: <= 8 words, what this chapter changes for the user or the code. intent: 1-2 plain sentences on \
+what changes and how the pieces fit together.\n\
 walkthrough: 2-4 short steps, which file to read first and why. reviewer_questions: 2-3 sharp questions \
 about how the pieces interact.\n\nDIFF:\n";
 
@@ -37,7 +38,7 @@ pub(crate) const LAYER_SCHEMA: &str = r#"{"type":"object","additionalProperties"
 "walkthrough":{"type":"array","items":{"type":"string"}},
 "reviewer_questions":{"type":"array","items":{"type":"string"}}}}"#;
 
-/// What the agent returns for one layer; shape enforced by [`LAYER_SCHEMA`].
+/// What the agent returns for one chapter; shape enforced by [`LAYER_SCHEMA`].
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct LayerSummary {

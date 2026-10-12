@@ -118,7 +118,7 @@ pub(crate) struct Status {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub(crate) struct SummarizeRequest {
-    /// Block content keys, or `layer:` + a layer key, to summarize, nearest first.
+    /// Block content keys, or `chapter:` + a chapter key, to summarize, nearest first.
     pub keys: Vec<String>,
 }
 

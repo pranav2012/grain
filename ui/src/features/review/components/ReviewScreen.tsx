@@ -1,25 +1,24 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CommandPalette, type Command } from '@/components/CommandPalette'
 import { useHotkeys } from '@/lib/useHotkeys'
+import type { Chapter } from '@/types/generated/Chapter'
 import { ThreadActionsContext, useConversation } from '../hooks/useConversation'
 import { useLiveReview } from '../hooks/useLiveReview'
 import { useReviewStatus } from '../hooks/useReviewStatus'
 import { useSummaries } from '../hooks/useSummaries'
-import { agentName as agentNameOf, layerSummaryKey, layerSummaryOf } from '../model/describe'
+import { agentName as agentNameOf, blockTitle, chapterSummaryKey, chapterSummaryOf } from '../model/describe'
 import { modeOrder, modes } from '../model/modes'
 import { blockProgress } from '../model/progress'
-import { ownedBlocks, stagesFor, stepState, stepTitle } from '../model/steps'
-import type { CommentKind, LoadedPr, Mode, ReviewComment, Stage, Step } from '../model/types'
+import { chapterBlocks, chaptersFor, linesOf, ownedBlocks } from '../model/story'
+import type { BlockState, LoadedPr, Mode, ReviewComment } from '../model/types'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
-import { ContextPanel } from './ContextPanel'
+import { ChapterView } from './ChapterView'
 import { FinishDialog } from './FinishDialog'
 import { KeyHints } from './KeyHints'
 import { NewCommitsNotice } from './NewCommitsNotice'
-import { Overview } from './Overview'
 import { ShortcutsDialog } from './ShortcutsDialog'
-import { StageRail } from './StageRail'
-import { StepView } from './StepView'
+import { StoryToc } from './StoryToc'
 import { TopBar } from './TopBar'
 
 type NewComment = Omit<ReviewComment, 'id' | 'createdAt' | 'blockId' | 'blockKey'>
@@ -42,96 +41,79 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const [state, dispatch] = useReviewState(base, viewer && viewer === base.pr?.author.login ? 'self' : 'peer')
   const [prefs, setPrefs] = usePrefs()
   const [overlay, setOverlay] = useState<'palette' | 'finish' | 'help' | null>(null)
-  const [showContext, setShowContext] = useState(true)
-  const [composing, setComposing] = useState<{ kind: CommentKind; body?: string } | null>(null)
-  // A fresh review opens on the overview; one in progress goes straight back to the reader's step.
-  const [view, setView] = useState<'overview' | 'step'>(() => (Object.keys(state.verdicts).length ? 'step' : 'overview'))
+  const [composeTick, setComposeTick] = useState(0)
+  const [focusRequest, setFocusRequest] = useState<{ blockId: number; n: number } | null>(null)
   const copy = modes[state.mode]
 
   const status = useReviewStatus(base.id, settingsVersion)
   const live = useLiveReview(base, status)
-  const baseSteps = useMemo(() => stagesFor(live, state.mode, prefs.mineFirst).flatMap((s) => s.steps), [live, state.mode, prefs.mineFirst])
-  const baseOrder = useMemo(() => baseSteps.flatMap((s) => s.blocks), [baseSteps])
+  const baseOrder = useMemo(() => chaptersFor(live, prefs.mineFirst).flatMap(chapterBlocks), [live, prefs.mineFirst])
   const keyToId = useMemo(() => new Map([...live.blocks.values()].map((b) => [b.key, b.id])), [live])
-  const currentBlock = (state.currentKey && keyToId.get(state.currentKey)) || baseOrder[0]
-  const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(live, status, baseOrder, currentBlock)
+  const current = (state.currentKey && keyToId.get(state.currentKey)) || baseOrder[0]
+  const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(live, status, baseOrder, current)
 
   const { threadsFor, actions: threadActions } = useConversation(data)
-  const stages = useMemo(() => stagesFor(data, state.mode, prefs.mineFirst), [data, state.mode, prefs.mineFirst])
-  const steps = useMemo(() => stages.flatMap((s) => s.steps), [stages])
+  const chapters = useMemo(() => chaptersFor(data, prefs.mineFirst), [data, prefs.mineFirst])
+  const order = useMemo(() => chapters.flatMap(chapterBlocks), [chapters])
   const owned = useMemo(() => ownedBlocks(data), [data])
   const { states, stale } = useMemo(() => blockProgress(data, state.verdicts), [data, state.verdicts])
-  const step = steps.find((s) => s.blocks.includes(currentBlock)) ?? steps[0]
-  const stage = stages.find((s) => s.steps.includes(step))!
-  const reviewable = useMemo(() => steps.flatMap((s) => s.blocks).filter((id) => !data.blocks.get(id)!.skim), [steps, data])
-  const stepBlocks = step.blocks.map((id) => data.blocks.get(id)!)
-  const stepKeys = new Set(stepBlocks.map((b) => b.key))
-  const stepComments = state.comments.filter((c) => stepKeys.has(c.blockKey))
-  const st = stepState(step, states)
-  const staleSince = step.blocks.map((id) => stale[id]).find(Boolean)
+  const chapter = chapters.find((c) => chapterBlocks(c).includes(current)) ?? chapters[0]
+  const reviewable = useMemo(() => order.filter((id) => !data.blocks.get(id)!.skim), [order, data])
   const agentName = agentNameOf(data)
 
-  const goStep = (s: Step | undefined) => {
-    if (!s) return
-    dispatch({ type: 'go', key: data.blocks.get(s.blocks[0])!.key })
-    setView('step')
-    setComposing(null)
+  // With AI on, each chapter's short intro is written in the background when the chapter opens (cached).
+  useEffect(() => {
+    if (agentName && chapter && !chapterSummaryOf(data, chapter)) requestSummary([chapterSummaryKey(chapter)])
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentName, chapter?.key])
+
+  const focus = (id: number | undefined, scroll = true) => {
+    const b = id === undefined ? undefined : data.blocks.get(id)
+    if (!b) return
+    dispatch({ type: 'go', key: b.key })
+    if (scroll) setFocusRequest((r) => ({ blockId: id!, n: (r?.n ?? 0) + 1 }))
   }
-  const openStage = (s: Stage) => goStep(s.steps.find((x) => stepState(x, states) !== 'done') ?? s.steps[0])
-  const idx = steps.indexOf(step)
-  const nextOpen = () => steps.slice(idx + 1).find((s) => stepState(s, states) !== 'done') ?? steps.find((s) => stepState(s, states) !== 'done')
-  const firstOpen = () => steps.find((s) => stepState(s, states) !== 'done')
-  const stepBy = (d: number) => goStep(steps[Math.min(steps.length - 1, Math.max(0, idx + d))])
-  const stageBy = (d: number) => {
-    const s = stages[stages.indexOf(stage) + d]
-    if (s) openStage(s)
+  const openChapter = (c: Chapter | undefined) => c && focus(chapterBlocks(c).find((id) => !states[id]) ?? chapterBlocks(c)[0])
+  const step = (d: number) => focus(order[Math.min(order.length - 1, Math.max(0, order.indexOf(current) + d))])
+  const stepChapter = (d: number) => openChapter(chapters[chapters.indexOf(chapter) + d])
+  const nextOpen = () => order.slice(order.indexOf(current) + 1).find((id) => !states[id]) ?? order.find((id) => !states[id])
+  const mark = (id: number, v: BlockState | null) => {
+    const b = data.blocks.get(id)!
+    dispatch({ type: 'mark', key: b.key, verdict: v ? { state: v, hash: b.contentHash, head: data.pr?.headSha ?? '', files: b.files } : null })
   }
-  const verdict = (b: (typeof stepBlocks)[number], v: 'ok' | 'change') => ({ state: v, hash: b.contentHash, head: data.pr?.headSha ?? '', files: b.files })
-  const markStep = (v: 'ok' | 'change' | null) =>
-    stepBlocks.forEach((b) => dispatch({ type: 'mark', key: b.key, verdict: v ? verdict(b, v) : null }))
   const setMode = (mode: Mode) => dispatch({ type: 'mode', mode })
   const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
   const toggleMineFirst = () => setPrefs((p) => ({ ...p, mineFirst: !p.mineFirst }))
-  const compose = (kind: CommentKind) => {
-    setShowContext(true)
-    setComposing({ kind })
-  }
   const primary = () => {
-    if (view === 'overview') return goStep(firstOpen() ?? steps[0])
-    if (st === 'done') return markStep(null)
-    markStep('ok')
-    goStep(nextOpen())
+    if (states[current] === 'ok') return mark(current, null)
+    mark(current, 'ok')
+    focus(nextOpen())
   }
   const secondary = () => {
-    if (view === 'overview') return
-    markStep('change')
-    compose(copy.secondaryKind)
+    mark(current, 'change')
+    setComposeTick((t) => t + 1)
+  }
+  const explain = (id: number) => {
+    const b = data.blocks.get(id)!
+    if (!agentName) return onSettings()
+    if (!b.skim) requestSummary([b.key])
   }
   const addComment = (blockId: number, c: NewComment) => dispatch({ type: 'comment', comment: newComment(c, blockId, data.blocks.get(blockId)!.key) })
-  const explainStep = () => agentName && step.layer && requestSummary([layerSummaryKey(step.layer)])
-  const byLayer = (id: number) => steps.find((s) => s.layer?.id === id)
-  const uses = (step.layer?.uses ?? []).map(byLayer).filter((s): s is Step => !!s)
-  const usedBy = steps.filter((s) => step.layer && s.layer?.uses.includes(step.layer.id))
 
   useHotkeys({
-    j: () => stepBy(1),
-    k: () => stepBy(-1),
-    J: () => stageBy(1),
-    K: () => stageBy(-1),
-    h: () => setView('overview'),
+    j: () => step(1),
+    k: () => step(-1),
+    J: () => stepChapter(1),
+    K: () => stepChapter(-1),
     ' ': primary,
     x: secondary,
-    c: () => view === 'step' && compose(copy.kinds[0][0]),
+    c: () => setComposeTick((t) => t + 1),
+    a: () => explain(current),
     s: toggleDiffStyle,
     m: () => owned.size && toggleMineFirst(),
-    a: () => {
-      if (agentName) explainStep()
-      else onSettings()
-    },
     '1': () => setMode('self'),
     '2': () => setMode('peer'),
     '3': () => setMode('maintainer'),
-    ']': () => setShowContext((v) => !v),
     '?': () => setOverlay((o) => (o === 'help' ? null : 'help')),
     ',': onSettings,
     o: onSwitch,
@@ -140,39 +122,29 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     'Shift+Enter': () => setOverlay('finish'),
   })
 
-  const lines = (ids: number[]) => ids.reduce((n, id) => n + data.blocks.get(id)!.lines, 0)
+  const lines = (ids: number[]) => linesOf(data, ids)
   const progress = {
-    done: steps.filter((s) => stepState(s, states) === 'done').length,
-    total: steps.length,
+    done: reviewable.filter((id) => states[id]).length,
+    total: reviewable.length,
     okLines: lines(reviewable.filter((id) => states[id] === 'ok')),
     changeLines: lines(reviewable.filter((id) => states[id] === 'change')),
     reviewLines: lines(reviewable),
   }
   const commands: Command[] = [
     { id: 'finish', label: copy.finish, hint: 'Shift Enter', run: () => setOverlay('finish') },
-    { id: 'overview', label: 'Back to the overview', hint: 'h', run: () => setView('overview') },
     { id: 'switch', label: 'Open another pull request', hint: '⌘O', run: onSwitch },
     { id: 'settings', label: 'Settings: AI', hint: ',', run: onSettings },
     ...modeOrder.map((m, i) => ({ id: `mode-${m}`, label: `Switch to ${modes[m].label.toLowerCase()}`, hint: String(i + 1), run: () => setMode(m) })),
-    { id: 'next-open', label: 'Go to the next unreviewed step', run: () => goStep(nextOpen()) },
-    ...(agentName && step.layer && !layerSummaryOf(data, step.layer) ? [{ id: 'explain', label: `Explain this step with ${agentName}`, hint: 'a', run: explainStep }] : []),
+    { id: 'next-open', label: 'Go to the next unreviewed change', run: () => focus(nextOpen()) },
     { id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show side-by-side diff', hint: 's', run: toggleDiffStyle },
-    ...(owned.size
-      ? [{ id: 'mine-first', label: prefs.mineFirst ? 'Show steps in normal order' : 'Show your code first (CODEOWNERS)', hint: 'm', run: toggleMineFirst }]
-      : []),
-    { id: 'context', label: showContext ? 'Hide the side panel' : 'Show the side panel', hint: ']', run: () => setShowContext((v) => !v) },
-    ...stages.map((s) => ({ id: `stage-${s.name}`, label: `Stage: ${s.name}`, hint: `${s.steps.length} steps`, run: () => openStage(s) })),
-    ...steps.map((s) => ({ id: `step-${s.key}`, label: stepTitle(data, s), hint: s.stage, run: () => goStep(s) })),
+    ...(owned.size ? [{ id: 'mine-first', label: prefs.mineFirst ? 'Show your code in its flows' : 'Show your code first (CODEOWNERS)', hint: 'm', run: toggleMineFirst }] : []),
+    ...chapters.map((c) => ({ id: `ch-${c.key}`, label: c.title, hint: `${chapterBlocks(c).length} changes`, run: () => openChapter(c) })),
+    ...order.map((id) => ({ id: `b${id}`, label: blockTitle(data, data.blocks.get(id)!), hint: chapters.find((c) => chapterBlocks(c).includes(id))?.title, run: () => focus(id) })),
   ]
-  const panel = view === 'step' && showContext
 
   return (
     <ThreadActionsContext value={threadActions}>
-      <div
-        className={`grid h-screen grid-rows-[48px_minmax(0,1fr)_30px] [grid-template-areas:'top_top_top'_'rail_main_context'_'keys_keys_keys'] max-[1100px]:grid-cols-[180px_minmax(0,1fr)_0] max-[760px]:grid-cols-[0_minmax(0,1fr)_0] ${
-          panel ? 'grid-cols-[200px_minmax(0,1fr)_320px]' : 'grid-cols-[200px_minmax(0,1fr)_0]'
-        }`}
-      >
+      <div className="grid h-screen grid-cols-[260px_minmax(0,1fr)] grid-rows-[48px_minmax(0,1fr)_30px] [grid-template-areas:'top_top'_'toc_main'_'keys_keys'] max-[900px]:grid-cols-[0_minmax(0,1fr)]">
         <TopBar
           data={data}
           mode={state.mode}
@@ -183,67 +155,52 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           onSettings={onSettings}
           onFinish={() => setOverlay('finish')}
         />
-        <StageRail stages={stages} current={view === 'step' ? stage : null} states={states} onOverview={() => setView('overview')} onOpenStage={openStage} />
-        {view === 'overview' ? (
-          <Overview data={data} stages={stages} states={states} resume={firstOpen()} onOpenStage={openStage} onOpenStep={goStep} />
-        ) : (
-          <StepView
-            data={data}
-            step={step}
-            stage={stage.name}
-            position={stage.steps.indexOf(step) + 1}
-            of={stage.steps.length}
-            next={steps[idx + 1]}
-            mode={state.mode}
-            diffStyle={prefs.diffStyle}
-            state={st}
-            staleSince={staleSince}
-            comments={stepComments}
-            threadsFor={threadsFor}
-            owned={step.blocks.some((id) => owned.has(id))}
-            agentName={agentName}
-            summaryPending={!!step.layer && summaryPending(layerSummaryKey(step.layer))}
-            onSummarize={explainStep}
-            onOverview={() => setView('overview')}
-            onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
-            onPrimary={primary}
-            onSecondary={secondary}
-            onNext={() => stepBy(1)}
-            onComment={addComment}
-            onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
-          />
-        )}
-        {panel ? (
-          <ContextPanel
-            data={data}
-            step={step}
-            mode={state.mode}
-            comments={stepComments}
-            threads={step.blocks.flatMap((id) => threadsFor(id))}
-            uses={uses}
-            usedBy={usedBy}
-            composing={composing}
-            agentName={agentName}
-            onCompose={setComposing}
-            onComment={(c) => addComment(step.blocks[0], c)}
-            onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
-            onOpenStep={goStep}
-          />
-        ) : (
-          <div />
-        )}
+        <StoryToc
+          data={data}
+          chapters={chapters}
+          current={chapter}
+          currentBlock={current}
+          states={states}
+          stale={stale}
+          onChapter={openChapter}
+          onBlock={(id) => focus(id)}
+        />
+        <ChapterView
+          data={data}
+          chapter={chapter}
+          next={chapters[chapters.indexOf(chapter) + 1]}
+          mode={state.mode}
+          diffStyle={prefs.diffStyle}
+          states={states}
+          stale={stale}
+          currentBlock={current}
+          comments={state.comments}
+          threadsFor={threadsFor}
+          owned={owned}
+          agentName={agentName}
+          summaryPending={summaryPending}
+          composeTick={composeTick}
+          focusRequest={focusRequest}
+          onFocus={(id) => focus(id, false)}
+          onMark={mark}
+          onExplain={explain}
+          onApproveAll={() => chapterBlocks(chapter).forEach((id) => mark(id, 'ok'))}
+          onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
+          onNextChapter={() => stepChapter(1)}
+          onComment={addComment}
+          onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
+        />
         <KeyHints
           copy={copy}
           diffStyle={prefs.diffStyle}
           note={[
-            copy.order,
-            data.review.complete ? null : 'Checking how the changes are used across the repo',
-            agentName ? (note ?? `AI on request: ${agentName}`) : 'AI off',
+            data.review.complete ? null : 'Reading the whole repository for user flows',
+            agentName ? (note ?? `AI: ${agentName}`) : 'AI off',
             'Progress is saved on this machine',
           ]
             .filter((x): x is string => !!x)
-            .map((s) => s.replace(/\.$/, ''))
-            .join('. ') + '.'}
+            .join('. ')
+            .concat('.')}
         />
         {overlay === 'palette' && <CommandPalette commands={commands} onClose={() => setOverlay(null)} />}
         {overlay === 'finish' && (

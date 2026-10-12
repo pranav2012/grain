@@ -16,8 +16,8 @@ function toHunk(lines: Kept[]): string[] {
   const oldCount = lines.filter((l) => l.text[0] !== '+' && l.text[0] !== '\\').length
   const newCount = lines.filter((l) => l.text[0] !== '-' && l.text[0] !== '\\').length
   // Empty sides point at the line before the change, as git writes them.
-  const oldStart = oldCount ? lines[0].oldNo : lines[0].oldNo - 1
-  const newStart = newCount ? lines[0].newNo : lines[0].newNo - 1
+  const oldStart = oldCount ? lines[0].oldNo : Math.max(0, lines[0].oldNo - 1)
+  const newStart = newCount ? lines[0].newNo : Math.max(0, lines[0].newNo - 1)
   return [`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`, ...lines.map((l) => l.text)]
 }
 

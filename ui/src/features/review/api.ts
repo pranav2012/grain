@@ -61,12 +61,12 @@ export async function loadPr(id: string): Promise<LoadedPr> {
 }
 
 export function withReview(base: Omit<LoadedPr, 'review' | 'blocks'>, review: Review): LoadedPr {
-  // Reviews stored by an older Grain lack newer fields; read them as empty (or one layer) instead of crashing.
-  const legacy = (): Review['layers'] => {
+  // Reviews stored by an older Grain lack newer fields; read them as empty (or one chapter) instead of crashing.
+  const legacy = (): Review['story'] => {
     const blocks = review.blocks.filter((b) => !b.skim).map((b) => b.id)
-    const lines = review.blocks.filter((b) => !b.skim).reduce((n, b) => n + b.lines, 0)
-    return blocks.length ? [{ id: 1, key: 'all', title: 'All changes', stage: 'Code', dir: '', lines, blocks, uses: [] }] : []
+    const chapter = (id: number, kind: 'area' | 'routine', title: string, ids: number[]) => ({ id, key: title, kind, title, entry: null, about: title, sections: [{ title: '', blocks: ids }] })
+    return { flows: false, chapters: [blocks.length && chapter(1, 'area', 'All changes', blocks), review.skim.length && chapter(2, 'routine', 'Routine', review.skim)].filter((c) => !!c) }
   }
-  const r: Review = { ...review, links: review.links ?? [], layers: review.layers ?? legacy() }
+  const r: Review = { ...review, links: review.links ?? [], story: review.story ?? legacy() }
   return { ...base, review: r, blocks: new Map(r.blocks.map((b) => [b.id, b])) }
 }

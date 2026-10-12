@@ -1,6 +1,5 @@
 import type { Agent } from '@/types/generated/Agent'
 import type { Block } from '@/types/generated/Block'
-import type { Layer } from '@/types/generated/Layer'
 import type { LayerSummary } from '@/types/generated/LayerSummary'
 import type { PrDetails } from '@/types/generated/PrDetails'
 import type { Review } from '@/types/generated/Review'
@@ -61,20 +60,4 @@ export interface LoadedPr {
   progress: unknown
   owners: Owners
   blocks: Map<number, Block>
-}
-
-/** One page of the review: a layer, or a handful of skim blocks. */
-export interface Step {
-  key: string
-  stage: string
-  layer?: Layer
-  blocks: number[]
-}
-
-/** Steps of one kind of code, read in order: foundations first, skim last. */
-export interface Stage {
-  name: string
-  /** What it covers, from the main files: `urlUtils, useVoucherData and 10 more`. */
-  about: string
-  steps: Step[]
 }

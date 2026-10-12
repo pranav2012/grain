@@ -54,7 +54,7 @@ pub fn summarize(agent: Agent, model: Option<&str>, diff: &str, cache_dir: &Path
     ask(agent, model, PROMPT, SCHEMA, diff, cache_dir)
 }
 
-/// Summarizes one layer (a few related blocks) from their combined diff; cached like [`summarize`].
+/// Writes a chapter intro from the chapter's combined diff; cached like [`summarize`].
 pub fn summarize_layer(agent: Agent, model: Option<&str>, diff: &str, cache_dir: &Path) -> Outcome {
     ask(agent, model, LAYER_PROMPT, LAYER_SCHEMA, diff, cache_dir)
 }

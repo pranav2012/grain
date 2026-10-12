@@ -4,9 +4,8 @@ import type { DiffStyle } from '../model/types'
 
 export function KeyHints({ copy, diffStyle, note }: { copy: ModeCopy; diffStyle: DiffStyle; note: string }) {
   const hints: [string[], string][] = [
-    [['j', 'k'], 'Step'],
-    [['⇧J', '⇧K'], 'Stage'],
-    [['h'], 'Overview'],
+    [['j', 'k'], 'Change'],
+    [['⇧J', '⇧K'], 'Chapter'],
     [['space'], copy.primary],
     [['x'], copy.secondary],
     [['c'], 'Note'],
