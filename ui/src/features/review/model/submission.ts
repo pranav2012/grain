@@ -3,6 +3,7 @@ import type { ReviewEvent } from '@/types/generated/ReviewEvent'
 import type { SubmitRequest } from '@/types/generated/SubmitRequest'
 import { blockTitle } from './describe'
 import { kindLabel } from './modes'
+import { suggestionBlock } from './suggestion'
 import type { LoadedPr, ReviewComment } from './types'
 
 const prefix = (c: ReviewComment) => (c.kind === 'comment' || c.kind === 'note' ? '' : `**${kindLabel[c.kind]}:** `)
@@ -20,7 +21,9 @@ export function buildSubmission(data: LoadedPr, comments: ReviewComment[], event
       line: c.endLine ?? c.line!,
       startLine: c.endLine && c.endLine !== c.line ? c.line! : null,
       side: c.side === 'deletions' ? 'LEFT' : 'RIGHT',
-      body: prefix(c) + c.body,
+      body: [prefix(c) + c.body, c.suggestion !== undefined && c.side !== 'deletions' ? suggestionBlock(c.suggestion) : '']
+        .filter(Boolean)
+        .join('\n\n'),
     }))
   const byBlock = new Map<number, ReviewComment[]>()
   for (const c of unposted.filter((c) => !c.file)) byBlock.set(c.blockId, [...(byBlock.get(c.blockId) ?? []), c])

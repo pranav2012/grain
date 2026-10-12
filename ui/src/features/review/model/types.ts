@@ -24,6 +24,8 @@ export interface ReviewComment {
   line?: number
   endLine?: number
   createdAt: number
+  /** Replacement for the commented new-code lines, posted as a GitHub suggestion. */
+  suggestion?: string
   /** Set once the comment was posted to GitHub; posted comments are never sent again. */
   postedAt?: number
 }

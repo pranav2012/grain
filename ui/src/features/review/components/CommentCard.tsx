@@ -24,6 +24,11 @@ export function CommentCard({ c, onDelete }: { c: ReviewComment; onDelete(): voi
         )}
       </div>
       {c.body}
+      {c.suggestion !== undefined && (
+        <pre className={cn('overflow-x-auto rounded-md border border-seam bg-graphite p-2 font-mono text-[12px]', c.body && 'mt-1.5')}>
+          {c.suggestion || '(delete these lines)'}
+        </pre>
+      )}
     </div>
   )
 }

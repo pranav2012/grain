@@ -12,6 +12,7 @@ import type { ReviewThread } from '@/types/generated/ReviewThread'
 import { useBlockDiff } from '../hooks/useBlockDiff'
 import { blockTitle, factsSentence, summaryOf } from '../model/describe'
 import { modes } from '../model/modes'
+import { newLines } from '../model/suggestion'
 import type { BlockState, CommentKind, DiffStyle, LoadedPr, Mode, ReviewComment, Side } from '../model/types'
 import { CommentCard } from './CommentCard'
 import { Composer } from './Composer'
@@ -76,6 +77,9 @@ export function BlockView(p: BlockViewProps) {
   const { diffs, error: diffError } = useBlockDiff(data.id, data.pr?.headSha ?? '', block.files, p.nextFiles, sinceReview)
   // Line comments must anchor to the PR's own diff, so they're only offered on the whole block.
   const options = useMemo(() => ({ ...baseOptions, diffStyle: p.diffStyle, enableLineSelection: !sinceReview }), [p.diffStyle, sinceReview])
+  // Suggestions replace new code, so they're offered only on lines of the new version.
+  const draftFile = draft && draft.side === 'additions' ? diffs?.find((d) => d.name === draft.file) : undefined
+  const suggestionSeed = draft && draftFile ? newLines(draftFile, draft.line, draft.endLine) : null
   const items = useMemo<CodeViewItem<Note>[]>(() => {
     return (diffs ?? []).map((fileDiff) => {
         const annotations: DiffLineAnnotation<Note>[] = p.comments
@@ -200,9 +204,10 @@ export function BlockView(p: BlockViewProps) {
                   <Composer
                     kinds={copy.kinds}
                     placeholder={`Comment on line ${draft.line}${draft.endLine !== draft.line ? `–${draft.endLine}` : ''}`}
+                    suggestionSeed={suggestionSeed}
                     onCancel={() => setDraft(null)}
-                    onSave={(body: string, kind: CommentKind) => {
-                      p.onComment({ body, kind, file: draft.file, side: draft.side, line: draft.line, endLine: draft.endLine })
+                    onSave={(body: string, kind: CommentKind, suggestion?: string) => {
+                      p.onComment({ body, kind, suggestion, file: draft.file, side: draft.side, line: draft.line, endLine: draft.endLine })
                       setDraft(null)
                     }}
                   />

@@ -25,7 +25,8 @@ function agentPrompt(data: LoadedPr, comments: ReviewComment[]): string {
   for (const c of comments) {
     const range = c.endLine && c.endLine !== c.line ? `-${c.endLine}` : ''
     const where = c.file ? `${c.file}:${c.line}${range}` : blockTitle(data, data.blocks.get(c.blockId)!)
-    lines.push(`- [${kindLabel[c.kind]}] ${where}: ${c.body}`)
+    lines.push(`- [${kindLabel[c.kind]}] ${where}: ${c.body || 'Replace these lines.'}`)
+    if (c.suggestion !== undefined) lines.push('  Replace with:', '  ```', ...c.suggestion.split('\n').map((l) => `  ${l}`), '  ```')
   }
   return lines.join('\n')
 }
