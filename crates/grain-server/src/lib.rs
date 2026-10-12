@@ -3,6 +3,7 @@
 mod contract;
 mod error;
 mod jobs;
+mod patch_index;
 mod routes;
 mod state;
 mod ui;

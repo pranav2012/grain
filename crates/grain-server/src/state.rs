@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use grain_github::PrRef;
@@ -14,6 +14,11 @@ pub(crate) struct App {
     viewer: Mutex<Option<String>>,
     pub(crate) jobs: Mutex<HashMap<PrRef, Job>>,
     pub(crate) summarizers: Mutex<HashMap<PrRef, Summarizer>>,
+    /// PRs with a preparation or enrichment pass running; never two at once per PR.
+    busy: Mutex<HashSet<PrRef>>,
+    /// PRs whose review is open but whose whole-repo facts are still being computed.
+    pub(crate) enriching: Mutex<HashSet<PrRef>>,
+    pub(crate) patches: crate::patch_index::PatchCache,
 }
 
 pub(crate) type Shared = Arc<App>;
@@ -27,6 +32,9 @@ impl App {
             viewer: Mutex::new(None),
             jobs: Mutex::new(HashMap::new()),
             summarizers: Mutex::new(HashMap::new()),
+            busy: Mutex::new(HashSet::new()),
+            enriching: Mutex::new(HashSet::new()),
+            patches: crate::patch_index::PatchCache::default(),
         })
     }
 
@@ -44,15 +52,18 @@ impl App {
         v
     }
 
-    /// Starts (or re-checks) preparation of a PR in the background.
+    /// Starts (or re-checks) preparation of a PR in the background: stage 1 makes the review
+    /// openable, stage 2 then adds whole-repo facts while the reviewer reads.
     pub(crate) fn open(self: &Shared, pr: PrRef) {
-        {
-            let mut jobs = self.jobs.lock().unwrap_or_else(PoisonError::into_inner);
-            if jobs.get(&pr).is_some_and(|j| j.stage == Stage::Preparing) {
-                return;
-            }
-            jobs.insert(pr.clone(), Job { stage: Stage::Preparing, message: "Starting".into() });
+        if !self.busy.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone()) {
+            return;
         }
+        // A stored review opens instantly; new commits are checked for in the background.
+        let stage = if prepare::has_usable_review(&self.home, &pr) { Stage::Ready } else { Stage::Preparing };
+        self.jobs
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(pr.clone(), Job { stage, message: "Checking for new commits".into() });
         let app = self.clone();
         tokio::task::spawn_blocking(move || {
             let started = std::time::Instant::now();
@@ -68,11 +79,21 @@ impl App {
             let result = prepare::prepare(&app.home, &pr, &app.viewer(), &app.settings(), &report);
             report("done");
             tracing::info!(pr = %pr.number, total_ms = started.elapsed().as_millis(), "prepared");
-            let job = match result {
-                Ok(()) => Job { stage: Stage::Ready, message: "Ready".into() },
-                Err(e) => Job { stage: Stage::Failed, message: format!("{e:#}") },
+            let (job, next) = match result {
+                Ok(next) => (Job { stage: Stage::Ready, message: "Ready".into() }, next),
+                Err(e) => (Job { stage: Stage::Failed, message: format!("{e:#}") }, prepare::Next::Done),
             };
-            app.jobs.lock().unwrap_or_else(PoisonError::into_inner).insert(pr, job);
+            app.jobs.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone(), job);
+            if matches!(next, prepare::Next::Enrich) {
+                app.enriching.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone());
+                let t = std::time::Instant::now();
+                match prepare::enrich(&app.home, &pr) {
+                    Ok(()) => tracing::info!(pr = %pr.number, ms = t.elapsed().as_millis(), "enriched"),
+                    Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "enrichment failed"),
+                }
+                app.enriching.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
+            }
+            app.busy.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
         });
     }
 }

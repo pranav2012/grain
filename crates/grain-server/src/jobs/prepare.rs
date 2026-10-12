@@ -1,12 +1,34 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use grain_engine::Depth;
 use grain_github::{PrDetails, PrRef};
 use grain_store::{Home, Settings, read_json, write_atomic};
 
-/// Fetches the PR, checks out its head in a private worktree and runs the engine.
-/// Re-opening an unchanged PR keeps the stored review and only refreshes `pr.json`.
-pub(crate) fn prepare(home: &Home, pr: &PrRef, viewer: &str, settings: &Settings, report: &dyn Fn(&str)) -> Result<()> {
+/// What still has to happen after [`prepare`] returns.
+pub(crate) enum Next {
+    Done,
+    /// The review is open with fast facts; run [`enrich`] in the background.
+    Enrich,
+}
+
+/// True when a review in the current format is stored, so it can be shown right away.
+pub(crate) fn has_usable_review(home: &Home, pr: &PrRef) -> bool {
+    let dir = home.review_dir(pr);
+    dir.join("review.json").exists()
+        && read_json(&dir.join("pr.json")).and_then(|v| v["reviewFormat"].as_u64())
+            == Some(u64::from(grain_engine::REVIEW_FORMAT))
+}
+
+/// Stage 1: fetch the PR, check out only its changed files, group them. This is all the
+/// first view needs. Re-opening an unchanged PR reuses the stored review.
+pub(crate) fn prepare(
+    home: &Home,
+    pr: &PrRef,
+    viewer: &str,
+    settings: &Settings,
+    report: &dyn Fn(&str),
+) -> Result<Next> {
     report("Looking up the pull request");
     let details = grain_github::pr_details(pr)?;
     let out_dir = home.review_dir(pr);
@@ -14,8 +36,11 @@ pub(crate) fn prepare(home: &Home, pr: &PrRef, viewer: &str, settings: &Settings
     let prev_head = prev.as_ref().and_then(|v| v["headSha"].as_str().map(str::to_string));
     let same_format =
         prev.as_ref().and_then(|v| v["reviewFormat"].as_u64()) == Some(u64::from(grain_engine::REVIEW_FORMAT));
-    if same_format && prev_head.as_deref() == Some(details.head_sha.as_str()) && out_dir.join("review.json").exists() {
-        return write_pr_json(&out_dir, &details, viewer, settings, None);
+    if same_format && prev_head.as_deref() == Some(details.head_sha.as_str()) {
+        if let Some(review) = read_json(&out_dir.join("review.json")) {
+            write_pr_json(&out_dir, &details, viewer, settings, None)?;
+            return Ok(if review["complete"] == true { Next::Done } else { Next::Enrich });
+        }
     }
 
     let clone = home.clone_dir(pr);
@@ -28,22 +53,42 @@ pub(crate) fn prepare(home: &Home, pr: &PrRef, viewer: &str, settings: &Settings
     grain_git::fetch_pr(&clone, &details.base_sha, pr.number)?;
     let merge_base = grain_git::merge_base(&clone, &details.base_sha, &details.head_sha)?;
 
-    report("Checking out the PR's files");
-    let worktree = home.worktree_dir(pr);
-    grain_git::checkout_worktree(&clone, &worktree, &details.head_sha)?;
-
-    // Must run before analysis: it downloads both sides of every changed file.
+    // Must run before analysis: it downloads both sides of every changed file in one batch.
     report("Downloading the changed files");
     let patch = grain_git::diff(&clone, &merge_base, &details.head_sha, &[])?;
 
+    report("Checking out the changed files");
+    let paths = grain_git::changed_paths(&clone, &merge_base, &details.head_sha)?;
+    grain_git::checkout_sparse(&clone, &home.worktree_dir(pr), &details.head_sha, &paths)?;
+
     report("Grouping the changes into chapters and blocks");
-    let analysis = grain_engine::analyze(&worktree, &merge_base, &details.head_sha)?;
+    let analysis = grain_engine::analyze_with(&home.worktree_dir(pr), &merge_base, &details.head_sha, Depth::Fast)?;
 
     std::fs::create_dir_all(&out_dir)?;
-    write_atomic(&out_dir.join("review.json"), serde_json::to_string(&analysis.review)?.as_bytes())?;
     write_atomic(&out_dir.join("diff.patch"), patch.as_bytes())?;
+    write_atomic(&out_dir.join("review.json"), serde_json::to_string(&analysis.review)?.as_bytes())?;
     write_atomic(&out_dir.join("analysis.txt"), analysis.summary.as_bytes())?;
-    write_pr_json(&out_dir, &details, viewer, settings, Some(&merge_base))
+    write_pr_json(&out_dir, &details, viewer, settings, Some(&merge_base))?;
+    Ok(Next::Enrich)
+}
+
+/// Stage 2: check out the whole repository and add whole-repo facts (outside usage, dangling
+/// removals). Blocks and chapters are unchanged; only facts are added.
+pub(crate) fn enrich(home: &Home, pr: &PrRef) -> Result<()> {
+    let out_dir = home.review_dir(pr);
+    let pr_json = read_json(&out_dir.join("pr.json")).context("PR not prepared")?;
+    let head = pr_json["headSha"].as_str().unwrap_or_default().to_string();
+    let merge_base = pr_json["mergeBase"].as_str().unwrap_or_default().to_string();
+    let worktree = home.worktree_dir(pr);
+    grain_git::expand_worktree(&worktree)?;
+    let analysis = grain_engine::analyze_with(&worktree, &merge_base, &head, Depth::Complete)?;
+    // A newer push may have been prepared meanwhile; never overwrite it with older facts.
+    let current = read_json(&out_dir.join("pr.json")).and_then(|v| v["headSha"].as_str().map(str::to_string));
+    if current.as_deref() == Some(head.as_str()) {
+        write_atomic(&out_dir.join("review.json"), serde_json::to_string(&analysis.review)?.as_bytes())?;
+        write_atomic(&out_dir.join("analysis.txt"), analysis.summary.as_bytes())?;
+    }
+    Ok(())
 }
 
 fn write_pr_json(

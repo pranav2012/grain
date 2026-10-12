@@ -42,6 +42,9 @@ enum Command {
         /// Print the full review as JSON.
         #[arg(long)]
         json: bool,
+        /// Only read the changed files (skips whole-repo facts).
+        #[arg(long)]
+        fast: bool,
     },
 }
 
@@ -51,8 +54,9 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter(std::env::var("GRAIN_LOG").unwrap_or_else(|_| "info".into())).init();
     let cli = Cli::parse();
     match cli.command {
-        Some(Command::Analyze { repo, base, head, json }) => {
-            let analysis = grain_engine::analyze(&repo, &base, &head)?;
+        Some(Command::Analyze { repo, base, head, json, fast }) => {
+            let depth = if fast { grain_engine::Depth::Fast } else { grain_engine::Depth::Complete };
+            let analysis = grain_engine::analyze_with(&repo, &base, &head, depth)?;
             let out = if json { serde_json::to_string_pretty(&analysis.review)? } else { analysis.summary };
             println!("{out}");
             return Ok(());

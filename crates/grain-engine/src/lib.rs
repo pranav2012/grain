@@ -11,8 +11,8 @@ mod model;
 mod pipeline;
 
 pub use model::{Analysis, Block, Chapter, Check, CheckLevel, EntityChange, Review, Risk};
-pub use pipeline::analyze;
+pub use pipeline::{Depth, analyze, analyze_with};
 
 /// Version of the [`Review`] format. Bump when the engine's output changes (fields or grouping),
 /// so stored reviews are recomputed instead of being shown in an outdated shape.
-pub const REVIEW_FORMAT: u32 = 2;
+pub const REVIEW_FORMAT: u32 = 3;

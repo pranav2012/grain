@@ -1,4 +1,3 @@
-import { parsePatchFiles, type FileDiffMetadata } from '@pierre/diffs'
 import { post, request } from '@/lib/http'
 import type { OpenResponse } from '@/types/generated/OpenResponse'
 import type { Review } from '@/types/generated/Review'
@@ -18,23 +17,25 @@ export const reviewApi = {
   status: (id: string) => request<Status>(`/api/reviews/${id}/status`),
   summaries: (id: string) => request<Record<string, Summary>>(`/api/reviews/${id}/files/summaries.json`),
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),
+  review: (id: string) => request<Review>(`/api/reviews/${id}/files/review.json`),
+  /** Unified diff sections for just these files. */
+  diff: (id: string, files: string[]) =>
+    fetch(`/api/reviews/${id}/diff`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ files }) }).then((r) =>
+      r.ok ? r.text() : Promise.reject(new Error(`Couldn't load the diff (${r.status})`)),
+    ),
 }
 
-/** Loads a prepared PR (`owner/repo/123`) and indexes its diff by file. */
+/** Loads a prepared PR (`owner/repo/123`). Diffs are fetched per block, never all at once. */
 export async function loadPr(id: string): Promise<LoadedPr> {
-  const [review, summaries, pr, patch] = await Promise.all([
+  const [review, summaries, pr] = await Promise.all([
     file(id, 'review.json').then((r) => json<Review>(r)),
     file(id, 'summaries.json').then((r) => json<Record<string, Summary>>(r)),
     file(id, 'pr.json').then((r) => json<PrMeta>(r)),
-    file(id, 'diff.patch').then((r) => (r.ok ? r.text() : '')),
   ])
   if (!review) throw new Error(`"${id}" hasn't been prepared yet.`)
-  const files = new Map<string, FileDiffMetadata>()
-  for (const p of parsePatchFiles(patch, id)) {
-    for (const f of p.files) {
-      files.set(f.name, f)
-      if (f.prevName) files.set(f.prevName, f)
-    }
-  }
-  return { id, review, summaries: summaries ?? {}, pr, files, blocks: new Map(review.blocks.map((b) => [b.id, b])) }
+  return withReview({ id, summaries: summaries ?? {}, pr }, review)
+}
+
+export function withReview(base: Pick<LoadedPr, 'id' | 'summaries' | 'pr'>, review: Review): LoadedPr {
+  return { ...base, review, blocks: new Map(review.blocks.map((b) => [b.id, b])) }
 }

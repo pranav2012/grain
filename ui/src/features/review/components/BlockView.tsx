@@ -8,6 +8,7 @@ import { Segmented } from '@/components/ui/Segmented'
 import { cn } from '@/lib/cn'
 import { formatMinutes, minutesFor } from '@/lib/format'
 import type { Block } from '@/types/generated/Block'
+import { useBlockDiff } from '../hooks/useBlockDiff'
 import { blockTitle, factsSentence, summaryOf } from '../model/describe'
 import { modes } from '../model/modes'
 import type { BlockState, CommentKind, DiffStyle, LoadedPr, Mode, ReviewComment, Side } from '../model/types'
@@ -30,6 +31,8 @@ interface BlockViewProps {
   chapterTitle: string
   position: string
   diffStyle: DiffStyle
+  /** Files of the next block, loaded ahead so moving on is instant. */
+  nextFiles?: string[]
   /** Set when the reviewer has chosen an agent; summaries are only made on request. */
   agentName: string | null
   summaryPending: boolean
@@ -63,20 +66,18 @@ export function BlockView(p: BlockViewProps) {
   const options = useMemo(() => ({ ...baseOptions, diffStyle: p.diffStyle }), [p.diffStyle])
   const risk = (summary?.risk as keyof typeof riskColor | undefined) ?? (block.skim ? null : block.estRisk)
 
+  const { diffs, error: diffError } = useBlockDiff(data.id, block.files, p.nextFiles)
   const items = useMemo<CodeViewItem<Note>[]>(() => {
-    return block.files
-      .map((f) => data.files.get(f))
-      .filter((f) => !!f)
-      .map((fileDiff) => {
+    return (diffs ?? []).map((fileDiff) => {
         const annotations: DiffLineAnnotation<Note>[] = p.comments
           .filter((c) => c.file === fileDiff.name && c.line)
           .map((c) => ({ side: c.side ?? 'additions', lineNumber: c.endLine ?? c.line!, metadata: { draft: false, id: c.id } }))
         if (draft?.file === fileDiff.name) annotations.push({ side: draft.side, lineNumber: draft.endLine, metadata: { draft: true } })
         return { id: fileDiff.name, type: 'diff', fileDiff, annotations, version: annotations.length * 2 + (draft ? 1 : 0) }
       })
-  }, [block, data.files, p.comments, draft])
+  }, [diffs, p.comments, draft])
 
-  const missing = block.files.length - items.length
+  const missing = diffs ? block.files.length - items.length : 0
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col [grid-area:main]">
@@ -133,7 +134,9 @@ export function BlockView(p: BlockViewProps) {
           </div>
         </div>
       </header>
-      {items.length === 0 ? (
+      {!diffs ? (
+        <div className="m-auto text-fog">{diffError ?? 'Loading the diff…'}</div>
+      ) : items.length === 0 ? (
         <div className="m-auto max-w-[44ch] text-center leading-relaxed text-fog">This block only renames or moves files. There are no line changes to show.</div>
       ) : (
         <CodeView<Note, undefined>

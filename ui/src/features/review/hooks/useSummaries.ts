@@ -1,35 +1,29 @@
 import { useEffect, useEffectEvent, useMemo, useState } from 'react'
-import type { Agent } from '@/types/generated/Agent'
+import type { Status } from '@/types/generated/Status'
 import { reviewApi } from '../api'
 import type { LoadedPr } from '../model/types'
 
 /**
  * Agent summaries for an open review. Nothing is requested on open: the reviewer asks for a
  * block's summary, or turns on auto-summarize to get the current block and the next two.
- * Follows settings changes and reports why summaries stopped.
  */
-export function useSummaries(base: LoadedPr, order: number[], current: number, settingsVersion: number) {
+export function useSummaries(base: LoadedPr, status: Status | null, order: number[], current: number) {
   const [summaries, setSummaries] = useState(base.summaries)
-  const [agent, setAgent] = useState<Agent | null>(base.pr?.agent ?? null)
-  const [auto, setAuto] = useState(false)
   const [requested, setRequested] = useState<Set<string>>(new Set())
-  const [note, setNote] = useState<string | null>(null)
+  const agent = status ? status.agent : (base.pr?.agent ?? null)
+  const auto = status?.autoSummarize ?? false
 
   useEffect(() => {
-    const tick = async () => {
-      const st = await reviewApi.status(base.id).catch(() => null)
-      if (!st) return
-      setAgent(st.agent)
-      setAuto(st.autoSummarize)
-      if (!st.agent) return setNote(null)
-      setNote(st.summarizer?.stopped ?? (st.summarizer?.running ? 'Summarizing the next blocks' : null))
-      const latest = await reviewApi.summaries(base.id).catch(() => null)
-      if (latest) setSummaries((prev) => (Object.keys(latest).length !== Object.keys(prev).length ? latest : prev))
+    if (!agent || !status?.summarizer) return
+    let alive = true
+    reviewApi.summaries(base.id).then(
+      (latest) => alive && setSummaries((prev) => (Object.keys(latest).length !== Object.keys(prev).length ? latest : prev)),
+      () => {},
+    )
+    return () => {
+      alive = false
     }
-    tick()
-    const t = setInterval(tick, 3000)
-    return () => clearInterval(t)
-  }, [base.id, settingsVersion])
+  }, [agent, status, base.id])
 
   const send = (keys: string[]) => {
     const fresh = keys.filter((k) => !summaries[k])
@@ -56,7 +50,7 @@ export function useSummaries(base: LoadedPr, order: number[], current: number, s
     if (agent && auto) requestNearby()
   }, [current, agent, auto])
 
-
+  const note = !agent ? null : (status?.summarizer?.stopped ?? (status?.summarizer?.running ? 'Summarizing' : null))
   const data = useMemo(() => ({ ...base, summaries, pr: base.pr && { ...base.pr, agent } }), [base, summaries, agent])
   return { data, note, request, pending }
 }

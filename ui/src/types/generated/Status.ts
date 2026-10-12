@@ -3,4 +3,12 @@ import type { Agent } from "./Agent";
 import type { Job } from "./Job";
 import type { SummarizerStatus } from "./SummarizerStatus";
 
-export type Status = { job: Job, summarizer: SummarizerStatus | null, agent: Agent | null, autoSummarize: boolean, };
+export type Status = { job: Job, summarizer: SummarizerStatus | null, agent: Agent | null, autoSummarize: boolean, 
+/**
+ * The review is open; whole-repo facts are still being added.
+ */
+enriching: boolean, 
+/**
+ * Head commit of the stored review; differs from the open one when new commits arrived.
+ */
+headSha: string | null, };

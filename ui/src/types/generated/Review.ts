@@ -10,4 +10,8 @@ chapters: Array<Chapter>,
 /**
  * Ids of low-attention blocks (lockfiles, assets, repeated or mechanical edits).
  */
-skim: Array<number>, blocks: Array<Block>, totalLines: number, };
+skim: Array<number>, blocks: Array<Block>, totalLines: number, 
+/**
+ * False after a fast first pass: outside-usage facts are still being computed.
+ */
+complete: boolean, };

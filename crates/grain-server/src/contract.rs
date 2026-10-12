@@ -82,6 +82,10 @@ pub(crate) struct Status {
     pub summarizer: Option<SummarizerStatus>,
     pub agent: Option<Agent>,
     pub auto_summarize: bool,
+    /// The review is open; whole-repo facts are still being added.
+    pub enriching: bool,
+    /// Head commit of the stored review; differs from the open one when new commits arrived.
+    pub head_sha: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -89,4 +93,11 @@ pub(crate) struct Status {
 pub(crate) struct SummarizeRequest {
     /// Block content keys to summarize, nearest first.
     pub keys: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub(crate) struct DiffRequest {
+    /// Paths (old or new) whose diff sections to return.
+    pub files: Vec<String>,
 }

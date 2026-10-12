@@ -44,6 +44,9 @@ export function ContextPanel({ data, block, mode, comments, composing, agentName
 
   return (
     <aside aria-label="Block context" className="overflow-auto border-l border-seam pt-1.5 pb-6 [grid-area:context]">
+      {!data.review.complete && !block.skim && (
+        <p className="px-4 pt-3.5 text-[11.5px] text-dim">Still checking how this code is used across the repo. More checks may appear.</p>
+      )}
       {block.checks.length > 0 && (
         <Section title="Checks">
           <ul className={listClass}>

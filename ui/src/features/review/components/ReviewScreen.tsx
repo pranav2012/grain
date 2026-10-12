@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { CommandPalette, type Command } from '@/components/CommandPalette'
 import { useHotkeys } from '@/lib/useHotkeys'
+import { useLiveReview } from '../hooks/useLiveReview'
+import { useReviewStatus } from '../hooks/useReviewStatus'
 import { useSummaries } from '../hooks/useSummaries'
 import { agentName as agentNameOf, blockTitle } from '../model/describe'
 import { modeOrder, modes } from '../model/modes'
@@ -13,6 +15,7 @@ import { ContextPanel } from './ContextPanel'
 import { FinishDialog } from './FinishDialog'
 import { GrainMap } from './GrainMap'
 import { KeyHints } from './KeyHints'
+import { NewCommitsNotice } from './NewCommitsNotice'
 import { Outline } from './Outline'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { TopBar } from './TopBar'
@@ -33,10 +36,12 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
   const [composing, setComposing] = useState<CommentKind | null>(null)
   const copy = modes[state.mode]
 
-  const baseSections = useMemo(() => sectionsFor(base, state.mode), [base, state.mode])
+  const status = useReviewStatus(base.id, settingsVersion)
+  const live = useLiveReview(base, status)
+  const baseSections = useMemo(() => sectionsFor(live, state.mode), [live, state.mode])
   const baseOrder = useMemo(() => baseSections.flatMap((s) => s.blocks), [baseSections])
-  const current = state.current && base.blocks.has(state.current) ? state.current : baseOrder[0]
-  const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(base, baseOrder, current, settingsVersion)
+  const current = state.current && live.blocks.has(state.current) ? state.current : baseOrder[0]
+  const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(live, status, baseOrder, current)
 
   const sections = useMemo(() => sectionsFor(data, state.mode), [data, state.mode])
   const order = useMemo(() => sections.flatMap((s) => s.blocks), [sections])
@@ -139,6 +144,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
         chapterTitle={section.title}
         position={`Block ${section.blocks.indexOf(current) + 1} of ${section.blocks.length}`}
         diffStyle={prefs.diffStyle}
+        nextFiles={data.blocks.get(order[order.indexOf(current) + 1])?.files}
         agentName={agentName}
         summaryPending={summaryPending(block.key)}
         onSummarize={summarizeCurrent}
@@ -168,13 +174,20 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
       <KeyHints
         copy={copy}
         diffStyle={prefs.diffStyle}
-        note={[copy.order, agentName ? (note ?? `Summaries by ${agentName}`) : 'Working without AI', 'Progress is saved on this machine'].map((s) => s.replace(/\.$/, '')).join('. ') + '.'}
+        note={[
+          copy.order,
+          data.review.complete ? null : 'Checking how the changes are used across the repo',
+          agentName ? (note ?? `AI on request: ${agentName}`) : 'AI off',
+          'Progress is saved on this machine',
+        ]
+          .filter((x): x is string => !!x).map((s) => s.replace(/\.$/, '')).join('. ') + '.'}
       />
       {overlay === 'palette' && <CommandPalette commands={commands} onClose={() => setOverlay(null)} />}
       {overlay === 'finish' && (
         <FinishDialog data={data} mode={state.mode} states={state.states} comments={state.comments} reviewable={reviewable} onClose={() => setOverlay(null)} />
       )}
       {overlay === 'help' && <ShortcutsDialog onClose={() => setOverlay(null)} />}
+      {status?.headSha && base.pr && status.headSha !== base.pr.headSha && <NewCommitsNotice onReload={() => location.reload()} />}
     </div>
   )
 }

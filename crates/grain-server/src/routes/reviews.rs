@@ -5,7 +5,7 @@ use axum::response::IntoResponse;
 use grain_github::PrRef;
 use grain_store::read_json;
 
-use crate::contract::{Job, OpenRequest, OpenResponse, RecentReview, Stage, Status, SummarizeRequest};
+use crate::contract::{DiffRequest, Job, OpenRequest, OpenResponse, RecentReview, Stage, Status, SummarizeRequest};
 use crate::error::{ApiError, ApiResult, blocking};
 use crate::state::Shared;
 
@@ -63,7 +63,17 @@ pub(super) async fn status(State(app): State<Shared>, Path(p): Path<(String, Str
     let summarizer =
         app.summarizers.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&pr).map(|s| s.status.clone());
     let settings = app.settings();
-    Json(Status { job, summarizer, agent: settings.agent, auto_summarize: settings.auto_summarize })
+    let enriching = app.enriching.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&pr);
+    let head_sha =
+        read_json(&app.home.review_dir(&pr).join("pr.json")).and_then(|v| v["headSha"].as_str().map(str::to_string));
+    Json(Status {
+        job,
+        summarizer,
+        agent: settings.agent,
+        auto_summarize: settings.auto_summarize,
+        enriching,
+        head_sha,
+    })
 }
 
 pub(super) async fn file(
@@ -91,4 +101,15 @@ pub(super) async fn summarize(
 ) -> StatusCode {
     app.request_summaries(pr_of(p), body.keys);
     StatusCode::ACCEPTED
+}
+
+/// The diff sections for a block's files, so the UI never loads a whole huge patch.
+pub(super) async fn diff(
+    State(app): State<Shared>,
+    Path(p): Path<(String, String, u64)>,
+    Json(body): Json<DiffRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let path = app.home.review_dir(&pr_of(p)).join("diff.patch");
+    let text = blocking(move || Ok(app.patches.get(&path)?.sections(&body.files))).await?;
+    Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8"), (header::CACHE_CONTROL, "no-store")], text))
 }

@@ -13,6 +13,8 @@ pub struct Review {
     pub skim: Vec<usize>,
     pub blocks: Vec<Block>,
     pub total_lines: usize,
+    /// False after a fast first pass: outside-usage facts are still being computed.
+    pub complete: bool,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]

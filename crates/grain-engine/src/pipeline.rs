@@ -22,8 +22,23 @@ use crate::grouping::chapters::build_chapters;
 use crate::grouping::cluster::{CAP, group_v2};
 use crate::model::{Analysis, Block, EntityChange, Review, Risk};
 
-/// Analyzes `base..head` in a checkout of `head` at `repo`.
+/// How much of the repository the analysis may read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Depth {
+    /// Only the changed files: enough for grouping, titles and most checks. Opens instantly.
+    Fast,
+    /// Also the whole repository at `head`: outside usage and dangling removals.
+    Complete,
+}
+
+/// Analyzes `base..head` in a checkout of `head` at `repo` (full depth).
 pub fn analyze(repo: &Path, base: &str, head: &str) -> Result<Analysis> {
+    analyze_with(repo, base, head, Depth::Complete)
+}
+
+/// Analyzes `base..head`. With [`Depth::Fast`] only the changed files must be checked out;
+/// blocks and chapters are identical at both depths, only facts differ.
+pub fn analyze_with(repo: &Path, base: &str, head: &str, depth: Depth) -> Result<Analysis> {
     let mut timings: Vec<(&str, u128)> = Vec::new();
 
     let t = Instant::now();
@@ -53,15 +68,20 @@ pub fn analyze(repo: &Path, base: &str, head: &str) -> Result<Analysis> {
     timings.push(("graph (changed files)", t.elapsed().as_millis()));
 
     // Whole-repo graph at head: who outside this PR depends on the changed code.
-    let all_files: Vec<String> =
-        String::from_utf8(Command::new("git").args(["ls-files"]).current_dir(repo).output()?.stdout)?
-            .lines()
-            .filter(|p| registry.get_explicit_plugin(p).is_some())
-            .map(str::to_string)
-            .collect();
-    let t = Instant::now();
-    let (full_graph, _) = EntityGraph::build(repo, &all_files, &registry);
-    timings.push(("graph (full repo)", t.elapsed().as_millis()));
+    let full_graph = if depth == Depth::Complete {
+        let all_files: Vec<String> =
+            String::from_utf8(Command::new("git").args(["ls-files"]).current_dir(repo).output()?.stdout)?
+                .lines()
+                .filter(|p| registry.get_explicit_plugin(p).is_some())
+                .map(str::to_string)
+                .collect();
+        let t = Instant::now();
+        let (g, _) = EntityGraph::build(repo, &all_files, &registry);
+        timings.push(("graph (full repo)", t.elapsed().as_millis()));
+        Some(g)
+    } else {
+        None
+    };
 
     let units = build_units(&changes, &hunks);
 
@@ -75,13 +95,14 @@ pub fn analyze(repo: &Path, base: &str, head: &str) -> Result<Analysis> {
     timings.push(("grouping", t.elapsed().as_millis()));
 
     let t = Instant::now();
-    let still_mentioned = removed_names_still_mentioned(repo, &changes);
+    let still_mentioned =
+        if depth == Depth::Complete { removed_names_still_mentioned(repo, &changes) } else { HashMap::new() };
     timings.push(("removed-name check", t.elapsed().as_millis()));
 
     let ctx = BlockContext {
         changes: &changes,
         units: &units,
-        full_graph: &full_graph,
+        full_graph: full_graph.as_ref(),
         changed_ids: changes.iter().map(|c| c.entity_id.as_str()).collect(),
         pattern_files: &pattern_files,
         still_mentioned: &still_mentioned,
@@ -96,7 +117,8 @@ pub fn analyze(repo: &Path, base: &str, head: &str) -> Result<Analysis> {
     let skim: Vec<usize> = blocks.iter().filter(|b| b.skim.is_some()).map(|b| b.id).collect();
 
     let summary = summarize(&timings, &units, &blocks, &chapters, &skim, &graph_files, &changes, &graph);
-    Ok(Analysis { review: Review { chapters, skim, blocks, total_lines: units.total_lines }, summary })
+    let complete = depth == Depth::Complete;
+    Ok(Analysis { review: Review { chapters, skim, blocks, total_lines: units.total_lines, complete }, summary })
 }
 
 /// Huge single-file groups (e.g. 10K-line test files) are cut into CAP-sized runs of consecutive entities.
@@ -129,7 +151,8 @@ fn split_huge_files(groups: BTreeMap<usize, Vec<usize>>, units: &Units, changes:
 struct BlockContext<'a> {
     changes: &'a [SemanticChange],
     units: &'a Units,
-    full_graph: &'a EntityGraph,
+    /// Whole-repo graph; `None` at [`Depth::Fast`].
+    full_graph: Option<&'a EntityGraph>,
     changed_ids: HashSet<&'a str>,
     pattern_files: &'a HashSet<String>,
     still_mentioned: &'a HashMap<String, Vec<String>>,
@@ -161,12 +184,15 @@ fn assemble_block(ctx: &BlockContext<'_>, members: &[usize]) -> Block {
                     old_name: c.old_entity_name.clone().filter(|o| o != &c.entity_name),
                     file: c.file_path.clone(),
                 });
-                if !matches!(c.change_type, ChangeType::Deleted) && !is_test_path(&c.file_path) {
-                    for dep in ctx.full_graph.dependents().get(c.entity_id.as_str()).into_iter().flatten() {
+                if let Some(full_graph) = ctx.full_graph
+                    && !matches!(c.change_type, ChangeType::Deleted)
+                    && !is_test_path(&c.file_path)
+                {
+                    for dep in full_graph.dependents().get(c.entity_id.as_str()).into_iter().flatten() {
                         if ctx.changed_ids.contains(dep.as_str()) {
                             continue;
                         }
-                        if let Some(info) = ctx.full_graph.entities.get(dep.as_str()) {
+                        if let Some(info) = full_graph.entities.get(dep.as_str()) {
                             if is_test_path(&info.file_path) {
                                 test_users.insert(dep.to_string());
                             } else {

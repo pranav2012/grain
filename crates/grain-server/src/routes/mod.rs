@@ -20,6 +20,7 @@ pub(crate) fn router(app: Shared) -> Router {
         .route("/api/reviews/{owner}/{repo}/{number}/status", get(reviews::status))
         .route("/api/reviews/{owner}/{repo}/{number}/files/{file}", get(reviews::file))
         .route("/api/reviews/{owner}/{repo}/{number}/summarize", post(reviews::summarize))
+        .route("/api/reviews/{owner}/{repo}/{number}/diff", post(reviews::diff))
         .route("/api/settings", get(settings::get).put(settings::put))
         .with_state(app)
 }

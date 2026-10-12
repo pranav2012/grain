@@ -1,4 +1,3 @@
-import type { FileDiffMetadata } from '@pierre/diffs'
 import type { Agent } from '@/types/generated/Agent'
 import type { Block } from '@/types/generated/Block'
 import type { PrDetails } from '@/types/generated/PrDetails'
@@ -34,7 +33,6 @@ export interface LoadedPr {
   /** Agent summaries keyed by block content key. */
   summaries: Record<string, Summary>
   pr: PrMeta | null
-  files: Map<string, FileDiffMetadata>
   blocks: Map<number, Block>
 }
 
