@@ -1,4 +1,4 @@
-import { post, put, request } from '@/lib/http'
+import { post, put, request, serverFetch } from '@/lib/http'
 import type { Conversation } from '@/types/generated/Conversation'
 import type { LocalRepo } from '@/types/generated/LocalRepo'
 import type { SubmitRequest } from '@/types/generated/SubmitRequest'
@@ -11,7 +11,7 @@ import type { ThreadComment } from '@/types/generated/ThreadComment'
 import type { ThreadResolved } from '@/types/generated/ThreadResolved'
 import type { LoadedPr, Owners, PrMeta } from './model/types'
 
-const file = (id: string, name: string) => fetch(`/api/reviews/${id}/files/${name}`)
+const file = (id: string, name: string) => serverFetch(`/api/reviews/${id}/files/${name}`)
 
 async function json<T>(r: Response): Promise<T | null> {
   if (!r.ok || !r.headers.get('content-type')?.includes('json')) return null
@@ -37,7 +37,7 @@ export const reviewApi = {
   review: (id: string) => request<Review>(`/api/reviews/${id}/files/review.json`),
   /** Unified diff sections for just these files. */
   diff: (id: string, files: string[], since?: string) =>
-    fetch(`/api/reviews/${id}/diff`, {
+    serverFetch(`/api/reviews/${id}/diff`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ files, since: since ?? null }),
