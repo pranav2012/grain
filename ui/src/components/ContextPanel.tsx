@@ -1,4 +1,5 @@
 import type { LoadedPr } from '../data'
+import { summaryOf } from '../data'
 import { meaningfulEntities, shortPath } from '../data'
 import { modes } from '../modes'
 import type { Block, CommentKind, Mode, ReviewComment } from '../types'
@@ -11,20 +12,33 @@ interface Props {
   mode: Mode
   comments: ReviewComment[]
   composing: CommentKind | null
-  agentName: string
+  agentName: string | null
   onCompose(kind: CommentKind | null): void
   onComment(c: Omit<ReviewComment, 'id' | 'createdAt' | 'blockId'>): void
   onDeleteComment(id: string): void
 }
 
 export function ContextPanel({ data, block, mode, comments, composing, agentName, onCompose, onComment, onDeleteComment }: Props) {
-  const s = data.summaries[String(block.id)]
+  const s = summaryOf(data, block)
   const copy = modes[mode]
   const askKind: CommentKind = mode === 'self' ? 'fix' : 'question'
   const entities = meaningfulEntities(block)
 
   return (
     <aside className="context" aria-label="Block context">
+      {block.checks.length > 0 && (
+        <section className="ctx-section">
+          <h3>Checks</h3>
+          <ul>
+            {block.checks.map((c) => (
+              <li key={c.text} className={`check ${c.level}`}>
+                {c.text}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {s?.reviewer_questions?.length ? (
         <section className="ctx-section">
           <h3>Worth checking</h3>
@@ -55,7 +69,7 @@ export function ContextPanel({ data, block, mode, comments, composing, agentName
           </ul>
         </section>
       ) : null}
-      {s && <div className="attribution">Summary written by your {agentName} from this block's diff. Check it against the code.</div>}
+      {s && agentName && <div className="attribution">Summary and questions written by {agentName} from this block's diff. Checks come from Grain's own rules.</div>}
 
       <section className="ctx-section">
         <h3>Your notes on this block</h3>

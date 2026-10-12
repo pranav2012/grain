@@ -366,8 +366,36 @@ kbd {
   margin: 0 0 10px;
 }
 
-.intent.muted {
-  color: var(--dim);
+.segmented {
+  display: flex;
+  background: var(--slate);
+  border: 1px solid var(--seam);
+  border-radius: 7px;
+  padding: 2px;
+}
+
+.segmented button {
+  padding: 3px 9px;
+  border-radius: 5px;
+  color: var(--fog);
+  font-size: 12px;
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--slate-2);
+  color: var(--chalk);
+  box-shadow: inset 0 0 0 1px var(--seam);
+}
+
+.check {
+  line-height: 1.5;
+  padding-left: 12px;
+  border-left: 2px solid var(--seam);
+  color: #c7cad1;
+}
+
+.check.warn {
+  border-left-color: var(--amber);
 }
 
 .facts {

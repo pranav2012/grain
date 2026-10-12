@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { WorkerPoolContextProvider } from '@pierre/diffs/react'
 import WorkerUrl from '@pierre/diffs/worker/worker.js?worker&url'
-import { blockTitle, formatMinutes, loadPr, minutesFor, sectionsFor, type LoadedPr } from './data'
+import { agentName as agentNameOf, blockTitle, formatMinutes, loadPr, minutesFor, sectionsFor, type LoadedPr } from './data'
 import { modes } from './modes'
-import { useReviewState } from './store'
+import { usePrefs, useReviewState } from './store'
 import type { CommentKind, Mode, ReviewComment } from './types'
 import { BlockView } from './components/BlockView'
 import { CommandPalette, type Command } from './components/CommandPalette'
@@ -34,7 +34,9 @@ export default function App() {
 }
 
 function Review({ data }: { data: LoadedPr }) {
-  const viewer = (data.pr as { viewer?: string } | null)?.viewer
+  const viewer = data.pr?.viewer
+  const [prefs, setPrefs] = usePrefs()
+  const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
   const defaultMode: Mode = viewer && viewer === data.pr?.author.login ? 'self' : 'peer'
   const [state, dispatch] = useReviewState(data.name, defaultMode)
   const [palette, setPalette] = useState(false)
@@ -88,6 +90,7 @@ function Review({ data }: { data: LoadedPr }) {
     '2': () => setMode('peer'),
     '3': () => setMode('maintainer'),
     ']': () => setShowContext((v) => !v),
+    s: toggleDiffStyle,
     '?': () => setHelp((v) => !v),
     Enter: () => setFinish(true),
   }
@@ -123,6 +126,7 @@ function Review({ data }: { data: LoadedPr }) {
       { id: 'finish', label: copy.finish, hint: 'Shift Enter', run: () => setFinish(true) },
       ...(['self', 'peer', 'maintainer'] as Mode[]).map((m, i) => ({ id: `mode-${m}`, label: `Switch to ${modes[m].label.toLowerCase()}`, hint: String(i + 1), run: () => setMode(m) })),
       { id: 'next-open', label: 'Go to next unreviewed block', run: () => go(nextUnreviewed()) },
+      { id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show side-by-side diff', hint: 's', run: toggleDiffStyle },
       { id: 'context', label: showContext ? 'Hide context panel' : 'Show context panel', hint: ']', run: () => setShowContext((v) => !v) },
       ...order.map((id) => ({
         id: `b${id}`,
@@ -132,11 +136,11 @@ function Review({ data }: { data: LoadedPr }) {
       })),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [order, sections, state.mode, showContext, state.states],
+    [order, sections, state.mode, showContext, state.states, prefs.diffStyle],
   )
 
   const chapterIndex = section.blocks.indexOf(current) + 1
-  const agentName = 'Claude'
+  const agentName = agentNameOf(data)
 
   return (
     <div className={`app ${showContext ? '' : 'no-context'}`}>
@@ -188,6 +192,8 @@ function Review({ data }: { data: LoadedPr }) {
         mode={state.mode}
         chapterTitle={section.title}
         position={`Block ${chapterIndex} of ${section.blocks.length}`}
+        diffStyle={prefs.diffStyle}
+        onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
         state={state.states[current]}
         comments={blockComments}
         onPrimary={primary}
@@ -231,7 +237,12 @@ function Review({ data }: { data: LoadedPr }) {
         <span>
           <kbd>?</kbd> All shortcuts
         </span>
-        <span className="note">{copy.order}. Your progress is saved on this machine.</span>
+        <span>
+          <kbd>s</kbd> {prefs.diffStyle === 'split' ? 'Unified' : 'Side by side'}
+        </span>
+        <span className="note">
+          {copy.order}. {agentName ? `Summaries by ${agentName}.` : 'Working without AI.'} Progress is saved on this machine.
+        </span>
       </footer>
 
       {palette && <CommandPalette commands={commands} onClose={() => setPalette(false)} />}
@@ -249,6 +260,7 @@ const shortcuts: [string, string][] = [
   ['c', 'Note on the whole block'],
   ['Line numbers', 'Click or drag to comment on lines'],
   ['1 / 2 / 3', 'Self review, peer review, maintainer'],
+  ['s', 'Switch between unified and side-by-side diff'],
   [']', 'Show or hide the context panel'],
   ['⌘K', 'Jump anywhere or run a command'],
   ['Shift Enter', 'Finish the review'],

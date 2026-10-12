@@ -161,6 +161,7 @@ enum Unit {
 #[derive(Serialize)]
 struct BlockOut {
     id: usize,
+    key: String,
     lines: usize,
     files: Vec<String>,
     entities: Vec<String>,
@@ -171,12 +172,32 @@ struct BlockOut {
     skim: Option<String>,
     layer: u8,
     dir: String,
+    changes: Vec<EntityChange>,
+    used_by: usize,
+    used_by_sample: Vec<String>,
+    checks: Vec<Check>,
+    est_risk: &'static str,
+}
+
+#[derive(Serialize)]
+struct EntityChange {
+    change: String,
+    kind: String,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    old_name: Option<String>,
+    file: String,
+}
+
+#[derive(Serialize)]
+struct Check {
+    level: &'static str,
+    text: String,
 }
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let (repo, base, head, out_dir) = (Path::new(&args[1]), &args[2], &args[3], Path::new(&args[4]));
-    let full_graph = args.iter().any(|a| a == "--full-graph");
     std::fs::create_dir_all(out_dir)?;
     let mut timings: Vec<(&str, u128)> = Vec::new();
 
@@ -206,8 +227,8 @@ fn main() -> Result<()> {
     let (graph, _) = EntityGraph::build(repo, &graph_files, &registry);
     timings.push(("graph (changed files)", t.elapsed().as_millis()));
 
-    let mut full_graph_stats = None;
-    if full_graph {
+    // Whole-repo graph at head: who outside this PR depends on the changed code.
+    let full_graph = {
         let all: Vec<String> = String::from_utf8(Command::new("git").args(["ls-files"]).current_dir(repo).output()?.stdout)?
             .lines()
             .filter(|p| registry.get_explicit_plugin(p).is_some())
@@ -216,8 +237,10 @@ fn main() -> Result<()> {
         let t = Instant::now();
         let (g, _) = EntityGraph::build(repo, &all, &registry);
         timings.push(("graph (full repo)", t.elapsed().as_millis()));
-        full_graph_stats = Some((all.len(), g.entities.len(), g.edges.len()));
-    }
+        g
+    };
+    let full_graph_stats = Some((full_graph.entities.len(), full_graph.entities.len(), full_graph.edges.len()));
+    let changed_ids: HashSet<&str> = changes.iter().map(|c| c.entity_id.as_str()).collect();
 
     // Units: one per changed entity, plus one "residue" per file for changed lines no entity covers.
     let mut units: Vec<Unit> = (0..changes.len()).map(Unit::Entity).collect();
@@ -385,11 +408,18 @@ fn main() -> Result<()> {
         }
     }
 
+    let t_grep = Instant::now();
+    let still_mentioned = removed_names_still_mentioned(repo, &changes);
+    timings.push(("removed-name check", t_grep.elapsed().as_millis()));
+
     let mut blocks: Vec<BlockOut> = member_sets
         .iter()
         .map(|members| {
             let mut file_lines: BTreeMap<String, usize> = BTreeMap::new();
             let (mut entities, mut residue_files, mut mech, mut lines, mut tests) = (vec![], vec![], 0, 0, false);
+            let mut changes_out: Vec<EntityChange> = Vec::new();
+            let mut users: BTreeMap<String, String> = BTreeMap::new();
+            let mut test_users: HashSet<String> = HashSet::new();
             for &u in members {
                 lines += unit_lines[u];
                 *file_lines.entry(unit_file(u).to_string()).or_default() += unit_lines[u];
@@ -401,6 +431,27 @@ fn main() -> Result<()> {
                             || (matches!(c.change_type, ChangeType::Moved | ChangeType::Renamed | ChangeType::Reordered) && !c.has_content_change());
                         mech += mechanical as usize;
                         entities.push(format!("{} {} `{}` ({})", c.change_type, c.entity_type, c.entity_name, c.file_path));
+                        changes_out.push(EntityChange {
+                            change: c.change_type.to_string(),
+                            kind: c.entity_type.clone(),
+                            name: c.entity_name.clone(),
+                            old_name: c.old_entity_name.clone().filter(|o| o != &c.entity_name),
+                            file: c.file_path.clone(),
+                        });
+                        if !matches!(c.change_type, ChangeType::Deleted) && !is_test_path(&c.file_path) {
+                            for dep in full_graph.dependents().get(c.entity_id.as_str()).into_iter().flatten() {
+                                if changed_ids.contains(dep.as_str()) {
+                                    continue;
+                                }
+                                if let Some(info) = full_graph.entities.get(dep.as_str()) {
+                                    if is_test_path(&info.file_path) {
+                                        test_users.insert(dep.to_string());
+                                    } else {
+                                        users.insert(dep.to_string(), format!("{} ({})", info.name, info.file_path.rsplit('/').next().unwrap_or("")));
+                                    }
+                                }
+                            }
+                        }
                     }
                     Unit::Residue(p) => {
                         tests |= is_test_path(p);
@@ -422,7 +473,18 @@ fn main() -> Result<()> {
             };
             let layer = files.iter().filter(|f| !is_test_path(f)).map(|f| layer_of(f)).min().unwrap_or(4);
             let dir = block_dir(&file_lines);
-            BlockOut { id: 0, lines, files, entities, residue_files, mechanical_entities: mech, has_tests: tests, kind, skim, layer, dir }
+            let used_by_sample: Vec<String> = users.values().take(5).cloned().collect();
+            let (checks, est_risk) = if skim.is_some() {
+                (vec![], "low")
+            } else {
+                rule_checks(&changes_out, &files, lines, tests, mech, users.len(), test_users.len(), &used_by_sample, &still_mentioned)
+            };
+            BlockOut {
+                id: 0,
+                key: block_key(&files, &entities),
+                lines, files, entities, residue_files, mechanical_entities: mech, has_tests: tests, kind, skim, layer, dir,
+                changes: changes_out, used_by: users.len(), used_by_sample, checks, est_risk,
+            }
         })
         .filter(|b| b.lines > 0 || !b.entities.is_empty())
         .collect();
@@ -454,6 +516,198 @@ fn main() -> Result<()> {
     std::fs::write(out_dir.join("summary.txt"), &summary)?;
     println!("{summary}");
     Ok(())
+}
+
+/// Removed symbol names that the head revision still mentions in other files (one tokenizing pass over tracked sources).
+fn removed_names_still_mentioned(repo: &Path, changes: &[SemanticChange]) -> HashMap<String, Vec<String>> {
+    const GENERIC: [&str; 12] = ["styles", "props", "state", "default", "index", "Container", "testID", "testIdentifier", "TEST_ID", "render", "constructor", "options"];
+    let still_defined: HashSet<&str> = changes.iter().filter(|c| !matches!(c.change_type, ChangeType::Deleted)).map(|c| c.entity_name.as_str()).collect();
+    let mut own_files: HashMap<String, HashSet<String>> = HashMap::new();
+    for c in changes.iter().filter(|c| matches!(c.change_type, ChangeType::Deleted) && !is_test_path(&c.file_path)) {
+        let declaration = c.parent_name.is_none()
+            && ["function", "class", "interface", "type", "type_alias", "enum", "struct", "trait", "variable", "constant", "const"].contains(&c.entity_type.as_str());
+        let ok = declaration
+            && distinctive(&c.entity_name)
+            && c.entity_name.len() >= 4
+            && !still_defined.contains(c.entity_name.as_str())
+            && !GENERIC.contains(&c.entity_name.as_str())
+            && c.entity_name.chars().all(|ch| ch.is_alphanumeric() || ch == '_' || ch == '$');
+        if ok {
+            own_files.entry(c.entity_name.clone()).or_default().insert(c.file_path.clone());
+        }
+    }
+    let mut out: HashMap<String, Vec<String>> = HashMap::new();
+    // Bounded: enormous deletions (release merges) skip the check instead of slowing the review.
+    if own_files.is_empty() || own_files.len() > MAX_REMOVED_NAMES {
+        return out;
+    }
+    let families: HashSet<&str> = own_files.values().flatten().filter_map(|f| lang_family(f)).collect();
+    let Ok(ls) = Command::new("git").args(["-c", "core.quotepath=off", "ls-files"]).current_dir(repo).output() else { return out };
+    const SKIP_EXT: [&str; 8] = [".json", ".lock", ".snap", ".svg", ".md", ".png", ".jpg", ".map"];
+    for file in String::from_utf8_lossy(&ls.stdout).lines() {
+        if is_test_path(file) || SKIP_EXT.iter().any(|e| file.ends_with(e)) {
+            continue;
+        }
+        let Some(fam) = lang_family(file) else { continue };
+        if !families.contains(fam) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(repo.join(file)) else { continue };
+        let mut seen: HashSet<&str> = HashSet::new();
+        for word in text.split(|ch: char| !(ch.is_alphanumeric() || ch == '_' || ch == '$')) {
+            if word.len() < 4 || !seen.insert(word) {
+                continue;
+            }
+            let Some(own) = own_files.get(word) else { continue };
+            if own.contains(file) || !own.iter().any(|o| lang_family(o) == Some(fam)) {
+                continue;
+            }
+            let short = file.rsplit('/').next().unwrap_or(file).to_string();
+            let v = out.entry(word.to_string()).or_default();
+            if !v.contains(&short) {
+                v.push(short);
+            }
+        }
+    }
+    out
+}
+
+const MAX_REMOVED_NAMES: usize = 5000;
+
+/// Stable content key for a block (files + changed entities), so summaries survive regrouping and renumbering.
+fn block_key(files: &[String], entities: &[String]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut parts: Vec<&String> = files.iter().chain(entities).collect();
+    parts.sort();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    parts.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
+/// Compound identifiers (camelCase, PascalCase with 2+ words, SNAKE_CASE) are unlikely to collide with prose.
+fn distinctive(name: &str) -> bool {
+    let chars: Vec<char> = name.chars().collect();
+    let hump = chars.windows(2).any(|w| w[0].is_lowercase() && w[1].is_uppercase());
+    let snake = name.trim_matches('_').contains('_');
+    hump || snake
+}
+
+/// Files that can reference each other's symbols share a family.
+fn lang_family(path: &str) -> Option<&'static str> {
+    let ext = path.rsplit_once('.')?.1;
+    Some(match ext {
+        "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "mts" | "cts" | "vue" | "svelte" => "js",
+        "py" => "py",
+        "go" => "go",
+        "rs" => "rs",
+        "java" | "kt" | "kts" | "scala" => "jvm",
+        "swift" | "m" | "mm" | "h" => "apple",
+        "c" | "cc" | "cpp" | "hpp" => "c",
+        "rb" => "rb",
+        "php" => "php",
+        "cs" => "cs",
+        "dart" => "dart",
+        _ => return None,
+    })
+}
+
+fn list(names: &[String]) -> String {
+    match names.len() {
+        0 => String::new(),
+        1..=3 => names.join(", "),
+        n => format!("{} and {} more", names[..3].join(", "), n - 3),
+    }
+}
+
+/// Deterministic review checks and an estimated risk, so blocks are useful without any AI.
+fn rule_checks(
+    changes: &[EntityChange],
+    files: &[String],
+    lines: usize,
+    has_tests: bool,
+    mechanical: usize,
+    used_by: usize,
+    test_users: usize,
+    used_sample: &[String],
+    still_mentioned: &HashMap<String, Vec<String>>,
+) -> (Vec<Check>, &'static str) {
+    let mut checks = Vec::new();
+    let mut score = 0i32;
+    let code_changes: Vec<&EntityChange> = changes.iter().filter(|c| !is_test_path(&c.file)).collect();
+
+    let joined = files.join(" ").to_lowercase();
+    let areas = [
+        (&["payment", "checkout", "billing", "coupon", "price"][..], "payment"),
+        (&["auth", "login", "session", "token", "password", "permission", "security"][..], "sign-in or security"),
+        (&["secret", "crypto", "encrypt"][..], "secrets or encryption"),
+        (&["migration", "schema.sql", "/db/"][..], "database"),
+    ];
+    for (words, area) in areas {
+        if words.iter().any(|w| joined.contains(w)) {
+            checks.push(Check { level: "warn", text: format!("Touches {area} code. Read the edge cases carefully.") });
+            score += 2;
+            break;
+        }
+    }
+
+    let mut dangling: Vec<String> = Vec::new();
+    for c in code_changes.iter().filter(|c| c.change == "deleted") {
+        if let Some(where_) = still_mentioned.get(&c.name) {
+            dangling.push(format!("{} (still in {})", c.name, list(where_)));
+        }
+    }
+    if !dangling.is_empty() {
+        checks.push(Check { level: "warn", text: format!("Removes code that other files still mention: {}.", list(&dangling)) });
+        score += 2;
+    }
+    let renamed: Vec<String> = code_changes.iter().filter_map(|c| c.old_name.as_ref().map(|o| format!("{o} to {}", c.name))).collect();
+    if !renamed.is_empty() {
+        checks.push(Check { level: "warn", text: format!("Renames {}. Check callers outside this PR.", list(&renamed)) });
+        score += 1;
+    }
+    if used_by > 0 {
+        let level = if used_by > 3 { "warn" } else { "info" };
+        let text = format!(
+            "Changed code is used in {used_by} {} outside this PR, including {}.",
+            if used_by == 1 { "place" } else { "places" },
+            used_sample.iter().take(3).cloned().collect::<Vec<_>>().join(", ")
+        );
+        checks.push(Check { level, text });
+        score += if used_by > 10 { 2 } else if used_by > 3 { 1 } else { 0 };
+    }
+    if test_users > 0 {
+        checks.push(Check {
+            level: "info",
+            text: format!("Covered by {test_users} {} outside this PR.", if test_users == 1 { "test" } else { "tests" }),
+        });
+    }
+    let config: Vec<&String> = files
+        .iter()
+        .filter(|f| {
+            let n = f.rsplit('/').next().unwrap_or(f);
+            matches!(n, "package.json" | "Podfile" | "build.gradle" | "Cargo.toml" | "Dockerfile" | "go.mod" | "pyproject.toml")
+                || f.contains(".github/workflows/")
+                || n.starts_with(".env")
+        })
+        .collect();
+    if !config.is_empty() {
+        checks.push(Check { level: "warn", text: "Changes dependencies or build configuration.".into() });
+        score += 1;
+    }
+    if !has_tests && lines >= 40 && files.iter().any(|f| kind_of(f) == "code" && !is_test_path(f)) {
+        checks.push(Check { level: "info", text: "No tests changed alongside this code.".into() });
+        score += 1;
+    }
+    if lines > 400 {
+        checks.push(Check { level: "info", text: format!("Large block ({lines} changed lines). Reading it file by file helps.") });
+        score += 1;
+    }
+    if !changes.is_empty() && mechanical * 2 >= changes.len() {
+        checks.push(Check { level: "info", text: "Mostly formatting, moves or renames.".into() });
+        score -= 1;
+    }
+    let risk = if score >= 4 { "high" } else if score >= 2 { "medium" } else { "low" };
+    (checks, risk)
 }
 
 /// Foundations-first layer from path conventions: 0 types/data/services, 1 hooks/state, 2 components, 3 screens, 4 other.

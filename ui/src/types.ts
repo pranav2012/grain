@@ -1,9 +1,11 @@
 export type Risk = 'low' | 'medium' | 'high'
 export type Mode = 'self' | 'peer' | 'maintainer'
 export type Side = 'additions' | 'deletions'
+export type DiffStyle = 'unified' | 'split'
 
 export interface Block {
   id: number
+  key: string
   lines: number
   files: string[]
   entities: string[]
@@ -14,6 +16,24 @@ export interface Block {
   skim: string | null
   layer: number
   dir: string
+  changes: EntityChange[]
+  used_by: number
+  used_by_sample: string[]
+  checks: Check[]
+  est_risk: Risk
+}
+
+export interface EntityChange {
+  change: 'added' | 'modified' | 'deleted' | 'moved' | 'renamed' | 'reordered'
+  kind: string
+  name: string
+  old_name?: string
+  file: string
+}
+
+export interface Check {
+  level: 'warn' | 'info'
+  text: string
 }
 
 export interface Chapter {
@@ -50,6 +70,8 @@ export interface PrMeta {
   additions: number
   deletions: number
   changedFiles: number
+  viewer?: string
+  agent?: string | null
 }
 
 export type CommentKind = 'comment' | 'question' | 'change' | 'note' | 'fix'

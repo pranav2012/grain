@@ -130,3 +130,24 @@ The default transport is now the **user's own CLI** (T3 Code's approach); ACP is
 | Medium (13K) | 53 blocks | **7 chapters, 35 blocks** + skim (15% of lines) |
 | Large (52K) | 163 blocks | 10 chapters, ~128 blocks + skim (12%) |
 | Stress (400K) | 1,047 blocks | 12 chapters, ~900 blocks + skim (39%) |
+
+## AI is optional
+
+Every block is reviewable without an agent. The engine computes these itself, and AI only adds a summary, intent and questions on top.
+
+- **Facts**: structured entity changes (added, changed, removed, renamed, moved), turned into a plain sentence in the UI, e.g. "Adds 4 functions… Changes IBookingCardData… Updates tests in 2 files."
+- **Outside usage**: from a whole-repo graph at the PR head (about 1 s). It counts production callers outside the PR separately from tests outside the PR, which are reported as coverage.
+- **Rule checks**:
+  - sensitive areas (payment, sign-in, secrets, database);
+  - removed code still mentioned by other files, found with one tokenizing pass of about 100 ms, limited to distinctive top-level names and same-language files, and skipped above 5,000 names;
+  - renames;
+  - dependency or build config changes;
+  - code without tests;
+  - large blocks;
+  - mostly-mechanical blocks.
+- **Estimated risk**: computed from those rules and labelled "Estimated" in the UI. The agent's risk replaces it when present.
+- **Stable block keys**: a hash of files plus entities. Summaries are stored by key, so regrouping can't attach a summary to the wrong block.
+
+On the medium and large PRs the removed-code check raises no false alarms. On the 400K-line release merge it reports 31 places where removed code is still mentioned.
+
+The diff can be shown unified or side by side (`s`). The choice is remembered across PRs.

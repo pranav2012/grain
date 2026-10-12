@@ -34,10 +34,58 @@ export async function loadPr(name: string): Promise<LoadedPr> {
   return { name, review, summaries: summaries ?? {}, pr, files, blocks: new Map(review.blocks.map((b) => [b.id, b])) }
 }
 
+export function summaryOf(data: LoadedPr, b: Block): Summary | undefined {
+  return data.summaries[b.key]
+}
+
 const riskRank: Record<Risk | 'unknown', number> = { high: 0, medium: 1, unknown: 2, low: 3 }
 
+/** Agent risk when a summary exists, otherwise the engine's rule-based estimate. */
 export function riskOf(data: LoadedPr, id: number): Risk | 'unknown' {
-  return data.summaries[String(id)]?.risk ?? 'unknown'
+  const b = data.blocks.get(id)
+  return (b && summaryOf(data, b)?.risk) ?? b?.est_risk ?? 'unknown'
+}
+
+export function agentName(data: LoadedPr): string | null {
+  const a = data.pr?.agent
+  if (!a) return null
+  return { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' }[a] ?? a
+}
+
+const plural = (n: number, kind: string) => {
+  const k = kind.replace(/_/g, ' ')
+  if (n === 1) return `1 ${k}`
+  return `${n} ${/(s|x|ch|sh)$/.test(k) ? `${k}es` : k.endsWith('y') ? `${k.slice(0, -1)}ies` : `${k}s`}`
+}
+
+const joinList = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
+
+/** Plain description of a block built only from the code changes, used when there is no AI summary. */
+export function factsSentence(b: Block): string {
+  const code = b.changes.filter((c) => !/\.(test|spec)\.|__tests__\//.test(c.file) && !/orphan|module-level/.test(`${c.kind} ${c.name}`))
+  const tests = b.changes.filter((c) => /\.(test|spec)\.|__tests__\//.test(c.file))
+  const count = (change: string) => {
+    const by = new Map<string, number>()
+    for (const c of code.filter((c) => c.change === change)) by.set(c.kind, (by.get(c.kind) ?? 0) + 1)
+    return [...by].sort((a, z) => z[1] - a[1]).map(([k, n]) => plural(n, k))
+  }
+  const names = (change: string) => {
+    const xs = [...new Set(code.filter((c) => c.change === change).map((c) => c.name))]
+    return xs.length > 3 ? `${xs.slice(0, 3).join(', ')} and ${xs.length - 3} more` : joinList(xs)
+  }
+  const parts: string[] = []
+  const added = count('added')
+  if (added.length) parts.push(`Adds ${joinList(added)}.`)
+  if (code.some((c) => c.change === 'modified')) parts.push(`Changes ${names('modified')}.`)
+  const removed = count('deleted')
+  if (removed.length) parts.push(`Removes ${joinList(removed)}.`)
+  const renamed = code.filter((c) => c.old_name).map((c) => `${c.old_name} to ${c.name}`)
+  if (renamed.length) parts.push(`Renames ${joinList(renamed.slice(0, 3))}.`)
+  const moved = code.filter((c) => c.change === 'moved').length
+  if (moved) parts.push(`Moves ${moved} ${moved === 1 ? 'piece' : 'pieces'} of code.`)
+  if (tests.length) parts.push(`Updates tests in ${new Set(tests.map((t) => t.file)).size} ${new Set(tests.map((t) => t.file)).size === 1 ? 'file' : 'files'}.`)
+  if (!parts.length) parts.push(`Changes ${b.files.length === 1 ? 'one file' : `${b.files.length} files`} without named code changes, such as imports or top-level statements.`)
+  return parts.join(' ')
 }
 
 export interface Section {
@@ -72,7 +120,7 @@ const skimLabels: Record<string, string> = {
 
 /** Human title for a block: the agent's title, else the main symbols it changes. */
 export function blockTitle(data: LoadedPr, b: Block): string {
-  const s = data.summaries[String(b.id)]
+  const s = summaryOf(data, b)
   if (s?.title) return s.title
   if (b.skim) {
     const label = skimLabels[b.skim] ?? b.skim

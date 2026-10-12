@@ -1,5 +1,5 @@
-import { useEffect, useReducer } from 'react'
-import type { BlockState, Mode, ReviewComment } from './types'
+import { useEffect, useReducer, useState } from 'react'
+import type { BlockState, DiffStyle, Mode, ReviewComment } from './types'
 
 export interface ReviewState {
   mode: Mode
@@ -50,4 +50,23 @@ export function useReviewState(prName: string, defaultMode: Mode) {
     localStorage.setItem(key, JSON.stringify(state))
   }, [key, state])
   return [state, dispatch] as const
+}
+
+export interface Prefs {
+  diffStyle: DiffStyle
+}
+
+/** View preferences shared across PRs. */
+export function usePrefs() {
+  const [prefs, setPrefs] = useState<Prefs>(() => {
+    try {
+      return { diffStyle: 'unified', ...JSON.parse(localStorage.getItem('grain:prefs') ?? '{}') }
+    } catch {
+      return { diffStyle: 'unified' }
+    }
+  })
+  useEffect(() => {
+    localStorage.setItem('grain:prefs', JSON.stringify(prefs))
+  }, [prefs])
+  return [prefs, setPrefs] as const
 }

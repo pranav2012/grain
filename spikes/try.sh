@@ -32,6 +32,7 @@ cp "$WORK/out/$NAME/blocks.json" "$WORK/patches/$NAME.blocks.json"
 cp "$WORK/out/$NAME/review.json" "$WORK/patches/$NAME.review.json"
 gh pr view "$PR" -R "$REPO" --json number,title,url,author,headRefName,baseRefName,additions,deletions,changedFiles \
   | python3 -c "import json,sys,subprocess; d=json.load(sys.stdin); d['viewer']=subprocess.run(['gh','api','user','--jq','.login'],capture_output=True,text=True).stdout.strip(); print(json.dumps(d))" \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); d['agent']=None if '$AGENT'=='none' else '$AGENT'; print(json.dumps(d))" \
   > "$WORK/patches/$NAME.pr.json"
 rm -f "$WORK/patches/$NAME.summaries.json"
 
@@ -63,13 +64,14 @@ print('\n'.join(b[$id]['files']))" | tr '\n' '\0' | xargs -0 git -C "$CLONE" -c 
   python3 - "$WORK" "$NAME" $ids <<'EOF2'
 import json, sys, os
 work, name, ids = sys.argv[1], sys.argv[2], sys.argv[3:]
+keys = {b["id"]: b["key"] for b in json.load(open(f"{work}/patches/{name}.review.json"))["blocks"]}
 out = {}
 for i in ids:
     p = f"{work}/acp/{name}-{i}.json"
     if os.path.exists(p) and os.path.getsize(p):
         r = json.load(open(p))
         if isinstance(r.get("summary"), dict):
-            out[i] = r["summary"]
+            out[keys[int(i)]] = r["summary"]
 json.dump(out, open(f"{work}/patches/{name}.summaries.json", "w"), indent=2)
 EOF2
 fi

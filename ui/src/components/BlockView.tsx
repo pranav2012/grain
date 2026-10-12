@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import type { CodeViewItem, DiffLineAnnotation } from '@pierre/diffs'
 import { CodeView, type CodeViewReactOptions } from '@pierre/diffs/react'
 import type { LoadedPr } from '../data'
-import { blockTitle, formatMinutes, minutesFor } from '../data'
+import { summaryOf } from '../data'
+import { blockTitle, factsSentence, formatMinutes, minutesFor } from '../data'
 import { modes } from '../modes'
-import type { Block, BlockState, CommentKind, Mode, ReviewComment, Side } from '../types'
+import type { Block, BlockState, CommentKind, DiffStyle, Mode, ReviewComment, Side } from '../types'
 import { CommentCard, Composer } from './Composer'
 import { Inline } from './Inline'
 
@@ -23,6 +24,8 @@ interface Props {
   mode: Mode
   chapterTitle: string
   position: string
+  diffStyle: DiffStyle
+  onDiffStyle(style: DiffStyle): void
   state?: BlockState
   comments: ReviewComment[]
   onPrimary(): void
@@ -31,10 +34,9 @@ interface Props {
   onDeleteComment(id: string): void
 }
 
-const options: CodeViewReactOptions<Note, undefined> = {
+const baseOptions: CodeViewReactOptions<Note, undefined> = {
   theme: { dark: 'pierre-dark', light: 'pierre-light' },
   themeType: 'dark',
-  diffStyle: 'unified',
   stickyHeaders: true,
   enableLineSelection: true,
   lineHoverHighlight: 'number',
@@ -45,8 +47,11 @@ const options: CodeViewReactOptions<Note, undefined> = {
 export function BlockView(p: Props) {
   const { data, block, mode } = p
   const copy = modes[mode]
-  const summary = data.summaries[String(block.id)]
+  const summary = summaryOf(data, block)
   const [draft, setDraft] = useState<Draft | null>(null)
+  const options = useMemo(() => ({ ...baseOptions, diffStyle: p.diffStyle }), [p.diffStyle])
+  const risk = summary?.risk ?? (block.skim ? null : block.est_risk)
+  const riskLabel = risk && `${summary ? '' : 'Estimated '}${summary ? risk[0].toUpperCase() + risk.slice(1) : risk} risk`
 
   const items = useMemo<CodeViewItem<Note>[]>(() => {
     return block.files
@@ -72,15 +77,13 @@ export function BlockView(p: Props) {
           <span>{p.position}</span>
         </div>
         <h1 className="block-title">{blockTitle(data, block)}</h1>
-        {summary?.intent ? (
-          <p className="intent">
-            <Inline text={summary.intent} />
-          </p>
-        ) : (
-          !block.skim && <p className="intent muted">Not summarized yet. Your agent summarizes blocks just ahead of where you're reading.</p>
-        )}
+        <p className="intent">{summary?.intent ? <Inline text={summary.intent} /> : factsSentence(block)}</p>
         <div className="facts">
-          {summary?.risk && <span className={`risk ${summary.risk}`}>{summary.risk[0].toUpperCase() + summary.risk.slice(1)} risk</span>}
+          {risk && (
+            <span className={`risk ${risk}`} title={summary ? 'Assessed by your agent from the diff' : 'Estimated from rules: sensitive areas, outside usage, removals, tests and size'}>
+              {riskLabel}
+            </span>
+          )}
           <span>
             {block.lines} changed lines in {block.files.length} {block.files.length === 1 ? 'file' : 'files'}
           </span>
@@ -95,13 +98,26 @@ export function BlockView(p: Props) {
           <button className="btn danger" onClick={p.onSecondary}>
             {copy.secondary} <kbd>x</kbd>
           </button>
+          <div className="segmented" role="group" aria-label="Diff layout" style={{ marginLeft: 'auto' }}>
+            {(
+              [
+                ['unified', 'Unified'],
+                ['split', 'Side by side'],
+              ] as [DiffStyle, string][]
+            ).map(([v, label]) => (
+              <button key={v} aria-pressed={p.diffStyle === v} onClick={() => p.onDiffStyle(v)}>
+                {label}
+              </button>
+            ))}
+            <kbd style={{ alignSelf: 'center', margin: '0 4px' }}>s</kbd>
+          </div>
         </div>
       </header>
       {items.length === 0 ? (
         <div className="empty">This block only renames or moves files. There are no line changes to show.</div>
       ) : (
         <CodeView<Note, undefined>
-          key={block.id}
+          key={`${block.id}-${p.diffStyle}`}
           className="diff"
           items={items}
           options={options}
