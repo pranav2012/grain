@@ -14,7 +14,7 @@ Everything runs on your machine. GitHub access goes through your `gh` login.
 ```bash
 brew install pranav2012/tap/grain                                                        # Homebrew
 curl -LsSf https://github.com/pranav2012/grain/releases/latest/download/grain-installer.sh | sh   # macOS, Linux
-npm i -g grain-review     # or: pnpm add -g grain-review · yarn global add grain-review · bun add -g grain-review
+npm i -g grain-ci     # or: pnpm add -g grain-ci · yarn global add grain-ci · bun add -g grain-ci
 ```
 
 Windows: `powershell -c "irm https://github.com/pranav2012/grain/releases/latest/download/grain-installer.ps1 | iex"`

@@ -9,8 +9,8 @@ Pushing a version tag (`v0.1.0`) builds the UI and the binary for every target, 
 | curl (macOS, Linux) | `curl -LsSf https://github.com/pranav2012/grain/releases/latest/download/grain-installer.sh \| sh` | GitHub Release |
 | PowerShell (Windows) | `powershell -c "irm https://github.com/pranav2012/grain/releases/latest/download/grain-installer.ps1 \| iex"` | GitHub Release |
 | Homebrew | `brew install pranav2012/tap/grain` | `homebrew` publish job |
-| npm, pnpm, yarn, bun | `npm i -g grain-review` · `pnpm add -g grain-review` · `yarn global add grain-review` · `bun add -g grain-review` | `npm` publish job |
-| One-off run | `npx grain-review` · `pnpm dlx grain-review` · `bunx grain-review` | `npm` publish job |
+| npm, pnpm, yarn, bun | `npm i -g grain-ci` · `pnpm add -g grain-ci` · `yarn global add grain-ci` · `bun add -g grain-ci` | `npm` publish job |
+| One-off run | `npx grain-ci` · `pnpm dlx grain-ci` · `bunx grain-ci` | `npm` publish job |
 
 Targets: macOS (Apple Silicon, Intel), Linux (x64, arm64, glibc), Windows (x64).
 
@@ -19,7 +19,7 @@ Targets: macOS (Apple Silicon, Intel), Linux (x64, arm64, glibc), Windows (x64).
 1. **Make the repository public** (`pranav2012/grain`). Installers download from GitHub Releases, which other people can't reach while the repo is private.
    - The current files contain no secrets or internal names. **Older commits still mention internal repo names** (test examples, spike notes; no code or credentials), about 26 places: see `git log --all -p | grep -iE "acme|widgets|storefront"`. Decide before going public whether that's fine, or start the public repo from a single squashed commit.
 2. **Create the Homebrew tap**: an empty public repo `pranav2012/homebrew-tap`.
-3. **Choose the npm name.** `grain` belongs to another author (since 2010); the config uses `grain-review`. To change it, edit `npm-package` in `dist-workspace.toml` and run `dist generate`. The installed command is `grain` regardless.
+3. **npm name: `grain-ci`** (`grain` belongs to another author since 2010; `grain-ci` was free on 2026-10-13). Publish soon to hold it. To change it, edit `npm-package` in `dist-workspace.toml` and run `dist generate`. The installed command is `grain` regardless.
 4. **Add repository secrets** (Settings → Secrets and variables → Actions):
    - `HOMEBREW_TAP_TOKEN`: a fine-grained token with *Contents: read and write* on `pranav2012/homebrew-tap`.
    - `NPM_TOKEN`: an npm *automation* token from the account that owns the package.

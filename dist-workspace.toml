@@ -23,7 +23,7 @@ tap = "pranav2012/homebrew-tap"
 formula = "grain"
 # npm package (works for npm, pnpm, yarn and bun; needs the NPM_TOKEN secret).
 # `grain` is taken on npm; the installed command is `grain` regardless.
-npm-package = "grain-review"
+npm-package = "grain-ci"
 publish-jobs = ["homebrew", "npm"]
 # The UI is embedded in the binary, so build it before every target's Rust build.
 github-build-setup = "../build-setup.yml"
