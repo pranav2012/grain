@@ -54,6 +54,8 @@ pub(crate) enum Stage {
     Preparing,
     Ready,
     Failed,
+    /// Grain needs to know whether the reviewer already has this repository locally.
+    NeedsRepo,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -100,4 +102,23 @@ pub(crate) struct SummarizeRequest {
 pub(crate) struct DiffRequest {
     /// Paths (old or new) whose diff sections to return.
     pub files: Vec<String>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct LocalRepo {
+    /// Whether the reviewer has answered already.
+    pub asked: bool,
+    /// Their local clone to borrow from; `null` (when asked) means download a copy.
+    pub path: Option<String>,
+    /// Folders on this machine that look like this repository.
+    pub candidates: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub(crate) struct LocalRepoRequest {
+    /// Path of an existing clone, or `null` to download a copy.
+    pub path: Option<String>,
 }

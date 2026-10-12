@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { formatPrRef } from '@/lib/pr-ref'
 import { loadPr, reviewApi } from '../api'
 import type { LoadedPr } from '../model/types'
+import { RepoSetup } from './RepoSetup'
 import { ReviewScreen } from './ReviewScreen'
 
 interface ReviewPageProps {
@@ -19,6 +20,8 @@ export function ReviewPage({ id, settingsVersion, onSwitch, onSettings }: Review
   const [data, setData] = useState<LoadedPr | null>(null)
   const [message, setMessage] = useState('Opening the pull request')
   const [error, setError] = useState<string | null>(null)
+  const [needsRepo, setNeedsRepo] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let alive = true
     let timer: ReturnType<typeof setTimeout>
@@ -29,7 +32,8 @@ export function ReviewPage({ id, settingsVersion, onSwitch, onSettings }: Review
         if (st.job.stage === 'preparing') {
           setMessage(st.job.message)
           timer = setTimeout(poll, 700)
-        } else if (st.job.stage === 'failed') setError(st.job.message)
+        } else if (st.job.stage === 'needsRepo') setNeedsRepo(true)
+        else if (st.job.stage === 'failed') setError(st.job.message)
         else setData(await loadPr(id))
       } catch (e) {
         if (alive) setError((e as Error).message)
@@ -40,14 +44,22 @@ export function ReviewPage({ id, settingsVersion, onSwitch, onSettings }: Review
       alive = false
       clearTimeout(timer)
     }
-  }, [id])
+  }, [id, attempt])
 
   if (data) return <ReviewScreen base={data} settingsVersion={settingsVersion} onSwitch={onSwitch} onSettings={onSettings} />
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-2.5 text-fog">
       <GrainGlyph />
       <h1 className="mt-1 text-[17px] font-semibold text-chalk">{formatPrRef(id)}</h1>
-      {error ? (
+      {needsRepo ? (
+        <RepoSetup
+          fullRepo={id.split('/').slice(0, 2).join('/')}
+          onDone={() => {
+            setNeedsRepo(false)
+            setAttempt((a) => a + 1)
+          }}
+        />
+      ) : error ? (
         <>
           <p className="max-w-[60ch] text-center text-coral">{error}</p>
           <Button onClick={onSwitch}>Open another pull request</Button>

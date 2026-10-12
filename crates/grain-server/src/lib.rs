@@ -3,6 +3,7 @@
 mod contract;
 mod error;
 mod jobs;
+mod local_repos;
 mod patch_index;
 mod routes;
 mod state;
@@ -15,6 +16,35 @@ use anyhow::Result;
 use grain_github::PrRef;
 use grain_store::Home;
 use tower_http::services::{ServeDir, ServeFile};
+
+pub use jobs::cleanup::CleanupReport;
+
+/// Cleans up merged or closed PRs and idle checkouts now (`everything`: all checkouts and clones).
+pub fn clean(everything: bool) -> CleanupReport {
+    jobs::cleanup::run(&Home::locate(), everything, &|_| false)
+}
+
+/// Prefetch every 15 minutes and clean up every hour, starting shortly after launch.
+fn spawn_background(app: state::Shared) {
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        let mut tick: u64 = 0;
+        loop {
+            let a = app.clone();
+            let cleanup = tick.is_multiple_of(4);
+            let _ = tokio::task::spawn_blocking(move || {
+                if cleanup {
+                    let report = jobs::cleanup::run(&a.home, false, &|pr| a.is_busy(pr));
+                    tracing::info!(?report, "cleanup");
+                }
+                jobs::prefetch::run(&a);
+            })
+            .await;
+            tick += 1;
+            tokio::time::sleep(std::time::Duration::from_mins(15)).await;
+        }
+    });
+}
 
 pub struct Options {
     pub port: u16,
@@ -32,8 +62,9 @@ pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
         let _ = grain_github::repos(None);
     });
     if let Some(pr) = &opts.open_pr {
-        app.open(pr.clone());
+        app.open(pr.clone(), true);
     }
+    spawn_background(app.clone());
     let router = match &opts.ui_dir {
         Some(dir) => {
             routes::router(app).fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))))

@@ -8,6 +8,8 @@ use grain_store::{Home, Settings, read_json, write_atomic};
 /// What still has to happen after [`prepare`] returns.
 pub(crate) enum Next {
     Done,
+    /// The reviewer hasn't said whether they have this repository locally yet.
+    NeedsRepo,
     /// The review is open with fast facts; run [`enrich`] in the background.
     Enrich,
 }
@@ -16,6 +18,7 @@ pub(crate) enum Next {
 pub(crate) fn has_usable_review(home: &Home, pr: &PrRef) -> bool {
     let dir = home.review_dir(pr);
     dir.join("review.json").exists()
+        && dir.join("diff.patch").exists()
         && read_json(&dir.join("pr.json")).and_then(|v| v["reviewFormat"].as_u64())
             == Some(u64::from(grain_engine::REVIEW_FORMAT))
 }
@@ -46,8 +49,15 @@ pub(crate) fn prepare(
 
     let clone = home.clone_dir(pr);
     if !grain_git::is_repo(&clone) {
-        report(&format!("Cloning {} (first time only, read-only)", pr.full_repo()));
-        grain_github::clone_partial(&pr.full_repo(), &clone)?;
+        let reference = match home.repo_choice(&pr.full_repo()) {
+            None => return Ok(Next::NeedsRepo),
+            Some(local) => local.filter(|p| grain_git::has_github_remote(p, &pr.owner, &pr.repo)),
+        };
+        match &reference {
+            Some(p) => report(&format!("Setting up {} from your clone at {}", pr.full_repo(), p.display())),
+            None => report(&format!("Downloading {} (first time only, read-only)", pr.full_repo())),
+        }
+        grain_github::clone_partial(&pr.full_repo(), &clone, reference.as_deref())?;
     }
 
     report("Fetching the PR's commits");

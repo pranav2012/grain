@@ -15,6 +15,7 @@ pub(crate) fn router(app: Shared) -> Router {
         .route("/api/inbox", get(github::inbox))
         .route("/api/repos", get(github::repos))
         .route("/api/repos/{owner}/{repo}/pulls", get(github::repo_pulls))
+        .route("/api/repos/{owner}/{repo}/local", get(github::local_repo).put(github::set_local_repo))
         .route("/api/open", post(reviews::open))
         .route("/api/reviews", get(reviews::recent))
         .route("/api/reviews/{owner}/{repo}/{number}/status", get(reviews::status))

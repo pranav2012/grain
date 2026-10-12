@@ -157,7 +157,12 @@ fn check_home() -> Check {
     match std::fs::write(&probe, b"ok") {
         Ok(()) => {
             let _ = std::fs::remove_file(&probe);
-            ok("Data folder", true, format!("{} is writable", home.root.display()))
+            let mb = grain_store::disk_usage(&home.root) as f64 / 1_048_576.0;
+            ok(
+                "Data folder",
+                true,
+                format!("{} is writable ({mb:.0} MB used; `grain clean` frees checkouts)", home.root.display()),
+            )
         }
         Err(e) => problem(
             "Data folder",

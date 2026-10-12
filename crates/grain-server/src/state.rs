@@ -38,6 +38,10 @@ impl App {
         })
     }
 
+    pub(crate) fn is_busy(&self, pr: &PrRef) -> bool {
+        self.busy.lock().unwrap_or_else(PoisonError::into_inner).contains(pr)
+    }
+
     pub(crate) fn settings(&self) -> Settings {
         self.settings.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
@@ -54,7 +58,10 @@ impl App {
 
     /// Starts (or re-checks) preparation of a PR in the background: stage 1 makes the review
     /// openable, stage 2 then adds whole-repo facts while the reviewer reads.
-    pub(crate) fn open(self: &Shared, pr: PrRef) {
+    pub(crate) fn open(self: &Shared, pr: PrRef, by_reviewer: bool) {
+        if by_reviewer {
+            self.home.touch_review(&pr);
+        }
         if !self.busy.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone()) {
             return;
         }
@@ -80,6 +87,13 @@ impl App {
             report("done");
             tracing::info!(pr = %pr.number, total_ms = started.elapsed().as_millis(), "prepared");
             let (job, next) = match result {
+                Ok(prepare::Next::NeedsRepo) => (
+                    Job {
+                        stage: Stage::NeedsRepo,
+                        message: format!("Do you already have {} on this computer?", pr.full_repo()),
+                    },
+                    prepare::Next::Done,
+                ),
                 Ok(next) => (Job { stage: Stage::Ready, message: "Ready".into() }, next),
                 Err(e) => (Job { stage: Stage::Failed, message: format!("{e:#}") }, prepare::Next::Done),
             };

@@ -1,4 +1,5 @@
-import { post, request } from '@/lib/http'
+import { post, put, request } from '@/lib/http'
+import type { LocalRepo } from '@/types/generated/LocalRepo'
 import type { OpenResponse } from '@/types/generated/OpenResponse'
 import type { Review } from '@/types/generated/Review'
 import type { Status } from '@/types/generated/Status'
@@ -17,6 +18,9 @@ export const reviewApi = {
   status: (id: string) => request<Status>(`/api/reviews/${id}/status`),
   summaries: (id: string) => request<Record<string, Summary>>(`/api/reviews/${id}/files/summaries.json`),
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),
+  /** `fullRepo` is `owner/repo`. */
+  localRepo: (fullRepo: string) => request<LocalRepo>(`/api/repos/${fullRepo}/local`),
+  setLocalRepo: (fullRepo: string, path: string | null) => put<LocalRepo>(`/api/repos/${fullRepo}/local`, { path }),
   review: (id: string) => request<Review>(`/api/reviews/${id}/files/review.json`),
   /** Unified diff sections for just these files. */
   diff: (id: string, files: string[]) =>

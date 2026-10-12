@@ -130,3 +130,9 @@ pub fn pr_details(pr: &PrRef) -> Result<PrDetails> {
         state: v["state"].as_str().unwrap_or_default().into(),
     })
 }
+
+/// Whether the PR is still open (false once merged or closed).
+pub fn pr_is_open(pr: &PrRef) -> Result<bool> {
+    let v = gh(&["api", &format!("repos/{}/pulls/{}", pr.full_repo(), pr.number), "--jq", "{state: .state}"])?;
+    Ok(v["state"] == "open")
+}

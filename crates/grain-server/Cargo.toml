@@ -13,6 +13,7 @@ grain-engine.workspace = true
 grain-git.workspace = true
 grain-github.workspace = true
 grain-store.workspace = true
+dirs.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 serde.workspace = true

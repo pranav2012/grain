@@ -28,6 +28,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Remove checkouts of merged or closed PRs and of PRs not opened for 14 days.
+    Clean {
+        /// Remove every checkout and every Grain clone (review notes and settings are kept).
+        #[arg(long)]
+        all: bool,
+    },
     /// Check that everything Grain needs is installed and signed in.
     Doctor {
         /// Print the checks as JSON.
@@ -59,6 +65,18 @@ async fn main() -> Result<()> {
             let analysis = grain_engine::analyze_with(&repo, &base, &head, depth)?;
             let out = if json { serde_json::to_string_pretty(&analysis.review)? } else { analysis.summary };
             println!("{out}");
+            return Ok(());
+        }
+        Some(Command::Clean { all }) => {
+            let r = grain_server::clean(all);
+            println!(
+                "Removed {} checkouts ({} merged or closed, {} unused for 14 days) and {} unused clones; freed {:.1} MB.",
+                r.checkouts_removed,
+                r.closed_prs,
+                r.idle_checkouts,
+                r.clones_removed,
+                r.bytes_freed as f64 / 1_048_576.0
+            );
             return Ok(());
         }
         Some(Command::Doctor { json }) => {

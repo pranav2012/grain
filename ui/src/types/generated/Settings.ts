@@ -14,4 +14,8 @@ maxSummariesPerReview: number,
  * Summarize the next blocks automatically while reading. Off by default: summaries are
  * otherwise only made when the reviewer asks for one, and never for the initial view.
  */
-autoSummarize: boolean, };
+autoSummarize: boolean, 
+/**
+ * Prepare the newest review requests in the background (git and grouping only, never AI).
+ */
+prefetch: boolean, };

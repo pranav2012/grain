@@ -17,7 +17,7 @@ pub(super) async fn open(State(app): State<Shared>, Json(body): Json<OpenRequest
     let pr = PrRef::parse(&body.pr).ok_or_else(|| {
         ApiError::bad_request("That doesn't look like a pull request. Paste a GitHub PR link or owner/repo#123.")
     })?;
-    app.open(pr.clone());
+    app.open(pr.clone(), true);
     Ok(Json(OpenResponse { id: format!("{}/{}", pr.full_repo(), pr.number) }))
 }
 

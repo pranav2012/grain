@@ -72,6 +72,13 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
               <small className="block text-dim">Never runs when a pull request first opens. Off by default.</small>
             </span>
           </label>
+          <label className="mt-3 flex items-start gap-2.5 text-fog">
+            <input type="checkbox" className="mt-1" checked={s.prefetch} onChange={(e) => setS({ ...s, prefetch: e.target.checked })} />
+            <span>
+              Get my newest review requests ready in the background
+              <small className="block text-dim">Up to 5 at a time, so they open instantly. Git and grouping only, never AI.</small>
+            </span>
+          </label>
           <label className="mt-3 flex items-center justify-between gap-3 text-fog">
             Summaries per review, at most
             <input

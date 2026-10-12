@@ -105,6 +105,30 @@ pub fn remove_worktree(clone: &Path, worktree: &Path) -> Result<()> {
     run(clone, &["worktree", "prune"]).map(|_| ())
 }
 
+/// True when `dir` is a git repository with a remote pointing at `github.com/<owner>/<repo>`.
+pub fn has_github_remote(dir: &Path, owner: &str, repo: &str) -> bool {
+    let Ok(remotes) = run(dir, &["remote", "-v"]) else { return false };
+    let want = format!("{owner}/{repo}").to_lowercase();
+    remotes.lines().any(|l| {
+        let url = l.split_whitespace().nth(1).unwrap_or_default().to_lowercase();
+        let path =
+            url.split_once("github.com").map(|(_, rest)| rest.trim_start_matches([':', '/'])).unwrap_or_default();
+        path.trim_end_matches('/').trim_end_matches(".git") == want
+    })
+}
+
+/// Deletes a ref if it exists.
+pub fn delete_ref(clone: &Path, name: &str) {
+    let _ = run(clone, &["update-ref", "-d", name]);
+}
+
+/// Worktrees registered in `clone`, excluding the clone itself.
+pub fn worktree_count(clone: &Path) -> usize {
+    run(clone, &["worktree", "list", "--porcelain"])
+        .map(|o| o.lines().filter(|l| l.starts_with("worktree ")).count().saturating_sub(1))
+        .unwrap_or(0)
+}
+
 /// Full unified diff `base..head`, optionally limited to `paths`. Also downloads both sides of
 /// every changed file in one batch, which the engine (libgit2) cannot do itself.
 pub fn diff(clone: &Path, base: &str, head: &str, paths: &[String]) -> Result<String> {
