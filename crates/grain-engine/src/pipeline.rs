@@ -21,6 +21,7 @@ use crate::facts::usage::{UsageProvider, name_position};
 use crate::grouping::blocks::{block_dir, block_key, stable_hash};
 use crate::grouping::cluster::group_v2;
 use crate::grouping::layers::build_layers;
+use crate::grouping::story::build_story;
 use crate::model::{Analysis, Block, BlockLink, EntityChange, Review, Risk, Slice};
 
 /// How much of the repository the analysis may read.
@@ -150,13 +151,27 @@ pub fn analyze_with_usage(
         b.id = i + 1;
     }
     let links = block_links(&blocks, &units, &changes, &graph);
+    let mut entity_block: HashMap<String, usize> = HashMap::new();
+    for (b, members) in &blocks {
+        for &u in *members {
+            if let Unit::Entity(i) = units.items[u] {
+                entity_block.insert(changes[i].entity_id.clone(), b.id);
+            }
+        }
+    }
     let blocks: Vec<Block> = blocks.into_iter().map(|(b, _)| b).collect();
     let layers = build_layers(&blocks, &links);
+    let t = Instant::now();
+    let story = build_story(repo, &blocks, &entity_block, full_graph.as_ref());
+    timings.push(("story", t.elapsed().as_millis()));
     let skim: Vec<usize> = blocks.iter().filter(|b| b.skim.is_some()).map(|b| b.id).collect();
 
     let summary = summarize(&timings, &units, &blocks, &layers, &skim, &graph_files, &changes, &graph);
     let complete = depth == Depth::Complete;
-    Ok(Analysis { review: Review { layers, skim, blocks, links, total_lines: units.total_lines, complete }, summary })
+    Ok(Analysis {
+        review: Review { layers, story, skim, blocks, links, total_lines: units.total_lines, complete },
+        summary,
+    })
 }
 
 /// Which blocks use which: an edge `from → to` when code changed in `from` depends on code

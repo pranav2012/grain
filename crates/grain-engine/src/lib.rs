@@ -11,9 +11,12 @@ mod model;
 mod pipeline;
 
 pub use facts::usage::UsageProvider;
-pub use model::{Analysis, Block, BlockLink, Check, CheckLevel, EntityChange, Layer, Review, Risk, Slice};
+pub use model::{
+    Analysis, Block, BlockLink, Chapter, ChapterKind, Check, CheckLevel, EntityChange, Layer, Review, Risk, Section,
+    Slice, Story,
+};
 pub use pipeline::{Depth, analyze, analyze_with, analyze_with_usage};
 
 /// Version of the [`Review`] format. Bump when the engine's output changes (fields or grouping),
 /// so stored reviews are recomputed instead of being shown in an outdated shape.
-pub const REVIEW_FORMAT: u32 = 9;
+pub const REVIEW_FORMAT: u32 = 10;

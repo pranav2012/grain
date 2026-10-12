@@ -2,12 +2,17 @@
 import type { Block } from "./Block";
 import type { BlockLink } from "./BlockLink";
 import type { Layer } from "./Layer";
+import type { Story } from "./Story";
 
 export type Review = { 
 /**
  * Small, ordered review steps: foundations first, each a few related blocks.
  */
 layers: Array<Layer>, 
+/**
+ * How the review reads: user flows (page or screen → the changed code it runs), then the rest.
+ */
+story: Story, 
 /**
  * Ids of low-attention blocks (lockfiles, assets, repeated or mechanical edits).
  */

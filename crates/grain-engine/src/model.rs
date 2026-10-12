@@ -9,6 +9,8 @@ use ts_rs::TS;
 pub struct Review {
     /// Small, ordered review steps: foundations first, each a few related blocks.
     pub layers: Vec<Layer>,
+    /// How the review reads: user flows (page or screen → the changed code it runs), then the rest.
+    pub story: Story,
     /// Ids of low-attention blocks (lockfiles, assets, repeated or mechanical edits).
     pub skim: Vec<usize>,
     pub blocks: Vec<Block>,
@@ -28,6 +30,62 @@ pub struct BlockLink {
     pub to: usize,
     /// How many changed entities connect them.
     pub weight: usize,
+}
+
+/// The review as chapters to read. `flows` is false until the whole repository has been analyzed,
+/// and for languages without known entry points; chapters are then areas of the codebase.
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Story {
+    pub chapters: Vec<Chapter>,
+    pub flows: bool,
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Chapter {
+    /// Position in the story, from 1.
+    pub id: usize,
+    /// Stable identity from the title and blocks; chapter intros are cached by it.
+    pub key: String,
+    pub kind: ChapterKind,
+    /// A route (`/voucher/[bookingId]`), a screen, an area (`src/features/voucher`) or a fixed name.
+    pub title: String,
+    /// The page or screen file a flow starts at.
+    pub entry: Option<String>,
+    /// One plain line on what the chapter holds, from the code.
+    pub about: String,
+    pub sections: Vec<Section>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ChapterKind {
+    /// A page or screen and the changed code it runs.
+    Flow,
+    /// Small flows from several screens.
+    Screens,
+    /// Code only preview, dummy or debug pages reach.
+    Preview,
+    /// Changed code no flow reaches.
+    Also,
+    /// One area of the codebase (when there are no flows).
+    Area,
+    /// Skim blocks.
+    Routine,
+}
+
+/// Part of a chapter: in a flow, the component that leads to these changes; elsewhere, an area.
+/// Blocks are in reading order (call order in flows). The title is empty for a single section.
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Section {
+    pub title: String,
+    pub blocks: Vec<usize>,
 }
 
 /// One step of the review: blocks that belong together (code that uses each other, code and its

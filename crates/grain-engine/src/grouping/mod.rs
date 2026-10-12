@@ -3,4 +3,5 @@
 pub(crate) mod blocks;
 pub(crate) mod cluster;
 pub(crate) mod layers;
+pub(crate) mod story;
 pub(crate) mod union_find;
