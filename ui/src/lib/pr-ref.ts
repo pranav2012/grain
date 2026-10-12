@@ -5,6 +5,12 @@ export function parsePrRef(input: string): string | null {
   return m ? `${m[1]}/${m[2]}/${m[3]}` : null
 }
 
+/** Review ids of local changes start with this owner (see `LOCAL_OWNER` on the server). */
+export const isLocalId = (id: string) => id.startsWith('~local/')
+
+/** Looks like a folder on disk rather than a pull request. */
+export const looksLikePath = (input: string) => /^(\/|~\/|~$|\.{1,2}(\/|$))/.test(input.trim())
+
 export function formatPrRef(id: string): string {
-  return id.replace(/\/(\d+)$/, ' #$1')
+  return isLocalId(id) ? 'Local changes' : id.replace(/\/(\d+)$/, ' #$1')
 }

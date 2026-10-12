@@ -22,6 +22,7 @@ export function ReviewPage({ id, settingsVersion, onSwitch, onSettings }: Review
   const [error, setError] = useState<string | null>(null)
   const [needsRepo, setNeedsRepo] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  const [refresh, setRefresh] = useState(false)
   useEffect(() => {
     let alive = true
     let timer: ReturnType<typeof setTimeout>
@@ -39,14 +40,22 @@ export function ReviewPage({ id, settingsVersion, onSwitch, onSettings }: Review
         if (alive) setError((e as Error).message)
       }
     }
-    reviewApi.open(id).then(poll, (e: Error) => setError(e.message))
+    reviewApi.open(id, refresh).then(poll, (e: Error) => setError(e.message))
     return () => {
       alive = false
       clearTimeout(timer)
     }
-  }, [id, attempt])
+  }, [id, attempt, refresh])
 
-  if (data) return <ReviewScreen base={data} settingsVersion={settingsVersion} onSwitch={onSwitch} onSettings={onSettings} />
+  const reload = () => {
+    setData(null)
+    setMessage('Checking for changes')
+    setRefresh(true)
+    setAttempt((a) => a + 1)
+  }
+
+  if (data)
+    return <ReviewScreen base={data} settingsVersion={settingsVersion} onSwitch={onSwitch} onSettings={onSettings} onReload={reload} />
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-2.5 text-fog">
       <GrainGlyph />

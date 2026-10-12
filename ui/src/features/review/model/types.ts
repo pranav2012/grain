@@ -29,7 +29,13 @@ export interface ReviewComment {
 }
 
 /** `pr.json`: GitHub details plus what the server knows about this review. */
-export type PrMeta = PrDetails & { viewer?: string; agent?: Agent | null; mergeBase?: string | null }
+export type PrMeta = PrDetails & {
+  viewer?: string
+  agent?: Agent | null
+  mergeBase?: string | null
+  /** Set for self-reviews of local changes: the folder, its branch and the branch it's compared with. */
+  local?: { path: string; branch: string | null; base: string | null } | null
+}
 
 export interface LoadedPr {
   /** `owner/repo/123` */

@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use grain_github::PrRef;
 use grain_store::{Home, Settings};
 
 use crate::contract::{Job, Stage};
-use crate::jobs::{prepare, summarize::Summarizer};
+use crate::jobs::{local, prepare, summarize::Summarizer};
 
 /// State shared by all requests and background jobs.
 pub(crate) struct App {
@@ -19,6 +20,8 @@ pub(crate) struct App {
     /// PRs whose review is open but whose whole-repo facts are still being computed.
     pub(crate) enriching: Mutex<HashSet<PrRef>>,
     pub(crate) patches: crate::patch_index::PatchCache,
+    /// Latest working-tree snapshot per local review, re-taken at most every few seconds.
+    local_heads: Mutex<HashMap<PrRef, (Instant, String)>>,
 }
 
 pub(crate) type Shared = Arc<App>;
@@ -50,11 +53,29 @@ impl App {
             busy: Mutex::new(HashSet::new()),
             enriching: Mutex::new(HashSet::new()),
             patches: crate::patch_index::PatchCache::default(),
+            local_heads: Mutex::new(HashMap::new()),
         })
     }
 
     pub(crate) fn is_busy(&self, pr: &PrRef) -> bool {
         self.busy.lock().unwrap_or_else(PoisonError::into_inner).contains(pr)
+    }
+
+    /// What a local review's head would be now, so the UI can offer a refresh after edits.
+    /// Blocking; cached briefly because the UI polls status every few seconds.
+    pub(crate) fn local_head(&self, pr: &PrRef) -> Option<String> {
+        const FRESH: Duration = Duration::from_secs(5);
+        if let Some((at, head)) = self.local_heads.lock().unwrap_or_else(PoisonError::into_inner).get(pr)
+            && at.elapsed() < FRESH
+        {
+            return Some(head.clone());
+        }
+        let head = local::current_head(&self.home, pr).ok()?;
+        self.local_heads
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(pr.clone(), (Instant::now(), head.clone()));
+        Some(head)
     }
 
     pub(crate) fn settings(&self) -> Settings {
@@ -72,8 +93,9 @@ impl App {
     }
 
     /// Starts (or re-checks) preparation of a PR in the background: stage 1 makes the review
-    /// openable, stage 2 then adds whole-repo facts while the reviewer reads.
-    pub(crate) fn open(self: &Shared, pr: PrRef, by_reviewer: bool) {
+    /// openable, stage 2 then adds whole-repo facts while the reviewer reads. A stored review is
+    /// offered right away unless `refresh` asks to wait for the re-check.
+    pub(crate) fn open(self: &Shared, pr: PrRef, by_reviewer: bool, refresh: bool) {
         if by_reviewer {
             self.home.touch_review(&pr);
         }
@@ -81,11 +103,13 @@ impl App {
             return;
         }
         // A stored review opens instantly; new commits are checked for in the background.
-        let stage = if prepare::has_usable_review(&self.home, &pr) { Stage::Ready } else { Stage::Preparing };
+        let checking = if pr.is_local() { "Checking your local changes" } else { "Checking for new commits" };
+        let stage =
+            if !refresh && prepare::has_usable_review(&self.home, &pr) { Stage::Ready } else { Stage::Preparing };
         self.jobs
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .insert(pr.clone(), Job { stage, message: "Checking for new commits".into() });
+            .insert(pr.clone(), Job { stage, message: checking.into() });
         let app = self.clone();
         tokio::task::spawn_blocking(move || {
             let started = std::time::Instant::now();
@@ -99,7 +123,11 @@ impl App {
                 }
             };
             let result = guarded("preparing this pull request", || {
-                prepare::prepare(&app.home, &pr, &app.viewer(), &app.settings(), &report)
+                if pr.is_local() {
+                    local::prepare(&app.home, &pr, &app.viewer(), &app.settings(), &report)
+                } else {
+                    prepare::prepare(&app.home, &pr, &app.viewer(), &app.settings(), &report)
+                }
             });
             report("done");
             tracing::info!(pr = %pr.number, total_ms = started.elapsed().as_millis(), "prepared");

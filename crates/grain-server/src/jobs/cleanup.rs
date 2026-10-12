@@ -58,7 +58,8 @@ pub(crate) fn run(home: &Home, everything: bool, skip: &dyn Fn(&PrRef) -> bool) 
     let mut report = CleanupReport::default();
     for pr_json in list_review_files(&home.reviews_root(), "pr.json") {
         let Some(pr) = pr_from(&pr_json) else { continue };
-        if skip(&pr) || read_json(&pr_json).is_some_and(|v| v["closed"] == true) {
+        // Local reviews have no checkout or clone of their own.
+        if pr.is_local() || skip(&pr) || read_json(&pr_json).is_some_and(|v| v["closed"] == true) {
             continue;
         }
         let idle = home.review_idle_secs(&pr).or_else(|| {

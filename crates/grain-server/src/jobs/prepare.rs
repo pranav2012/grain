@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use grain_engine::Depth;
@@ -43,7 +43,7 @@ pub(crate) fn prepare(
         && prev_head.as_deref() == Some(details.head_sha.as_str())
         && let Some(review) = read_json(&out_dir.join("review.json"))
     {
-        write_pr_json(&out_dir, &details, viewer, settings, None)?;
+        write_pr_json(&out_dir, &details, viewer, settings, None, None)?;
         return Ok(if review["complete"] == true { Next::Done } else { Next::Enrich });
     }
 
@@ -79,19 +79,31 @@ pub(crate) fn prepare(
     write_atomic(&out_dir.join("diff.patch"), patch.as_bytes())?;
     write_atomic(&out_dir.join("review.json"), serde_json::to_string(&analysis.review)?.as_bytes())?;
     write_atomic(&out_dir.join("analysis.txt"), analysis.summary.as_bytes())?;
-    write_pr_json(&out_dir, &details, viewer, settings, Some(&merge_base))?;
+    write_pr_json(&out_dir, &details, viewer, settings, Some(&merge_base), None)?;
     Ok(Next::Enrich)
 }
 
+/// The git repository holding a review's commits: Grain's clone, or the reviewer's own
+/// repository for local changes.
+pub(crate) fn git_dir(home: &Home, pr: &PrRef) -> Result<PathBuf> {
+    if pr.is_local() { super::local::repo_path(home, pr) } else { Ok(home.clone_dir(pr)) }
+}
+
 /// Stage 2: check out the whole repository and add whole-repo facts (outside usage, dangling
-/// removals). Blocks and chapters are unchanged; only facts are added.
+/// removals). Blocks and chapters are unchanged; only facts are added. Local reviews read the
+/// reviewer's working tree, which is already complete.
 pub(crate) fn enrich(home: &Home, pr: &PrRef) -> Result<()> {
     let out_dir = home.review_dir(pr);
     let pr_json = read_json(&out_dir.join("pr.json")).context("PR not prepared")?;
     let head = pr_json["headSha"].as_str().unwrap_or_default().to_string();
     let merge_base = pr_json["mergeBase"].as_str().unwrap_or_default().to_string();
-    let worktree = home.worktree_dir(pr);
-    grain_git::expand_worktree(&worktree)?;
+    let worktree = if pr.is_local() {
+        super::local::repo_path(home, pr)?
+    } else {
+        let worktree = home.worktree_dir(pr);
+        grain_git::expand_worktree(&worktree)?;
+        worktree
+    };
     let analysis = grain_engine::analyze_with(&worktree, &merge_base, &head, Depth::Complete)?;
     // A newer push may have been prepared meanwhile; never overwrite it with older facts.
     let current = read_json(&out_dir.join("pr.json")).and_then(|v| v["headSha"].as_str().map(str::to_string));
@@ -102,12 +114,15 @@ pub(crate) fn enrich(home: &Home, pr: &PrRef) -> Result<()> {
     Ok(())
 }
 
-fn write_pr_json(
+/// Writes `pr.json`: the PR's details plus what the server knows (viewer, agent, merge base,
+/// and for local reviews the folder and branch).
+pub(crate) fn write_pr_json(
     out_dir: &Path,
     d: &PrDetails,
     viewer: &str,
     settings: &Settings,
     merge_base: Option<&str>,
+    local: Option<&serde_json::Value>,
 ) -> Result<()> {
     let mut v = serde_json::to_value(d)?;
     v["viewer"] = viewer.into();
@@ -117,6 +132,9 @@ fn write_pr_json(
         .or_else(|| read_json(&out_dir.join("pr.json")).and_then(|p| p["mergeBase"].as_str().map(str::to_string)));
     v["mergeBase"] = merge_base.into();
     v["reviewFormat"] = grain_engine::REVIEW_FORMAT.into();
+    if let Some(local) = local {
+        v["local"] = local.clone();
+    }
     write_atomic(&out_dir.join("pr.json"), serde_json::to_string(&v)?.as_bytes())?;
     Ok(())
 }
@@ -126,5 +144,5 @@ pub(crate) fn block_diff(home: &Home, pr: &PrRef, files: &[String]) -> Result<St
     let pr_json = read_json(&home.review_dir(pr).join("pr.json")).context("PR not prepared")?;
     let merge_base = pr_json["mergeBase"].as_str().unwrap_or_default();
     let head = pr_json["headSha"].as_str().unwrap_or_default();
-    grain_git::diff(&home.clone_dir(pr), merge_base, head, files)
+    grain_git::diff(&git_dir(home, pr)?, merge_base, head, files)
 }

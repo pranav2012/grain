@@ -31,6 +31,28 @@ pub(crate) struct RecentReview {
     pub title: String,
     pub author: String,
     pub url: String,
+    /// The folder, for reviews of local changes.
+    pub local_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub(crate) struct LocalOpenRequest {
+    /// A folder inside a git repository; `~/` is expanded.
+    pub path: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct LocalCandidate {
+    pub path: String,
+    pub name: String,
+    /// `null` on a detached HEAD.
+    pub branch: Option<String>,
+    /// When git last touched the repository (Unix seconds).
+    #[ts(type = "number")]
+    pub active_at: u64,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -38,6 +60,9 @@ pub(crate) struct RecentReview {
 pub(crate) struct OpenRequest {
     /// A GitHub PR link, `owner/repo#123` or `owner/repo/123`.
     pub pr: String,
+    /// Wait for new commits or local edits instead of showing the stored review right away.
+    #[serde(default)]
+    pub refresh: bool,
 }
 
 #[derive(Debug, Serialize, TS)]

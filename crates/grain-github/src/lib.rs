@@ -9,7 +9,7 @@ mod submit;
 mod threads;
 
 pub use clone::clone_partial;
-pub use pr_ref::PrRef;
+pub use pr_ref::{LOCAL_OWNER, PrRef};
 pub use pulls::{
     Author, PrDetails, PrSummary, my_open_prs, pr_details, pr_is_open, repo_open_prs, review_requests, viewer,
 };

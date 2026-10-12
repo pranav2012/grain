@@ -174,7 +174,7 @@ fn check_home() -> Check {
 }
 
 /// True when the process listening on `port` answers like a Grain server.
-fn grain_is_listening(port: u16) -> bool {
+pub(crate) fn grain_is_listening(port: u16) -> bool {
     use std::io::{Read, Write};
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)) else {

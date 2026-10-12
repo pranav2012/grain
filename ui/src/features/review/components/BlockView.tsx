@@ -73,7 +73,7 @@ export function BlockView(p: BlockViewProps) {
 
   const [view, setView] = useState<'since' | 'whole'>('since')
   const sinceReview = p.staleSince && view === 'since' ? p.staleSince : undefined
-  const { diffs, error: diffError } = useBlockDiff(data.id, block.files, p.nextFiles, sinceReview)
+  const { diffs, error: diffError } = useBlockDiff(data.id, data.pr?.headSha ?? '', block.files, p.nextFiles, sinceReview)
   // Line comments must anchor to the PR's own diff, so they're only offered on the whole block.
   const options = useMemo(() => ({ ...baseOptions, diffStyle: p.diffStyle, enableLineSelection: !sinceReview }), [p.diffStyle, sinceReview])
   const items = useMemo<CodeViewItem<Note>[]>(() => {

@@ -14,7 +14,7 @@ pub(crate) fn run(app: &Shared) {
         let Some(pr) = grain_github::PrRef::parse(&format!("{}#{}", p.repo, p.number)) else { continue };
         let known = grain_git::is_repo(&app.home.clone_dir(&pr)) || app.home.repo_choice(&pr.full_repo()).is_some();
         if known && !app.is_busy(&pr) {
-            app.open(pr, false);
+            app.open(pr, false, false);
         }
     }
 }

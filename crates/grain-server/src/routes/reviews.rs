@@ -6,8 +6,8 @@ use grain_github::PrRef;
 use grain_store::read_json;
 
 use crate::contract::{
-    DiffRequest, Job, OpenRequest, OpenResponse, RecentReview, Stage, Status, SubmitRequest, SubmitResponse,
-    SummarizeRequest,
+    DiffRequest, Job, LocalCandidate, LocalOpenRequest, OpenRequest, OpenResponse, RecentReview, Stage, Status,
+    SubmitRequest, SubmitResponse, SummarizeRequest,
 };
 use crate::error::{ApiError, ApiResult, blocking};
 use crate::state::Shared;
@@ -20,8 +20,31 @@ pub(super) async fn open(State(app): State<Shared>, Json(body): Json<OpenRequest
     let pr = PrRef::parse(&body.pr).ok_or_else(|| {
         ApiError::bad_request("That doesn't look like a pull request. Paste a GitHub PR link or owner/repo#123.")
     })?;
-    app.open(pr.clone(), true);
+    app.open(pr.clone(), true, body.refresh);
     Ok(Json(OpenResponse { id: format!("{}/{}", pr.full_repo(), pr.number) }))
+}
+
+/// Starts a self-review of the local work in a folder.
+pub(super) async fn open_local(
+    State(app): State<Shared>,
+    Json(body): Json<LocalOpenRequest>,
+) -> ApiResult<Json<OpenResponse>> {
+    let path = match body.path.trim().strip_prefix("~/") {
+        Some(rest) => dirs::home_dir().unwrap_or_default().join(rest),
+        None => std::path::PathBuf::from(body.path.trim()),
+    };
+    if !path.is_dir() {
+        return Err(ApiError::bad_request(format!("{} is not a folder on this computer.", path.display())));
+    }
+    let home = app.home.clone();
+    let pr = blocking(move || crate::jobs::local::register(&home, &path)).await?;
+    app.open(pr.clone(), true, false);
+    Ok(Json(OpenResponse { id: format!("{}/{}", pr.full_repo(), pr.number) }))
+}
+
+/// Git repositories in the usual code folders, most recently active first.
+pub(super) async fn local_candidates() -> ApiResult<Json<Vec<LocalCandidate>>> {
+    blocking(|| Ok(Json(crate::local_repos::all_repos()))).await
 }
 
 /// PRs already prepared on this machine, most recent first.
@@ -43,6 +66,7 @@ pub(super) async fn recent(State(app): State<Shared>) -> ApiResult<Json<Vec<Rece
                     title: pr["title"].as_str().unwrap_or_default().into(),
                     author: pr["author"]["login"].as_str().unwrap_or_default().into(),
                     url: pr["url"].as_str().unwrap_or_default().into(),
+                    local_path: pr["local"]["path"].as_str().map(str::to_string),
                 },
             ));
         }
@@ -67,8 +91,17 @@ pub(super) async fn status(State(app): State<Shared>, Path(p): Path<(String, Str
         app.summarizers.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&pr).map(|s| s.status.clone());
     let settings = app.settings();
     let enriching = app.enriching.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&pr);
-    let head_sha =
-        read_json(&app.home.review_dir(&pr).join("pr.json")).and_then(|v| v["headSha"].as_str().map(str::to_string));
+    // Local reviews report what the working tree is now, so edits since opening show up.
+    let head_sha = if pr.is_local() && !app.is_busy(&pr) {
+        let app = app.clone();
+        let pr = pr.clone();
+        tokio::task::spawn_blocking(move || app.local_head(&pr)).await.ok().flatten()
+    } else {
+        None
+    }
+    .or_else(|| {
+        read_json(&app.home.review_dir(&pr).join("pr.json")).and_then(|v| v["headSha"].as_str().map(str::to_string))
+    });
     Json(Status {
         job,
         summarizer,
@@ -119,7 +152,7 @@ pub(super) async fn diff(
             let pr_json = read_json(&app.home.review_dir(&pr).join("pr.json"))
                 .ok_or_else(|| anyhow::anyhow!("PR not prepared"))?;
             let head = pr_json["headSha"].as_str().unwrap_or_default().to_string();
-            return grain_git::diff(&app.home.clone_dir(&pr), &since, &head, &body.files);
+            return grain_git::diff(&crate::jobs::prepare::git_dir(&app.home, &pr)?, &since, &head, &body.files);
         }
         Ok(app.patches.get(&app.home.review_dir(&pr).join("diff.patch"))?.sections(&body.files))
     })
@@ -130,6 +163,9 @@ pub(super) async fn diff(
 /// Existing GitHub review threads and submitted reviews for this PR.
 pub(super) async fn conversation(Path(p): Path<(String, String, u64)>) -> ApiResult<Json<grain_github::Conversation>> {
     let pr = pr_of(p);
+    if pr.is_local() {
+        return Ok(Json(grain_github::Conversation::default()));
+    }
     blocking(move || Ok(Json(grain_github::conversation(&pr)?))).await
 }
 
@@ -141,6 +177,9 @@ pub(super) async fn submit(
     Json(req): Json<SubmitRequest>,
 ) -> ApiResult<Json<SubmitResponse>> {
     let pr = pr_of(p);
+    if pr.is_local() {
+        return Err(ApiError::bad_request("Local changes aren't on GitHub yet. Push them and open the pull request."));
+    }
     let patch = app.home.review_dir(&pr).join("diff.patch");
     blocking(move || {
         let index = app.patches.get(&patch)?;

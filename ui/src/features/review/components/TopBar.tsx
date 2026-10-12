@@ -29,10 +29,17 @@ export function TopBar({ data, mode, onMode, progress, onSwitch, onPalette, onSe
         <strong title={data.pr?.title} className="max-w-[46ch] truncate font-medium text-chalk">
           {data.pr?.title ?? data.id}
         </strong>
-        {data.pr && (
-          <span className="whitespace-nowrap">
-            {data.id.split('/').slice(0, 2).join('/')} #{data.pr.number}
+        {data.pr?.local ? (
+          <span title={data.pr.local.path} className="whitespace-nowrap">
+            {data.pr.local.path.split('/').pop()}
+            {data.pr.local.base && ` vs ${data.pr.local.base}`}, including uncommitted files
           </span>
+        ) : (
+          data.pr && (
+            <span className="whitespace-nowrap">
+              {data.id.split('/').slice(0, 2).join('/')} #{data.pr.number}
+            </span>
+          )
         )}
         <Kbd className="opacity-0 group-hover:opacity-100">⌘O</Kbd>
       </button>

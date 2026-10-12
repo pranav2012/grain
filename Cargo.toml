@@ -37,6 +37,7 @@ mime_guess = "2.0.5"
 rust-embed = "8.13.0"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing = "0.1.44"
+tempfile = "3.27.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

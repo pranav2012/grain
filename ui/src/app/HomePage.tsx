@@ -9,7 +9,7 @@ export function HomePage({ onOpen, onSettings }: { onOpen(id: string): void; onS
         <div className="flex items-center gap-[7px] text-sm font-semibold tracking-[-0.01em] text-chalk">
           <GrainGlyph /> grain
         </div>
-        <span>Pick a pull request to review, or paste any GitHub link.</span>
+        <span>Pick a pull request, paste a GitHub link, or self-review your local changes.</span>
         <Button className="ml-auto" onClick={onSettings}>
           Settings
         </Button>

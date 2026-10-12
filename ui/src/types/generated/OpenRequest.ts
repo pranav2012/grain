@@ -4,4 +4,8 @@ export type OpenRequest = {
 /**
  * A GitHub PR link, `owner/repo#123` or `owner/repo/123`.
  */
-pr: string, };
+pr: string, 
+/**
+ * Wait for new commits or local edits instead of showing the stored review right away.
+ */
+refresh: boolean, };

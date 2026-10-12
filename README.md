@@ -25,7 +25,10 @@ Then check your setup. Grain needs `git` and the GitHub CLI signed in (`gh auth 
 grain doctor
 grain                       # opens http://localhost:7420
 grain owner/repo#123        # straight to a PR
+grain .                     # self-review your branch plus uncommitted and new files
 ```
+
+Self-review reads your repository without changing it: Grain records your working tree as a commit object using its own index, so your branch, staging area and files stay untouched. When you edit files, the review offers to refresh and keeps the blocks you already checked.
 
 AI summaries are optional. Press `,` in the app to pick Claude Code, Codex or OpenCode if you have one installed.
 

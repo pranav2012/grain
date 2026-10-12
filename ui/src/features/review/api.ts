@@ -17,7 +17,8 @@ async function json<T>(r: Response): Promise<T | null> {
 }
 
 export const reviewApi = {
-  open: (pr: string) => post<OpenResponse>('/api/open', { pr }),
+  /** `refresh` waits for new commits or local edits instead of returning the stored review. */
+  open: (pr: string, refresh = false) => post<OpenResponse>('/api/open', { pr, refresh }),
   status: (id: string) => request<Status>(`/api/reviews/${id}/status`),
   summaries: (id: string) => request<Record<string, Summary>>(`/api/reviews/${id}/files/summaries.json`),
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),

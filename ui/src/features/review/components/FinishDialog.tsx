@@ -57,8 +57,10 @@ export function FinishDialog({ data, mode, states, comments, reviewable, onPoste
   const selfReview = mode === 'self'
   const effectiveEvent: ReviewEvent = selfReview ? 'COMMENT' : event
   const nothingToPost = !unposted.length && !overall.trim() && effectiveEvent === 'COMMENT'
+  const local = !!data.pr?.local
 
   useEffect(() => {
+    if (local) return
     let alive = true
     reviewApi.submit(data.id, buildSubmission(data, comments, effectiveEvent, overall, true)).then(
       (r) => alive && setPreview(r),
@@ -67,7 +69,7 @@ export function FinishDialog({ data, mode, states, comments, reviewable, onPoste
     return () => {
       alive = false
     }
-  }, [data, comments, effectiveEvent, overall])
+  }, [data, comments, effectiveEvent, overall, local])
 
   const post = () => {
     setPosting(true)
@@ -123,7 +125,11 @@ export function FinishDialog({ data, mode, states, comments, reviewable, onPoste
       {left > 0 && <p className="mb-3 leading-relaxed text-fog">{left} blocks are still unreviewed. You can finish now and come back to them later.</p>}
       {selfReview ? (
         <>
-          <p className="mb-3 leading-relaxed text-fog">Hand your notes to your coding agent as one prompt, or post them on the pull request as a comment.</p>
+          <p className="mb-3 leading-relaxed text-fog">
+            {local
+              ? 'Hand your notes to your coding agent as one prompt. Once you fix them, Grain offers to refresh and keeps the blocks you already checked.'
+              : 'Hand your notes to your coding agent as one prompt, or post them on the pull request as a comment.'}
+          </p>
           <textarea
             readOnly
             value={unposted.length ? agentPrompt(data, unposted) : 'No notes yet. Add notes with c, or select lines in the diff.'}
@@ -169,15 +175,18 @@ export function FinishDialog({ data, mode, states, comments, reviewable, onPoste
         <Button onClick={onClose}>Keep reviewing</Button>
         {selfReview && (
           <Button
+            variant={local ? 'primary' : undefined}
             disabled={!unposted.length}
             onClick={() => navigator.clipboard.writeText(agentPrompt(data, unposted)).then(() => setCopied(true))}
           >
             {copied ? 'Copied' : 'Copy prompt for agent'}
           </Button>
         )}
-        <Button variant="primary" onClick={post} disabled={posting || nothingToPost}>
-          {posting ? 'Posting…' : selfReview ? 'Post as PR comment' : postLabel[event]}
-        </Button>
+        {!local && (
+          <Button variant="primary" onClick={post} disabled={posting || nothingToPost}>
+            {posting ? 'Posting…' : selfReview ? 'Post as PR comment' : postLabel[event]}
+          </Button>
+        )}
       </div>
     </Dialog>
   )

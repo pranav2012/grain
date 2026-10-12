@@ -14,7 +14,8 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
 
-    /// Pull request to open: a GitHub link, owner/repo#123 or owner/repo/123.
+    /// What to review: a GitHub PR link, owner/repo#123, owner/repo/123, or a folder (`.`) to
+    /// self-review your branch and uncommitted changes.
     pr: Option<String>,
 
     /// Port for the local server.
@@ -99,12 +100,23 @@ async fn main() -> Result<()> {
     }
 
     let open_pr = match cli.pr.as_deref() {
-        Some(s) => {
-            Some(PrRef::parse(s).ok_or_else(|| anyhow::anyhow!("'{s}' is not a pull request link or owner/repo#123"))?)
-        }
+        Some(s) if std::path::Path::new(s).is_dir() => Some(grain_server::register_local(std::path::Path::new(s))?),
+        Some(s) => Some(
+            PrRef::parse(s)
+                .ok_or_else(|| anyhow::anyhow!("'{s}' is not a pull request link, owner/repo#123 or a folder"))?,
+        ),
         None => None,
     };
     let path = open_pr.as_ref().map(|p| format!("/?pr={}/{}", p.full_repo(), p.number)).unwrap_or_default();
+    // Grain is already running: hand it the review instead of failing to bind the port.
+    if doctor::grain_is_listening(cli.port) {
+        let url = format!("http://localhost:{}{path}", cli.port);
+        println!("Grain is already running at {url}");
+        if !cli.no_open {
+            let _ = open::that_detached(&url);
+        }
+        return Ok(());
+    }
     // GRAIN_UI_DIR serves a UI folder from disk instead of the embedded one (UI development).
     let ui_dir = std::env::var_os("GRAIN_UI_DIR").map(PathBuf::from);
     let opts = grain_server::Options { port: cli.port, ui_dir, open_pr };

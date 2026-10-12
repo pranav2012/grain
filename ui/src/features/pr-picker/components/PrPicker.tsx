@@ -1,21 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Kbd } from '@/components/ui/Kbd'
 import { cn } from '@/lib/cn'
 import { ago } from '@/lib/format'
-import { formatPrRef, parsePrRef } from '@/lib/pr-ref'
+import { formatPrRef, looksLikePath, parsePrRef } from '@/lib/pr-ref'
+import type { LocalCandidate } from '@/types/generated/LocalCandidate'
 import type { Inbox } from '@/types/generated/Inbox'
 import type { RecentReview } from '@/types/generated/RecentReview'
 import type { RepoSummary } from '@/types/generated/RepoSummary'
 import type { PrSummary } from '@/types/generated/PrSummary'
 import { pickerApi } from '../api'
 
-type Tab = 'requests' | 'mine' | 'recent' | 'browse'
+type Tab = 'requests' | 'mine' | 'recent' | 'browse' | 'local'
 
 const tabs: [Tab, string][] = [
   ['requests', 'Review requests'],
   ['mine', 'My pull requests'],
   ['recent', 'Recently opened'],
   ['browse', 'Browse repos'],
+  ['local', 'Local changes'],
 ]
 
 interface Row {
@@ -26,19 +28,21 @@ interface Row {
   run(): void
 }
 
-type PrLike = Pick<PrSummary, 'repo' | 'number' | 'title' | 'author'> & Partial<Pick<PrSummary, 'updatedAt' | 'isDraft'>>
+type PrLike = Pick<PrSummary, 'repo' | 'number' | 'title' | 'author'> &
+  Partial<Pick<PrSummary, 'updatedAt' | 'isDraft'>> & { localPath?: string | null }
 
-const cache: { inbox?: Inbox; recent?: RecentReview[] } = {}
+const cache: { inbox?: Inbox; recent?: RecentReview[]; local?: LocalCandidate[] } = {}
 
 interface PrPickerProps {
   variant: 'page' | 'dialog'
   onOpen(id: string): void
   onClose?(): void
+  initialTab?: Tab
 }
 
-/** Find a pull request: review requests, your own, recent, any repo, or a pasted link. */
-export function PrPicker({ variant, onOpen, onClose }: PrPickerProps) {
-  const [tab, setTab] = useState<Tab>('requests')
+/** Find something to review: review requests, your own PRs, recent, any repo, a pasted link, or local changes. */
+export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: PrPickerProps) {
+  const [tab, setTab] = useState<Tab>(initialTab)
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)
   const [inbox, setInbox] = useState<Inbox | null>(cache.inbox ?? null)
@@ -46,6 +50,7 @@ export function PrPicker({ variant, onOpen, onClose }: PrPickerProps) {
   const [repoResult, setRepoResult] = useState<{ query: string; rows: RepoSummary[] } | null>(null)
   const [repo, setRepo] = useState<string | null>(null)
   const [pullsResult, setPullsResult] = useState<{ repo: string; rows: PrSummary[] } | null>(null)
+  const [local, setLocal] = useState<LocalCandidate[] | null>(cache.local ?? null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -62,6 +67,9 @@ export function PrPicker({ variant, onOpen, onClose }: PrPickerProps) {
     return () => clearTimeout(t)
   }, [tab, repo, q])
   useEffect(() => {
+    if (tab === 'local') pickerApi.localRepos().then((v) => setLocal((cache.local = v)), (e: Error) => setError(e.message))
+  }, [tab])
+  useEffect(() => {
     if (!repo) return
     pickerApi.repoPulls(repo).then((rows) => setPullsResult({ repo, rows }), (e: Error) => setError(e.message))
   }, [repo])
@@ -69,8 +77,14 @@ export function PrPicker({ variant, onOpen, onClose }: PrPickerProps) {
   const repoPulls = repo && pullsResult?.repo === repo ? pullsResult.rows : null
 
   const pasted = parsePrRef(q)
+  const openLocal = useCallback(
+    (path: string) => pickerApi.openLocal(path).then((r) => onOpen(r.id), (e: Error) => setError(e.message)),
+    [onOpen],
+  )
   const { rows, loading } = useMemo((): { rows: Row[]; loading: boolean } => {
     if (pasted) return { rows: [{ key: 'pasted', title: `Open ${formatPrRef(pasted)}`, meta: 'Pasted link', run: () => onOpen(pasted) }], loading: false }
+    if (looksLikePath(q))
+      return { rows: [{ key: 'path', title: `Review local changes in ${q.trim()}`, meta: 'Your branch since it left the base branch, plus uncommitted and new files', run: () => openLocal(q.trim()) }], loading: false }
     const matches = (text: string) => q.toLowerCase().split(/\s+/).every((w) => text.toLowerCase().includes(w))
     const prRows = (xs: PrLike[] | null | undefined) => ({
       rows: (xs ?? [])
@@ -78,7 +92,7 @@ export function PrPicker({ variant, onOpen, onClose }: PrPickerProps) {
           (p): Row => ({
             key: `${p.repo}#${p.number}`,
             title: p.title,
-            meta: `${p.repo} #${p.number} by ${p.author}${p.updatedAt ? `, updated ${ago(p.updatedAt)}` : ''}`,
+            meta: p.localPath ? p.localPath : `${p.repo} #${p.number} by ${p.author}${p.updatedAt ? `, updated ${ago(p.updatedAt)}` : ''}`,
             draft: p.isDraft,
             run: () => onOpen(`${p.repo}/${p.number}`),
           }),
@@ -89,6 +103,20 @@ export function PrPicker({ variant, onOpen, onClose }: PrPickerProps) {
     if (tab === 'requests') return prRows(inbox?.reviewRequests)
     if (tab === 'mine') return prRows(inbox?.mine)
     if (tab === 'recent') return prRows(recent)
+    if (tab === 'local')
+      return {
+        rows: (local ?? [])
+          .map(
+            (r): Row => ({
+              key: r.path,
+              title: r.branch ? `${r.name} · ${r.branch}` : r.name,
+              meta: `${r.path}${r.activeAt ? `, active ${ago(new Date(r.activeAt * 1000).toISOString())}` : ''}`,
+              run: () => openLocal(r.path),
+            }),
+          )
+          .filter((r) => matches(`${r.title} ${r.meta}`)),
+        loading: !local,
+      }
     if (repo) return prRows(repoPulls)
     return {
       rows: (repos ?? []).map((r) => ({
@@ -103,7 +131,7 @@ export function PrPicker({ variant, onOpen, onClose }: PrPickerProps) {
       })),
       loading: !repos,
     }
-  }, [pasted, tab, inbox, recent, repos, repo, repoPulls, q, onOpen])
+  }, [pasted, tab, inbox, recent, local, repos, repo, repoPulls, q, onOpen, openLocal])
 
   const switchTab = (t: Tab) => {
     setTab(t)
@@ -124,7 +152,13 @@ export function PrPicker({ variant, onOpen, onClose }: PrPickerProps) {
       <input
         autoFocus
         value={q}
-        placeholder={tab === 'browse' && !repo ? 'Search repositories, or paste a pull request link' : 'Filter, or paste a pull request link'}
+        placeholder={
+          tab === 'browse' && !repo
+            ? 'Search repositories, or paste a pull request link'
+            : tab === 'local'
+              ? 'Filter, or type a folder path like ~/code/my-app'
+              : 'Filter, or paste a pull request link'
+        }
         className="w-full border-b border-seam bg-transparent px-4 py-3.5 text-[15px] outline-none"
         onChange={(e) => {
           setQ(e.target.value)
@@ -169,6 +203,7 @@ export function PrPicker({ variant, onOpen, onClose }: PrPickerProps) {
         </button>
       )}
       <ul role="listbox" className="max-h-[56vh] overflow-auto p-1.5">
+        {error && rows.length > 0 && <li className="px-2.5 py-2 text-coral">{error}</li>}
         {rows.map((r, i) => (
           <li
             key={r.key}
@@ -185,7 +220,7 @@ export function PrPicker({ variant, onOpen, onClose }: PrPickerProps) {
             <span className="text-xs text-fog">{r.meta}</span>
           </li>
         ))}
-        {loading && <li className="px-2.5 py-2 text-fog">Loading from GitHub…</li>}
+        {loading && <li className="px-2.5 py-2 text-fog">{tab === 'local' ? 'Looking for repositories…' : 'Loading from GitHub…'}</li>}
         {!loading && rows.length === 0 && (
           <li className="px-2.5 py-2 text-fog">
             {error ?? (q ? 'Nothing matches. Paste a full pull request link to open any PR.' : 'Nothing here right now.')}

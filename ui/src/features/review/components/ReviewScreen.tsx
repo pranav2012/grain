@@ -33,9 +33,11 @@ interface ReviewScreenProps {
   settingsVersion: number
   onSwitch(): void
   onSettings(): void
+  /** Re-prepares the review with the latest commits or local edits. */
+  onReload(): void
 }
 
-export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: ReviewScreenProps) {
+export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onReload }: ReviewScreenProps) {
   const viewer = base.pr?.viewer
   const [state, dispatch] = useReviewState(base, viewer && viewer === base.pr?.author.login ? 'self' : 'peer')
   const [prefs, setPrefs] = usePrefs()
@@ -220,7 +222,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
         />
       )}
       {overlay === 'help' && <ShortcutsDialog onClose={() => setOverlay(null)} />}
-      {status?.headSha && base.pr && status.headSha !== base.pr.headSha && <NewCommitsNotice onReload={() => location.reload()} />}
+      {status?.headSha && base.pr && status.headSha !== base.pr.headSha && <NewCommitsNotice local={!!base.pr.local} onReload={onReload} />}
     </div>
   )
 }

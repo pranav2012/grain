@@ -7,7 +7,19 @@ pub struct PrRef {
     pub number: u64,
 }
 
+/// Owner of reviews of local changes. Not a valid GitHub login, so it never clashes with a repo.
+pub const LOCAL_OWNER: &str = "~local";
+
 impl PrRef {
+    /// A review of uncommitted and unpushed work in a local repository.
+    pub fn local(id: &str) -> PrRef {
+        PrRef { owner: LOCAL_OWNER.into(), repo: id.into(), number: 0 }
+    }
+
+    pub fn is_local(&self) -> bool {
+        self.owner == LOCAL_OWNER
+    }
+
     pub fn full_repo(&self) -> String {
         format!("{}/{}", self.owner, self.repo)
     }

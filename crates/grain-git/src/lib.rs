@@ -37,6 +37,84 @@ pub fn run_with_input(dir: &Path, args: &[&str], input: &str) -> Result<String> 
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// Like [`run`], with extra environment variables (e.g. a private `GIT_INDEX_FILE`).
+pub fn run_env(dir: &Path, envs: &[(&str, &str)], args: &[&str]) -> Result<String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(dir).args(["-c", "core.quotepath=off"]).args(args);
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    let out = cmd.output()?;
+    if !out.status.success() {
+        bail!("git {}: {}", args.first().unwrap_or(&""), String::from_utf8_lossy(&out.stderr).trim());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Top-level folder of the repository containing `path`.
+pub fn toplevel(path: &Path) -> Result<std::path::PathBuf> {
+    Ok(std::path::PathBuf::from(run(path, &["rev-parse", "--show-toplevel"])?.trim()))
+}
+
+/// Current branch name, or `None` on a detached HEAD.
+pub fn current_branch(repo: &Path) -> Option<String> {
+    let b = run(repo, &["rev-parse", "--abbrev-ref", "HEAD"]).ok()?.trim().to_string();
+    (b != "HEAD" && !b.is_empty()).then_some(b)
+}
+
+/// The branch this work will merge into: the remote's default branch, else main or master.
+pub fn default_base(repo: &Path) -> Option<String> {
+    if let Ok(head) = run(repo, &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]) {
+        return Some(head.trim().to_string());
+    }
+    ["origin/main", "origin/master", "main", "master"]
+        .into_iter()
+        .find(|r| run(repo, &["rev-parse", "--verify", "--quiet", r]).is_ok())
+        .map(str::to_string)
+}
+
+/// Records the working tree (tracked changes plus untracked files, honoring .gitignore) as a
+/// commit on top of HEAD, using a private index so the repository's own index, branches and
+/// files are untouched (like `git stash create`). Fixed dates make it deterministic: the same
+/// files always give the same commit.
+pub fn snapshot_worktree(repo: &Path, private_index: &Path) -> Result<String> {
+    let Some(index) = private_index.to_str() else { bail!("index path is not valid UTF-8") };
+    let env = [
+        ("GIT_INDEX_FILE", index),
+        ("GIT_AUTHOR_NAME", "Grain"),
+        ("GIT_AUTHOR_EMAIL", "grain@localhost"),
+        ("GIT_COMMITTER_NAME", "Grain"),
+        ("GIT_COMMITTER_EMAIL", "grain@localhost"),
+        ("GIT_AUTHOR_DATE", "1970-01-01T00:00:00Z"),
+        ("GIT_COMMITTER_DATE", "1970-01-01T00:00:00Z"),
+    ];
+    if !private_index.exists() {
+        if let Some(parent) = private_index.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        run_env(repo, &env, &["read-tree", "HEAD"])?;
+    }
+    run_env(repo, &env, &["add", "-A"])?;
+    let tree = run_env(repo, &env, &["write-tree"])?.trim().to_string();
+    let head = run(repo, &["rev-parse", "HEAD"])?.trim().to_string();
+    Ok(run_env(repo, &env, &["commit-tree", &tree, "-p", &head, "-m", "Grain snapshot of local changes"])?
+        .trim()
+        .to_string())
+}
+
+/// Lines added and removed between two commits.
+pub fn shortstat(repo: &Path, base: &str, head: &str) -> (u64, u64, u64) {
+    let out = run(repo, &["diff", "--shortstat", base, head]).unwrap_or_default();
+    let num = |word: &str| {
+        out.split(',')
+            .find(|p| p.contains(word))
+            .and_then(|p| p.split_whitespace().next())
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0)
+    };
+    (num("file"), num("insertion"), num("deletion"))
+}
+
 /// True when `dir` already holds a clone (regular or bare).
 pub fn is_repo(dir: &Path) -> bool {
     dir.join(".git").exists() || dir.join("HEAD").exists()
@@ -139,7 +217,7 @@ pub fn diff(clone: &Path, base: &str, head: &str, paths: &[String]) -> Result<St
 
 #[cfg(test)]
 mod tests {
-    use super::sparse_pattern;
+    use super::{run, snapshot_worktree, sparse_pattern};
 
     #[test]
     fn sparse_patterns_match_exact_paths() {
@@ -147,5 +225,30 @@ mod tests {
         assert_eq!(sparse_pattern("src/[id]/page.tsx"), "/src/\\[id]/page.tsx");
         assert_eq!(sparse_pattern("a*b?.md"), "/a\\*b\\?.md");
         assert_eq!(sparse_pattern("!important.txt"), "/!important.txt");
+    }
+
+    #[test]
+    fn snapshot_records_local_changes_without_touching_the_repo() -> anyhow::Result<()> {
+        let tmp = tempfile::tempdir()?;
+        let repo = tmp.path().join("r");
+        std::fs::create_dir(&repo)?;
+        let git = |args: &[&str]| run(&repo, args);
+        git(&["init", "-q"])?;
+        std::fs::write(repo.join("a.txt"), "a\n")?;
+        std::fs::write(repo.join(".gitignore"), "*.log\n")?;
+        git(&["add", "."])?;
+        git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"])?;
+        std::fs::write(repo.join("a.txt"), "a\nb\n")?;
+        std::fs::write(repo.join("new.txt"), "new\n")?;
+        std::fs::write(repo.join("debug.log"), "noise\n")?;
+        let status_before = git(&["status", "--porcelain"])?;
+
+        let index = tmp.path().join("index");
+        let snap = snapshot_worktree(&repo, &index)?;
+        let files = git(&["diff", "--name-only", "HEAD", &snap])?;
+        assert_eq!(files.lines().collect::<Vec<_>>(), ["a.txt", "new.txt"]);
+        assert_eq!(git(&["status", "--porcelain"])?, status_before);
+        assert_eq!(snapshot_worktree(&repo, &index)?, snap, "same files give the same snapshot");
+        Ok(())
     }
 }

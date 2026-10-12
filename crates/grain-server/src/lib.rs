@@ -24,6 +24,11 @@ pub fn clean(everything: bool) -> CleanupReport {
     jobs::cleanup::run(&Home::locate(), everything, &|_| false)
 }
 
+/// Prepares a self-review of the local work in `path` and returns its review id.
+pub fn register_local(path: &std::path::Path) -> Result<PrRef> {
+    jobs::local::register(&Home::locate(), path)
+}
+
 /// Prefetch every 15 minutes and clean up every hour, starting shortly after launch.
 fn spawn_background(app: state::Shared) {
     tokio::spawn(async move {
@@ -62,7 +67,7 @@ pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
         let _ = grain_github::repos(None);
     });
     if let Some(pr) = &opts.open_pr {
-        app.open(pr.clone(), true);
+        app.open(pr.clone(), true, false);
     }
     spawn_background(app.clone());
     let router = match &opts.ui_dir {

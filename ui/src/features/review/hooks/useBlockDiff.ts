@@ -7,25 +7,26 @@ type FileIndex = Map<string, FileDiffMetadata | null>
 const cache = new Map<string, FileIndex>()
 const inflight = new Map<string, Promise<void>>()
 
-function indexFor(prId: string, since?: string): FileIndex {
-  const key = since ? `${prId}@${since}` : prId
+/** Cached per head commit too, so a refreshed review never shows an older diff. */
+function indexFor(prId: string, head: string, since?: string): FileIndex {
+  const key = `${prId}@${head}~${since ?? ''}`
   let idx = cache.get(key)
   if (!idx) cache.set(key, (idx = new Map()))
   return idx
 }
 
 /** Fetches and parses the diff sections for `files` that aren't cached yet. */
-function load(prId: string, files: string[], since?: string): Promise<void> {
-  const idx = indexFor(prId, since)
+function load(prId: string, head: string, files: string[], since?: string): Promise<void> {
+  const idx = indexFor(prId, head, since)
   const missing = files.filter((f) => !idx.has(f))
   if (!missing.length) return Promise.resolve()
-  const key = `${prId}|${since ?? ''}|${missing.join('\0')}`
+  const key = `${prId}|${head}|${since ?? ''}|${missing.join('\0')}`
   let p = inflight.get(key)
   if (!p) {
     p = reviewApi
       .diff(prId, missing, since)
       .then((text) => {
-        for (const patch of parsePatchFiles(text, `${prId}:${since ?? ''}:${missing[0]}`)) {
+        for (const patch of parsePatchFiles(text, `${prId}:${head}:${since ?? ''}:${missing[0]}`)) {
           for (const f of patch.files) {
             idx.set(f.name, f)
             if (f.prevName) idx.set(f.prevName, f)
@@ -44,22 +45,22 @@ function load(prId: string, files: string[], since?: string): Promise<void> {
  * The current block's parsed file diffs (loaded on demand, cached), and warms the next block.
  * With `since`, only what changed between that earlier head and now.
  */
-export function useBlockDiff(prId: string, files: string[], nextFiles: string[] | undefined, since?: string) {
-  const idx = indexFor(prId, since)
+export function useBlockDiff(prId: string, head: string, files: string[], nextFiles: string[] | undefined, since?: string) {
+  const idx = indexFor(prId, head, since)
   const ready = files.every((f) => idx.has(f))
   const [, setVersion] = useState(0)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
-    load(prId, files, since).then(
+    load(prId, head, files, since).then(
       () => alive && setVersion((v) => v + 1),
       (e: Error) => alive && setError(e.message),
     )
-    if (nextFiles) load(prId, nextFiles).catch(() => {})
+    if (nextFiles) load(prId, head, nextFiles).catch(() => {})
     return () => {
       alive = false
     }
-  }, [prId, files, nextFiles, since])
+  }, [prId, head, files, nextFiles, since])
   const diffs = ready ? files.map((f) => idx.get(f)).filter((f): f is FileDiffMetadata => !!f) : null
   return { diffs: diffs && [...new Set(diffs)], error }
 }

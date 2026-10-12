@@ -13,6 +13,11 @@ GitHub (via gh) ──► prepare job ──► grain-engine ──► review.js
                                                                only blocks near the reader)
 ```
 
+Local self-reviews (`grain .`) skip GitHub: `jobs/local.rs` snapshots the working tree into an
+unreferenced commit (private `GIT_INDEX_FILE`), diffs it against the merge base with the default
+branch, and feeds that range to the same engine. They are addressed as `~local/<folder-hash>/0`,
+so every review route works unchanged.
+
 ## Rust crates (`crates/`)
 
 Each crate has one job. Dependencies only point down this list; nothing depends on `grain` or `grain-server`.
