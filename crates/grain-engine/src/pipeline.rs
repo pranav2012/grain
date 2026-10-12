@@ -145,14 +145,12 @@ fn slice_limits(file: &str) -> (usize, usize) {
     if is_test_path(file) || file.to_ascii_lowercase().contains("fixture") { (1200, 600) } else { (400, 200) }
 }
 
+/// A group's units, and `(part, of)` when it is one part of a split file.
+type MemberSet = (Vec<usize>, Option<(usize, usize)>);
+
 /// Huge single-file groups (big rewrites, 10K-line test files) are cut into runs of whole
-/// entities in file order (sizes from [`slice_limits`]). Returns each member set with its
-/// `(part, of)` when it is one part of a split.
-fn split_huge_files(
-    groups: BTreeMap<usize, Vec<usize>>,
-    units: &Units,
-    changes: &[SemanticChange],
-) -> Vec<(Vec<usize>, Option<(usize, usize)>)> {
+/// entities in file order (sizes from [`slice_limits`]).
+fn split_huge_files(groups: BTreeMap<usize, Vec<usize>>, units: &Units, changes: &[SemanticChange]) -> Vec<MemberSet> {
     let mut member_sets = Vec::new();
     for members in groups.into_values() {
         let files: HashSet<&str> = members.iter().map(|&u| units.file(changes, u)).collect();

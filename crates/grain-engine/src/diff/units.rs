@@ -58,12 +58,10 @@ impl Units {
         match &self.items[u] {
             Unit::Entity(i) => {
                 let c = &changes[*i];
-                match c.change_type {
-                    ChangeType::Deleted => (vec![], vec![(c.start_line, c.end_line)]),
-                    _ => {
-                        let old = c.old_start_line.zip(c.old_end_line).into_iter().collect();
-                        (vec![(c.start_line, c.end_line)], old)
-                    }
+                if matches!(c.change_type, ChangeType::Deleted) {
+                    (vec![], vec![(c.start_line, c.end_line)])
+                } else {
+                    (vec![(c.start_line, c.end_line)], c.old_start_line.zip(c.old_end_line).into_iter().collect())
                 }
             }
             Unit::Residue(_) => {
@@ -144,6 +142,6 @@ mod tests {
     #[test]
     fn merges_overlapping_and_touching_ranges() {
         assert_eq!(merge_ranges(vec![(10, 12), (1, 3), (4, 5), (11, 20), (30, 30)]), [(1, 5), (10, 20), (30, 30)]);
-        assert!(merge_ranges(vec![]).is_empty());
+        assert_eq!(merge_ranges(vec![]), Vec::<(usize, usize)>::new());
     }
 }
