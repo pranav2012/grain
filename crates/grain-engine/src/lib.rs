@@ -491,7 +491,7 @@ pub fn analyze(repo: &Path, base: &str, head: &str) -> Result<Analysis> {
         })
         .filter(|b| b.lines > 0 || !b.entities.is_empty())
         .collect();
-    blocks.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)));
+    blocks.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)).then(a.key.cmp(&b.key)));
     for (i, b) in blocks.iter_mut().enumerate() {
         b.id = i + 1;
     }
@@ -840,7 +840,7 @@ fn build_chapters(blocks: &[BlockOut]) -> Vec<ChapterOut> {
             let first = segs(review[members[0]]);
             let dir = first[..depth.min(first.len())].join("/");
             // Name after the heaviest sub-area so sibling chapters don't share a title.
-            let mut area: HashMap<String, usize> = HashMap::new();
+            let mut area: BTreeMap<String, usize> = BTreeMap::new();
             for &i in &members {
                 let s = segs(review[i]);
                 let tail = s[depth.min(s.len())..].iter().take(2).cloned().collect::<Vec<_>>().join("/");
@@ -855,7 +855,7 @@ fn build_chapters(blocks: &[BlockOut]) -> Vec<ChapterOut> {
                 (false, false) => format!("{base} › {top}"),
             };
             let mut ids: Vec<&BlockOut> = members.iter().map(|&i| review[i]).collect();
-            ids.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)));
+            ids.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)).then(a.key.cmp(&b.key)));
             ChapterOut {
                 id: 0,
                 title,
@@ -866,7 +866,7 @@ fn build_chapters(blocks: &[BlockOut]) -> Vec<ChapterOut> {
             }
         })
         .collect();
-    out.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)));
+    out.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)).then(a.dir.cmp(&b.dir)).then(a.blocks.cmp(&b.blocks)));
     for (i, c) in out.iter_mut().enumerate() {
         c.id = i + 1;
     }
@@ -977,7 +977,7 @@ fn group_v2(
         }
     }
     let mut edges: Vec<((usize, usize), f64)> = w.into_iter().collect();
-    edges.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    edges.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
 
     let mut csize = size.clone();
     let merge = |uf: &mut Uf, a: usize, b: usize, cap: usize, csize: &mut Vec<usize>| -> bool {
@@ -1016,7 +1016,7 @@ fn group_v2(
                 }
             }
             let mut cands: Vec<(usize, f64)> = best.into_iter().collect();
-            cands.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            cands.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
             if cands.iter().any(|&(c, _)| merge(&mut uf, r, c, CAP * 3 / 2, &mut csize)) {
                 continue;
             }
@@ -1024,7 +1024,7 @@ fn group_v2(
             let my_dir = dir(&files[f]);
             let roots: Vec<usize> = (0..n).map(|g| uf.find(g)).collect();
             let mut sib: Vec<usize> = (0..n).filter(|&g| roots[g] != r && dir(&files[g]) == my_dir).map(|g| roots[g]).collect();
-            sib.sort_by_key(|&g| csize[g]);
+            sib.sort_by_key(|&g| (csize[g], g));
             sib.dedup();
             if sib.into_iter().any(|g| merge(&mut uf, r, g, CAP * 3 / 2, &mut csize)) {
                 continue;
@@ -1039,7 +1039,7 @@ fn group_v2(
                 })
                 .filter(|&(common, _, _)| common >= 1)
                 .collect();
-            near.sort_by(|a, b| b.0.cmp(&a.0).then(a.2.cmp(&b.2)));
+            near.sort_by(|a, b| b.0.cmp(&a.0).then(a.2.cmp(&b.2)).then(a.1.cmp(&b.1)));
             let _ = near.into_iter().any(|(_, g, _)| merge(&mut uf, r, g, CAP * 3 / 2, &mut csize));
         }
     }

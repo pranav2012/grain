@@ -29,11 +29,17 @@ fn ui_dir() -> PathBuf {
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("analyze") {
-        let [_, repo, base, head] = args.as_slice() else {
-            anyhow::bail!("usage: grain analyze <repo> <base> <head>");
+        let json = args.iter().any(|a| a == "--json");
+        let rest: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
+        let [_, repo, base, head] = rest.as_slice() else {
+            anyhow::bail!("usage: grain analyze <repo> <base> <head> [--json]");
         };
-        let a = grain_engine::analyze(std::path::Path::new(repo), base, head)?;
-        println!("{}", a.summary);
+        let a = grain_engine::analyze(std::path::Path::new(repo.as_str()), base, head)?;
+        if json {
+            println!("{}", serde_json::to_string_pretty(&a.review)?);
+        } else {
+            println!("{}", a.summary);
+        }
         return Ok(());
     }
 
