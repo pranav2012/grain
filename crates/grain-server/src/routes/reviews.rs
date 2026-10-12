@@ -178,3 +178,26 @@ pub(super) async fn submit(
     })
     .await
 }
+
+/// Saved review progress (verdicts, notes) for this PR; `null` when nothing was saved yet.
+pub(super) async fn get_progress(
+    State(app): State<Shared>,
+    Path(p): Path<(String, String, u64)>,
+) -> Json<serde_json::Value> {
+    Json(read_json(&app.home.review_dir(&pr_of(p)).join("progress.json")).unwrap_or(serde_json::Value::Null))
+}
+
+/// Replaces saved review progress. The UI owns its shape; the server only keeps it safe on disk.
+pub(super) async fn put_progress(
+    State(app): State<Shared>,
+    Path(p): Path<(String, String, u64)>,
+    Json(progress): Json<serde_json::Value>,
+) -> ApiResult<StatusCode> {
+    let dir = app.home.review_dir(&pr_of(p));
+    blocking(move || {
+        std::fs::create_dir_all(&dir)?;
+        grain_store::write_atomic(&dir.join("progress.json"), serde_json::to_string(&progress)?.as_bytes())?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+}

@@ -1,4 +1,5 @@
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
+import { reviewApi } from '../api'
 import type { BlockState, LoadedPr, Mode, ReviewComment } from '../model/types'
 
 /** A verdict on one block, tied to the exact content that was reviewed. */
@@ -72,12 +73,17 @@ function migrate(saved: LegacyState, data: LoadedPr): ReviewState {
   return { v: 2, mode: saved.mode, currentKey, verdicts, comments }
 }
 
-/** Review progress persisted per PR in localStorage, so closing the tab never loses work. */
+/**
+ * Review progress, saved in Grain's data folder so it survives browser changes and restarts.
+ * Progress that only exists in this browser (from before) is imported once.
+ */
 export function useReviewState(data: LoadedPr, defaultMode: Mode) {
-  const key = `grain:review:${data.id}`
+  const legacyKey = `grain:review:${data.id}`
   const [state, dispatch] = useReducer(reducer, undefined, (): ReviewState => {
+    const fromServer = data.progress as ReviewState | null
+    if (fromServer?.v === 2) return fromServer
     try {
-      const saved = JSON.parse(localStorage.getItem(key) ?? 'null')
+      const saved = JSON.parse(localStorage.getItem(legacyKey) ?? 'null')
       if (saved?.v === 2) return saved as ReviewState
       if (saved) return migrate(saved as LegacyState, data)
     } catch {
@@ -85,8 +91,20 @@ export function useReviewState(data: LoadedPr, defaultMode: Mode) {
     }
     return { v: 2, mode: defaultMode, currentKey: null, verdicts: {}, comments: [] }
   })
+  const first = useRef(true)
   useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(state))
-  }, [key, state])
+    // The first save also imports browser-only progress; later saves are debounced.
+    const delay = first.current ? 0 : 400
+    first.current = false
+    const t = setTimeout(
+      () =>
+        reviewApi.saveProgress(data.id, state).then(
+          () => localStorage.removeItem(legacyKey),
+          () => localStorage.setItem(legacyKey, JSON.stringify(state)),
+        ),
+      delay,
+    )
+    return () => clearTimeout(t)
+  }, [data.id, legacyKey, state])
   return [state, dispatch] as const
 }

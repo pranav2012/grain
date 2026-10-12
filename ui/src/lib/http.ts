@@ -6,7 +6,7 @@ export async function request<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error(offline)
   })
   if (r.status === 502 || r.status === 504) throw new Error(offline)
-  const body = r.status === 202 ? null : await r.json().catch(() => null)
+  const body = r.status === 202 || r.status === 204 ? null : await r.json().catch(() => null)
   if (!r.ok) throw new Error(body?.error ?? `Request failed (${r.status})`)
   return body as T
 }

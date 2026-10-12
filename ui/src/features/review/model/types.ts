@@ -38,6 +38,8 @@ export interface LoadedPr {
   /** Agent summaries keyed by block content key. */
   summaries: Record<string, Summary>
   pr: PrMeta | null
+  /** Review progress saved on the server (shape owned by `useReviewState`), if any. */
+  progress: unknown
   blocks: Map<number, Block>
 }
 

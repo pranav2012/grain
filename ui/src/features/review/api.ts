@@ -26,6 +26,7 @@ export const reviewApi = {
   setLocalRepo: (fullRepo: string, path: string | null) => put<LocalRepo>(`/api/repos/${fullRepo}/local`, { path }),
   submit: (id: string, req: SubmitRequest) => post<SubmitResponse>(`/api/reviews/${id}/submit`, req),
   conversation: (id: string) => request<Conversation>(`/api/reviews/${id}/conversation`),
+  saveProgress: (id: string, progress: unknown) => put<null>(`/api/reviews/${id}/progress`, progress),
   review: (id: string) => request<Review>(`/api/reviews/${id}/files/review.json`),
   /** Unified diff sections for just these files. */
   diff: (id: string, files: string[], since?: string) =>
@@ -40,15 +41,16 @@ export const reviewApi = {
 
 /** Loads a prepared PR (`owner/repo/123`). Diffs are fetched per block, never all at once. */
 export async function loadPr(id: string): Promise<LoadedPr> {
-  const [review, summaries, pr] = await Promise.all([
+  const [review, summaries, pr, progress] = await Promise.all([
     file(id, 'review.json').then((r) => json<Review>(r)),
     file(id, 'summaries.json').then((r) => json<Record<string, Summary>>(r)),
     file(id, 'pr.json').then((r) => json<PrMeta>(r)),
+    request<unknown>(`/api/reviews/${id}/progress`).catch(() => null),
   ])
   if (!review) throw new Error(`"${id}" hasn't been prepared yet.`)
-  return withReview({ id, summaries: summaries ?? {}, pr }, review)
+  return withReview({ id, summaries: summaries ?? {}, pr, progress }, review)
 }
 
-export function withReview(base: Pick<LoadedPr, 'id' | 'summaries' | 'pr'>, review: Review): LoadedPr {
+export function withReview(base: Pick<LoadedPr, 'id' | 'summaries' | 'pr' | 'progress'>, review: Review): LoadedPr {
   return { ...base, review, blocks: new Map(review.blocks.map((b) => [b.id, b])) }
 }
