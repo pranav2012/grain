@@ -13,7 +13,8 @@ import type { CommentKind, LoadedPr, Mode, ReviewComment } from '../model/types'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
 import { BlockView } from './BlockView'
-import { ContextPanel } from './ContextPanel'
+import { BlockMap } from './BlockMap'
+import { ContextPanel, type PanelTab } from './ContextPanel'
 import { FinishDialog } from './FinishDialog'
 import { GrainMap } from './GrainMap'
 import { KeyHints } from './KeyHints'
@@ -43,6 +44,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const [prefs, setPrefs] = usePrefs()
   const [overlay, setOverlay] = useState<'palette' | 'finish' | 'help' | null>(null)
   const [showContext, setShowContext] = useState(true)
+  const [panelTab, setPanelTab] = useState<PanelTab>('block')
   const [composing, setComposing] = useState<CommentKind | null>(null)
   const copy = modes[state.mode]
 
@@ -75,6 +77,10 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const setMode = (mode: Mode) => dispatch({ type: 'mode', mode })
   const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
   const toggleMineFirst = () => setPrefs((p) => ({ ...p, mineFirst: !p.mineFirst }))
+  const toggleMap = () => {
+    setShowContext(true)
+    setPanelTab((t) => (showContext && t === 'map' ? 'block' : 'map'))
+  }
   const compose = (kind: CommentKind) => {
     setShowContext(true)
     setComposing(kind)
@@ -100,6 +106,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     c: () => compose(copy.kinds[0][0]),
     s: toggleDiffStyle,
     m: () => owned.size && toggleMineFirst(),
+    g: toggleMap,
     a: () => {
       if (agentName) summarizeCurrent()
       else onSettings()
@@ -137,6 +144,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     ...(owned.size
       ? [{ id: 'mine-first', label: prefs.mineFirst ? 'Show blocks in normal order' : 'Show your code first (CODEOWNERS)', hint: 'm', run: toggleMineFirst }]
       : []),
+    { id: 'map', label: panelTab === 'map' && showContext ? 'Show block details' : 'Show the map of linked blocks', hint: 'g', run: toggleMap },
     { id: 'context', label: showContext ? 'Hide context panel' : 'Show context panel', hint: ']', run: () => setShowContext((v) => !v) },
     ...order.map((id) => ({ id: `b${id}`, label: blockTitle(data, data.blocks.get(id)!), hint: sections.find((s) => s.blocks.includes(id))?.title, run: () => go(id) })),
   ]
@@ -203,6 +211,18 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             onCompose={setComposing}
             onComment={addComment}
             onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
+            tab={panelTab}
+            onTab={setPanelTab}
+            map={
+              <BlockMap
+                data={data}
+                current={current}
+                states={states}
+                stale={stale}
+                chapterOf={(id) => sections.find((s) => s.chapterId !== undefined && s.blocks.includes(id))?.title}
+                onGo={go}
+              />
+            }
           />
         ) : (
           <div />

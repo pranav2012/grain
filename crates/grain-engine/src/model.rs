@@ -15,6 +15,19 @@ pub struct Review {
     pub total_lines: usize,
     /// False after a fast first pass: outside-usage facts are still being computed.
     pub complete: bool,
+    /// Which blocks use which, for the map.
+    pub links: Vec<BlockLink>,
+}
+
+/// Code changed in block `from` uses code changed in block `to`.
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BlockLink {
+    pub from: usize,
+    pub to: usize,
+    /// How many changed entities connect them.
+    pub weight: usize,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]

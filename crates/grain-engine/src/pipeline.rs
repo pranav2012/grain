@@ -21,7 +21,7 @@ use crate::facts::usage::{UsageProvider, name_position};
 use crate::grouping::blocks::{block_dir, block_key, stable_hash};
 use crate::grouping::chapters::build_chapters;
 use crate::grouping::cluster::group_v2;
-use crate::model::{Analysis, Block, EntityChange, Review, Risk, Slice};
+use crate::model::{Analysis, Block, BlockLink, EntityChange, Review, Risk, Slice};
 
 /// How much of the repository the analysis may read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,14 +126,14 @@ pub fn analyze_with_usage(
         still_mentioned: &still_mentioned,
         hunks: &hunks,
     };
-    let mut blocks: Vec<Block> = member_sets
+    let mut blocks: Vec<(Block, &Vec<usize>)> = member_sets
         .iter()
-        .map(|(m, part)| assemble_block(&ctx, m, *part))
-        .filter(|b| b.lines > 0 || !b.entities.is_empty())
+        .map(|(m, part)| (assemble_block(&ctx, m, *part), m))
+        .filter(|(b, _)| b.lines > 0 || !b.entities.is_empty())
         .collect();
     // Parts of a split file sort as one unit (by their combined size), in part order.
     let mut split_lines: HashMap<String, usize> = HashMap::new();
-    for b in blocks.iter().filter(|b| b.slice.is_some()) {
+    for (b, _) in blocks.iter().filter(|(b, _)| b.slice.is_some()) {
         *split_lines.entry(b.files[0].clone()).or_default() += b.lines;
     }
     let sort_key = |b: &Block| {
@@ -145,16 +145,48 @@ pub fn analyze_with_usage(
             b.slice.as_ref().map(|s| s.part),
         )
     };
-    blocks.sort_by(|a, b| sort_key(a).cmp(&sort_key(b)).then(a.key.cmp(&b.key)));
-    for (i, b) in blocks.iter_mut().enumerate() {
+    blocks.sort_by(|(a, _), (b, _)| sort_key(a).cmp(&sort_key(b)).then(a.key.cmp(&b.key)));
+    for (i, (b, _)) in blocks.iter_mut().enumerate() {
         b.id = i + 1;
     }
+    let links = block_links(&blocks, &units, &changes, &graph);
+    let blocks: Vec<Block> = blocks.into_iter().map(|(b, _)| b).collect();
     let chapters = build_chapters(&blocks);
     let skim: Vec<usize> = blocks.iter().filter(|b| b.skim.is_some()).map(|b| b.id).collect();
 
     let summary = summarize(&timings, &units, &blocks, &chapters, &skim, &graph_files, &changes, &graph);
     let complete = depth == Depth::Complete;
-    Ok(Analysis { review: Review { chapters, skim, blocks, total_lines: units.total_lines, complete }, summary })
+    Ok(Analysis { review: Review { chapters, skim, blocks, links, total_lines: units.total_lines, complete }, summary })
+}
+
+/// Which blocks use which: an edge `from → to` when code changed in `from` depends on code
+/// changed in `to` (from the graph over changed files). Sorted, so output stays deterministic.
+fn block_links(
+    blocks: &[(Block, &Vec<usize>)],
+    units: &Units,
+    changes: &[SemanticChange],
+    graph: &EntityGraph,
+) -> Vec<BlockLink> {
+    let mut block_of: HashMap<&str, usize> = HashMap::new();
+    for (b, members) in blocks {
+        for &u in *members {
+            if let Unit::Entity(i) = units.items[u] {
+                block_of.insert(changes[i].entity_id.as_str(), b.id);
+            }
+        }
+    }
+    let dependents = graph.dependents();
+    let mut weights: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+    for (&entity, &to) in &block_of {
+        for dep in dependents.get(entity).into_iter().flatten() {
+            if let Some(&from) = block_of.get(dep.as_str())
+                && from != to
+            {
+                *weights.entry((from, to)).or_default() += 1;
+            }
+        }
+    }
+    weights.into_iter().map(|((from, to), weight)| BlockLink { from, to, weight }).collect()
 }
 
 /// `(split above, part size)` in changed lines. Code is cut finer than tests and fixtures,
