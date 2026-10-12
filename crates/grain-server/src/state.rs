@@ -33,6 +33,8 @@ pub(crate) struct App {
     /// PRs whose review is open but whose whole-repo facts are still being computed.
     pub(crate) enriching: Mutex<HashSet<PrRef>>,
     pub(crate) patches: crate::patch_index::PatchCache,
+    /// Identifies the running binary, so a newer `grain` can tell it's outdated.
+    pub(crate) build: String,
     /// Latest working-tree snapshot per local review, re-taken at most every few seconds.
     local_heads: Mutex<HashMap<PrRef, (Instant, String)>>,
 }
@@ -55,7 +57,7 @@ pub(crate) fn guarded<T>(what: &str, f: impl FnOnce() -> anyhow::Result<T>) -> a
 }
 
 impl App {
-    pub(crate) fn new(home: Home) -> Shared {
+    pub(crate) fn new(home: Home, build: String) -> Shared {
         let settings = home.load_settings();
         Arc::new(App {
             home,
@@ -68,6 +70,7 @@ impl App {
             enriching: Mutex::new(HashSet::new()),
             patches: crate::patch_index::PatchCache::default(),
             local_heads: Mutex::new(HashMap::new()),
+            build,
         })
     }
 

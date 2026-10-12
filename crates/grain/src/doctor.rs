@@ -173,18 +173,41 @@ fn check_home() -> Check {
     }
 }
 
-/// True when the process listening on `port` answers like a Grain server.
-pub(crate) fn grain_is_listening(port: u16) -> bool {
+/// Sends a raw HTTP/1.0 request to the local server and returns the whole response.
+fn local_http(port: u16, request: &str) -> Option<String> {
     use std::io::{Read, Write};
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)) else {
-        return false;
-    };
+    let mut stream = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)).ok()?;
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(800)));
-    let _ = stream.write_all(b"GET /api/settings HTTP/1.0\r\nHost: localhost\r\n\r\n");
-    let mut body = String::new();
-    let _ = stream.read_to_string(&mut body);
-    body.contains("maxSummariesPerReview")
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut response = String::new();
+    let _ = stream.read_to_string(&mut response);
+    Some(response)
+}
+
+/// True when the process listening on `port` answers like a Grain server.
+pub(crate) fn grain_is_listening(port: u16) -> bool {
+    local_http(port, "GET /api/settings HTTP/1.0\r\nHost: localhost\r\n\r\n")
+        .is_some_and(|r| r.contains("maxSummariesPerReview"))
+}
+
+/// The build id of the Grain listening on `port`; `None` for builds from before `/api/version`.
+pub(crate) fn running_build(port: u16) -> Option<String> {
+    let response = local_http(port, "GET /api/version HTTP/1.0\r\nHost: localhost\r\n\r\n")?;
+    let body = response.split_once("\r\n\r\n")?.1;
+    serde_json::from_str::<serde_json::Value>(body).ok()?["build"].as_str().map(str::to_string)
+}
+
+/// Asks the Grain on `port` to stop and waits for the port to free up.
+pub(crate) fn replace_running(port: u16) -> bool {
+    let request = "POST /api/shutdown HTTP/1.0\r\nHost: localhost\r\nx-grain-cli: 1\r\nContent-Length: 0\r\n\r\n";
+    if !local_http(port, request).is_some_and(|r| r.starts_with("HTTP/1.0 202") || r.starts_with("HTTP/1.1 202")) {
+        return false;
+    }
+    (0..50).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).is_ok()
+    })
 }
 
 fn check_port(port: u16) -> Check {

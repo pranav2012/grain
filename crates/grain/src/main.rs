@@ -58,6 +58,17 @@ enum Command {
     },
 }
 
+/// Identifies this exact binary: the version plus when the executable was built.
+fn build_id() -> String {
+    let built = std::env::current_exe()
+        .and_then(|p| p.metadata())
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_secs());
+    format!("{}+{built}", env!("CARGO_PKG_VERSION"))
+}
+
 #[tokio::main]
 #[allow(clippy::print_stdout, reason = "the CLI's output")]
 async fn main() -> Result<()> {
@@ -118,18 +129,30 @@ async fn main() -> Result<()> {
         None => None,
     };
     let path = open_pr.as_ref().map(|p| format!("/?pr={}/{}", p.full_repo(), p.number)).unwrap_or_default();
-    // Grain is already running: hand it the review instead of failing to bind the port.
+    // Grain is already running: hand it the review if it's this same build; replace an older
+    // build so its outdated server never serves this build's UI.
+    let build = build_id();
     if doctor::grain_is_listening(cli.port) {
-        let url = format!("http://localhost:{}{path}", cli.port);
-        println!("Grain is already running at {url}");
-        if !cli.no_open {
-            let _ = open::that_detached(&url);
+        if doctor::running_build(cli.port).as_deref() == Some(build.as_str()) {
+            let url = format!("http://localhost:{}{path}", cli.port);
+            println!("Grain is already running at {url}");
+            if !cli.no_open {
+                let _ = open::that_detached(&url);
+            }
+            return Ok(());
         }
-        return Ok(());
+        println!("Replacing the older Grain running on port {}…", cli.port);
+        if !doctor::replace_running(cli.port) {
+            println!(
+                "An older Grain is still running on port {} and can't be stopped from here. Stop it (Ctrl+C in its terminal), then run grain again.",
+                cli.port
+            );
+            std::process::exit(1);
+        }
     }
     // GRAIN_UI_DIR serves a UI folder from disk instead of the embedded one (UI development).
     let ui_dir = std::env::var_os("GRAIN_UI_DIR").map(PathBuf::from);
-    let opts = grain_server::Options { port: cli.port, ui_dir, open_pr };
+    let opts = grain_server::Options { port: cli.port, ui_dir, open_pr, build };
     grain_server::serve(opts, |base| {
         let url = format!("{base}{path}");
         println!("Grain is running at {url}");

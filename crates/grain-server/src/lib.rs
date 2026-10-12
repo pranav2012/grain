@@ -57,11 +57,13 @@ pub struct Options {
     pub ui_dir: Option<PathBuf>,
     /// Start preparing this PR right away.
     pub open_pr: Option<PrRef>,
+    /// Identifies this binary (see `/api/version`).
+    pub build: String,
 }
 
 /// Binds to localhost and serves until the process exits. `on_ready` receives the base URL.
 pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
-    let app = state::App::new(Home::locate());
+    let app = state::App::new(Home::locate(), opts.build.clone());
     // Warm GitHub lookups so the switcher's lists and repo search are instant.
     tokio::task::spawn_blocking(|| {
         let _ = grain_github::repos(None);
