@@ -36,11 +36,12 @@ pub(crate) fn prepare(
     let prev_head = prev.as_ref().and_then(|v| v["headSha"].as_str().map(str::to_string));
     let same_format =
         prev.as_ref().and_then(|v| v["reviewFormat"].as_u64()) == Some(u64::from(grain_engine::REVIEW_FORMAT));
-    if same_format && prev_head.as_deref() == Some(details.head_sha.as_str()) {
-        if let Some(review) = read_json(&out_dir.join("review.json")) {
-            write_pr_json(&out_dir, &details, viewer, settings, None)?;
-            return Ok(if review["complete"] == true { Next::Done } else { Next::Enrich });
-        }
+    if same_format
+        && prev_head.as_deref() == Some(details.head_sha.as_str())
+        && let Some(review) = read_json(&out_dir.join("review.json"))
+    {
+        write_pr_json(&out_dir, &details, viewer, settings, None)?;
+        return Ok(if review["complete"] == true { Next::Done } else { Next::Enrich });
     }
 
     let clone = home.clone_dir(pr);

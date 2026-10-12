@@ -104,6 +104,6 @@ diff --git a/img.png b/img.png\nBinary files a/img.png and b/img.png differ\n";
         assert_eq!(idx.sections(&["old.ts".into()]), idx.sections(&["new.ts".into()]));
         assert!(idx.sections(&["img.png".into()]).starts_with("diff --git a/img.png"));
         assert_eq!(idx.sections(&["src/a.ts".into(), "src/a.ts".into()]).matches("diff --git").count(), 1);
-        assert!(idx.sections(&["missing.ts".into()]).is_empty());
+        assert_eq!(idx.sections(&["missing.ts".into()]), "");
     }
 }
