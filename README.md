@@ -9,15 +9,15 @@ Everything runs on your machine. GitHub access goes through your `gh` login.
 
 ## Install
 
-> Not published yet. These commands work after the first release; see [RELEASING.md](RELEASING.md).
-
 ```bash
 brew install pranav2012/tap/grain                                                        # Homebrew
 curl -LsSf https://github.com/pranav2012/grain/releases/latest/download/grain-installer.sh | sh   # macOS, Linux
 npm i -g grain-ci     # or: pnpm add -g grain-ci · yarn global add grain-ci · bun add -g grain-ci
 ```
 
-Windows: `powershell -c "irm https://github.com/pranav2012/grain/releases/latest/download/grain-installer.ps1 | iex"`
+Or run it once without installing: `npx grain-ci` (also `pnpm dlx grain-ci`, `bunx grain-ci`).
+
+Windows (untested so far): `powershell -c "irm https://github.com/pranav2012/grain/releases/latest/download/grain-installer.ps1 | iex"`
 
 Then check your setup. Grain needs `git` and the GitHub CLI signed in (`gh auth login`); `grain doctor` says exactly what's missing and how to fix it:
 
