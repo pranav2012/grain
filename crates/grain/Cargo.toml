@@ -1,0 +1,17 @@
+[package]
+name = "grain"
+description = "Local-first semantic code review"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+grain-engine = { path = "../grain-engine" }
+grain-agent = { path = "../grain-agent" }
+grain-github = { path = "../grain-github" }
+axum = "0.8.9"
+tower-http = { version = "0.7.1", features = ["fs"] }

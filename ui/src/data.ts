@@ -1,4 +1,5 @@
 import { parsePatchFiles, type FileDiffMetadata } from '@pierre/diffs'
+import { api } from './api'
 import type { Block, Mode, PrMeta, Review, Risk, Summary } from './types'
 
 export interface LoadedPr {
@@ -10,20 +11,20 @@ export interface LoadedPr {
   blocks: Map<number, Block>
 }
 
-async function json<T>(url: string): Promise<T | null> {
-  const r = await fetch(url)
+async function json<T>(r: Response): Promise<T | null> {
   if (!r.ok || !r.headers.get('content-type')?.includes('json')) return null
   return (await r.json()) as T
 }
 
+/** Loads a prepared PR (`owner/repo/123`) from the local Grain server. */
 export async function loadPr(name: string): Promise<LoadedPr> {
   const [review, summaries, pr, patch] = await Promise.all([
-    json<Review>(`/data/${name}.review.json`),
-    json<Record<string, Summary>>(`/data/${name}.summaries.json`),
-    json<PrMeta>(`/data/${name}.pr.json`),
-    fetch(`/data/${name}.patch`).then((r) => (r.ok ? r.text() : '')),
+    api.file(name, 'review.json').then((r) => json<Review>(r)),
+    api.file(name, 'summaries.json').then((r) => json<Record<string, Summary>>(r)),
+    api.file(name, 'pr.json').then((r) => json<PrMeta>(r)),
+    api.file(name, 'diff.patch').then((r) => (r.ok ? r.text() : '')),
   ])
-  if (!review) throw new Error(`No review data for "${name}". Run spikes/try.sh for this PR first.`)
+  if (!review) throw new Error(`"${name}" hasn't been prepared yet.`)
   const files = new Map<string, FileDiffMetadata>()
   for (const p of parsePatchFiles(patch, name)) {
     for (const f of p.files) {

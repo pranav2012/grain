@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { WorkerPoolContextProvider } from '@pierre/diffs/react'
 import WorkerUrl from '@pierre/diffs/worker/worker.js?worker&url'
+import { api } from './api'
+import { SettingsDialog } from './components/SettingsDialog'
+import { Switcher } from './components/Switcher'
 import { agentName as agentNameOf, blockTitle, formatMinutes, loadPr, minutesFor, sectionsFor, type LoadedPr } from './data'
 import { modes } from './modes'
 import { usePrefs, useReviewState } from './store'
@@ -15,25 +18,105 @@ import { Outline } from './components/Outline'
 
 const poolOptions = { workerFactory: () => new Worker(WorkerUrl, { type: 'module' }) }
 const highlighterOptions = { theme: { dark: 'pierre-dark', light: 'pierre-light' } } as const
-const prName = new URLSearchParams(location.search).get('pr') ?? ''
+
+function readRoute(): string | null {
+  return new URLSearchParams(location.search).get('pr')
+}
 
 export default function App() {
-  const [data, setData] = useState<LoadedPr | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [pr, setPr] = useState<string | null>(readRoute)
+  const [switcher, setSwitcher] = useState(false)
+  const [settings, setSettings] = useState(false)
+  const [settingsVersion, setSettingsVersion] = useState(0)
   useEffect(() => {
-    if (!prName) return setError('Open a PR with ?pr=<name>, or run spikes/try.sh <owner/repo> <number>.')
-    loadPr(prName).then(setData, (e: Error) => setError(e.message))
+    const onPop = () => setPr(readRoute())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
   }, [])
-  if (error) return <div className="empty" style={{ marginTop: '30vh' }}>{error}</div>
-  if (!data) return <div className="empty" style={{ marginTop: '30vh' }}>Grouping the pull request…</div>
+  const openPr = (id: string) => {
+    setSwitcher(false)
+    history.pushState(null, '', `?pr=${id}`)
+    setPr(id)
+  }
   return (
     <WorkerPoolContextProvider poolOptions={poolOptions} highlighterOptions={highlighterOptions}>
-      <Review data={data} />
+      {pr ? (
+        <PrLoader key={pr} id={pr} settingsVersion={settingsVersion} onSwitch={() => setSwitcher(true)} onSettings={() => setSettings(true)} />
+      ) : (
+        <div className="home-wrap">
+          <header className="home-head">
+            <div className="wordmark">
+              <GrainGlyph /> grain
+            </div>
+            <span>Pick a pull request to review, or paste any GitHub link.</span>
+            <button className="btn" onClick={() => setSettings(true)}>
+              Settings
+            </button>
+          </header>
+          <Switcher asPage onOpen={openPr} />
+        </div>
+      )}
+      {switcher && <Switcher onOpen={openPr} onClose={() => setSwitcher(false)} />}
+      {settings && <SettingsDialog onClose={() => setSettings(false)} onSaved={() => setSettingsVersion((v) => v + 1)} />}
     </WorkerPoolContextProvider>
   )
 }
 
-function Review({ data }: { data: LoadedPr }) {
+/** Asks the server to prepare the PR (cheap if unchanged), shows progress, then loads it. */
+function PrLoader({ id, settingsVersion, onSwitch, onSettings }: { id: string; settingsVersion: number; onSwitch(): void; onSettings(): void }) {
+  const [data, setData] = useState<LoadedPr | null>(null)
+  const [message, setMessage] = useState('Opening the pull request')
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      try {
+        const st = await api.status(id)
+        if (!alive) return
+        if (st.job.stage === 'preparing') {
+          setMessage(st.job.message)
+          timer = setTimeout(poll, 700)
+        } else if (st.job.stage === 'failed') setError(st.job.message)
+        else setData(await loadPr(id))
+      } catch (e) {
+        if (alive) setError((e as Error).message)
+      }
+    }
+    api.open(id).then(poll, (e: Error) => setError(e.message))
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [id])
+  if (!data)
+    return (
+      <div className="loading">
+        <GrainGlyph />
+        <h1>{id.replace(/\/(\d+)$/, ' #$1')}</h1>
+        {error ? (
+          <>
+            <p className="error-text">{error}</p>
+            <button className="btn" onClick={onSwitch}>
+              Open another pull request
+            </button>
+          </>
+        ) : (
+          <p>{message}…</p>
+        )}
+      </div>
+    )
+  return <Review base={data} settingsVersion={settingsVersion} onSwitch={onSwitch} onSettings={onSettings} />
+}
+
+function Review({ base, settingsVersion, onSwitch, onSettings }: { base: LoadedPr; settingsVersion: number; onSwitch(): void; onSettings(): void }) {
+  const [summaries, setSummaries] = useState(base.summaries)
+  const [agent, setAgent] = useState(base.pr?.agent ?? null)
+  const [summaryNote, setSummaryNote] = useState<string | null>(null)
+  const summariesRef = useRef(summaries)
+  summariesRef.current = summaries
+  const data = useMemo(() => ({ ...base, summaries, pr: base.pr && { ...base.pr, agent } }), [base, summaries, agent])
+
   const viewer = data.pr?.viewer
   const [prefs, setPrefs] = usePrefs()
   const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
@@ -53,6 +136,34 @@ function Review({ data }: { data: LoadedPr }) {
   const block = data.blocks.get(current)!
   const section = sections.find((s) => s.blocks.includes(current))!
   const blockComments = state.comments.filter((c) => c.blockId === current)
+
+  const agentOn = !!data.pr?.agent
+  useEffect(() => {
+    if (!agentOn) return
+    const i = order.indexOf(current)
+    const keys = order
+      .slice(i, i + 3)
+      .map((id) => data.blocks.get(id)!)
+      .filter((b) => !b.skim && !summaries[b.key])
+      .map((b) => b.key)
+    if (keys.length) api.summarize(data.name, keys).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, agentOn])
+  useEffect(() => {
+    const tick = async () => {
+      const st = await api.status(data.name).catch(() => null)
+      if (!st) return
+      setAgent(st.agent)
+      if (!st.agent) return setSummaryNote(null)
+      const sm = st.summarizer
+      setSummaryNote(sm?.stopped ?? (sm?.running ? 'Summarizing the next blocks' : null))
+      const latest = await api.summaries(data.name).catch(() => null)
+      if (latest && Object.keys(latest).length !== Object.keys(summariesRef.current).length) setSummaries(latest)
+    }
+    tick()
+    const t = setInterval(tick, 3000)
+    return () => clearInterval(t)
+  }, [data.name, settingsVersion])
 
   const go = (id: number | undefined) => id !== undefined && dispatch({ type: 'go', id })
   const step = (d: number) => go(order[Math.min(order.length - 1, Math.max(0, order.indexOf(current) + d))])
@@ -93,12 +204,19 @@ function Review({ data }: { data: LoadedPr }) {
     s: toggleDiffStyle,
     '?': () => setHelp((v) => !v),
     Enter: () => setFinish(true),
+    o: onSwitch,
+    ',': onSettings,
   }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         setPalette((v) => !v)
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'o') {
+        e.preventDefault()
+        keyActions.current.o()
         return
       }
       const t = e.target as HTMLElement
@@ -124,6 +242,8 @@ function Review({ data }: { data: LoadedPr }) {
   const commands: Command[] = useMemo(
     () => [
       { id: 'finish', label: copy.finish, hint: 'Shift Enter', run: () => setFinish(true) },
+      { id: 'switch', label: 'Open another pull request', hint: '⌘O', run: onSwitch },
+      { id: 'settings', label: 'Settings: AI summaries', hint: ',', run: onSettings },
       ...(['self', 'peer', 'maintainer'] as Mode[]).map((m, i) => ({ id: `mode-${m}`, label: `Switch to ${modes[m].label.toLowerCase()}`, hint: String(i + 1), run: () => setMode(m) })),
       { id: 'next-open', label: 'Go to next unreviewed block', run: () => go(nextUnreviewed()) },
       { id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show side-by-side diff', hint: 's', run: toggleDiffStyle },
@@ -148,18 +268,19 @@ function Review({ data }: { data: LoadedPr }) {
         <div className="wordmark">
           <GrainGlyph /> grain
         </div>
-        <div className="pr-title">
+        <button className="pr-title" onClick={onSwitch} title="Open another pull request (⌘O)">
           {data.pr ? (
             <>
               <strong title={data.pr.title}>{data.pr.title}</strong>
               <span>
-                #{data.pr.number} into {data.pr.baseRefName}
+                {data.name.split('/').slice(0, 2).join('/')} #{data.pr.number}
               </span>
             </>
           ) : (
             <strong>{data.name}</strong>
           )}
-        </div>
+          <kbd>⌘O</kbd>
+        </button>
         <div className="modes" role="group" aria-label="Review mode">
           {(['self', 'peer', 'maintainer'] as Mode[]).map((m) => (
             <button key={m} aria-pressed={state.mode === m} onClick={() => setMode(m)} title={`${modes[m].order} (${['self', 'peer', 'maintainer'].indexOf(m) + 1})`}>
@@ -178,6 +299,11 @@ function Review({ data }: { data: LoadedPr }) {
         </div>
         <button className="btn" onClick={() => setPalette(true)}>
           Commands <kbd>⌘K</kbd>
+        </button>
+        <button className="btn icon" onClick={onSettings} aria-label="Settings" title="Settings (,)">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+            <path d="M2 4h8M13 4h1M2 12h2M7 12h7M10 2v4M4 10v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+          </svg>
         </button>
         <button className="btn primary" onClick={() => setFinish(true)}>
           {copy.finish}
@@ -241,7 +367,7 @@ function Review({ data }: { data: LoadedPr }) {
           <kbd>s</kbd> {prefs.diffStyle === 'split' ? 'Unified' : 'Side by side'}
         </span>
         <span className="note">
-          {copy.order}. {agentName ? `Summaries by ${agentName}.` : 'Working without AI.'} Progress is saved on this machine.
+          {copy.order}. {agentName ? summaryNote ?? `Summaries by ${agentName}.` : 'Working without AI.'} Progress is saved on this machine.
         </span>
       </footer>
 
@@ -263,6 +389,8 @@ const shortcuts: [string, string][] = [
   ['s', 'Switch between unified and side-by-side diff'],
   [']', 'Show or hide the context panel'],
   ['⌘K', 'Jump anywhere or run a command'],
+  ['⌘O', 'Open another pull request'],
+  [',', 'Settings'],
   ['Shift Enter', 'Finish the review'],
 ]
 
