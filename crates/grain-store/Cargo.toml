@@ -1,0 +1,18 @@
+[package]
+name = "grain-store"
+description = "Grain's on-disk state under ~/.grain: paths, settings, atomic writes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+grain-agent.workspace = true
+grain-github.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ts-rs.workspace = true
+
+[lints]
+workspace = true

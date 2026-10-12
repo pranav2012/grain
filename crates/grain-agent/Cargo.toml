@@ -3,9 +3,15 @@ name = "grain-agent"
 description = "Block summaries from the user's own coding-agent CLI, within provider terms"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-sha2 = "0.10"
+sha2.workspace = true
+ts-rs.workspace = true
+
+[lints]
+workspace = true

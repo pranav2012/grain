@@ -3,15 +3,24 @@ name = "grain"
 description = "Local-first semantic code review"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "grain"
+path = "src/main.rs"
 
 [dependencies]
+grain-engine.workspace = true
+grain-github.workspace = true
+grain-server.workspace = true
 anyhow.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-grain-engine = { path = "../grain-engine" }
-grain-agent = { path = "../grain-agent" }
-grain-github = { path = "../grain-github" }
-axum = "0.8.9"
-tower-http = { version = "0.7.1", features = ["fs"] }
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

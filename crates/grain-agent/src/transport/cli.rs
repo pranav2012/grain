@@ -4,7 +4,7 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-pub struct CliOutput {
+pub(crate) struct CliOutput {
     pub stdout: String,
     pub stderr: String,
 }
@@ -21,13 +21,10 @@ fn scratch_dir() -> std::path::PathBuf {
 
 /// Runs `cmd` in an empty scratch dir with `input` on stdin, so the agent has no repo to act on.
 fn run(mut cmd: Command, input: &str, dir: &std::path::Path) -> std::io::Result<CliOutput> {
-    let mut child = cmd
-        .current_dir(dir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    child.stdin.take().unwrap().write_all(input.as_bytes())?;
+    let mut child = cmd.current_dir(dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(input.as_bytes())?;
+    }
     let out = child.wait_with_output()?;
     Ok(CliOutput {
         stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -36,22 +33,32 @@ fn run(mut cmd: Command, input: &str, dir: &std::path::Path) -> std::io::Result<
 }
 
 /// `claude -p` with a JSON schema; tools, MCP servers and session persistence are all disabled.
-pub fn claude(prompt: &str, schema: &str, model: Option<&str>) -> std::io::Result<(Option<serde_json::Value>, CliOutput)> {
+pub(crate) fn claude(
+    prompt: &str,
+    schema: &str,
+    model: Option<&str>,
+) -> std::io::Result<(Option<serde_json::Value>, CliOutput)> {
     let mut cmd = Command::new("claude");
-    cmd.args(["-p", "--output-format", "json", "--json-schema", schema, "--tools", "", "--strict-mcp-config"])
-        .args(["--permission-mode", "dontAsk", "--no-session-persistence"]);
+    cmd.args(["-p", "--output-format", "json", "--json-schema", schema, "--tools", "", "--strict-mcp-config"]).args([
+        "--permission-mode",
+        "dontAsk",
+        "--no-session-persistence",
+    ]);
     if let Some(m) = model {
         cmd.args(["--model", m]);
     }
     let out = run(cmd, prompt, &scratch_dir())?;
-    let parsed = serde_json::from_str::<serde_json::Value>(&out.stdout)
-        .ok()
-        .and_then(|v| v.get("structured_output").cloned());
+    let parsed =
+        serde_json::from_str::<serde_json::Value>(&out.stdout).ok().and_then(|v| v.get("structured_output").cloned());
     Ok((parsed, out))
 }
 
 /// `codex exec` in a read-only sandbox, ephemeral session, schema-constrained final message.
-pub fn codex(prompt: &str, schema: &str, model: Option<&str>) -> std::io::Result<(Option<serde_json::Value>, CliOutput)> {
+pub(crate) fn codex(
+    prompt: &str,
+    schema: &str,
+    model: Option<&str>,
+) -> std::io::Result<(Option<serde_json::Value>, CliOutput)> {
     let dir = scratch_dir();
     let (schema_path, out_path) = (dir.join("schema.json"), dir.join("last.txt"));
     std::fs::write(&schema_path, schema)?;
@@ -71,7 +78,7 @@ pub fn codex(prompt: &str, schema: &str, model: Option<&str>) -> std::io::Result
 }
 
 /// `opencode run --format json`; collects text parts from the event stream.
-pub fn opencode(prompt: &str, model: Option<&str>) -> std::io::Result<(Option<serde_json::Value>, CliOutput)> {
+pub(crate) fn opencode(prompt: &str, model: Option<&str>) -> std::io::Result<(Option<serde_json::Value>, CliOutput)> {
     let mut cmd = Command::new("opencode");
     cmd.args(["run", "--format", "json"]);
     if let Some(m) = model {
@@ -84,12 +91,12 @@ pub fn opencode(prompt: &str, model: Option<&str>) -> std::io::Result<(Option<se
         .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
         .filter_map(|e| e.pointer("/part/text").and_then(|t| t.as_str()).map(str::to_string))
         .collect();
-    Ok((crate::extract_json(&text), out))
+    Ok((crate::prompt::extract_json(&text), out))
 }
 
 /// True when the user's OpenCode has an Anthropic *subscription* (OAuth) login, which Anthropic
 /// does not allow third-party harnesses to use.
-pub fn opencode_has_anthropic_oauth() -> bool {
+pub(crate) fn opencode_has_anthropic_oauth() -> bool {
     Command::new("opencode")
         .args(["auth", "list"])
         .output()

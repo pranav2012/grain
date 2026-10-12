@@ -1,10 +1,12 @@
+//! Grain's on-disk state. Everything lives under `~/.grain` (override with `GRAIN_HOME`).
+
 use std::path::{Path, PathBuf};
 
 use grain_agent::Agent;
 use grain_github::PrRef;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
-/// Everything Grain stores lives under `~/.grain` (override with `GRAIN_HOME`).
 #[derive(Clone)]
 pub struct Home {
     pub root: PathBuf,
@@ -31,6 +33,10 @@ impl Home {
         self.root.join("reviews").join(&pr.owner).join(&pr.repo).join(pr.number.to_string())
     }
 
+    pub fn reviews_root(&self) -> PathBuf {
+        self.root.join("reviews")
+    }
+
     pub fn cache_dir(&self) -> PathBuf {
         self.root.join("cache")
     }
@@ -51,8 +57,9 @@ impl Home {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct Settings {
     /// `None` means review without AI.
     pub agent: Option<Agent>,
@@ -76,4 +83,16 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, contents)?;
     std::fs::rename(tmp, path)
+}
+
+/// Every `<reviews>/<owner>/<repo>/<number>/<file>` that exists.
+pub fn list_review_files(reviews_root: &Path, file: &str) -> Vec<PathBuf> {
+    let dirs = |p: &Path| std::fs::read_dir(p).into_iter().flatten().flatten().map(|e| e.path()).collect::<Vec<_>>();
+    dirs(reviews_root)
+        .iter()
+        .flat_map(|owner| dirs(owner))
+        .flat_map(|repo| dirs(&repo))
+        .map(|n| n.join(file))
+        .filter(|p| p.exists())
+        .collect()
 }

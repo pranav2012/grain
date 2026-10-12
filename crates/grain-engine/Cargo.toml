@@ -3,10 +3,16 @@ name = "grain-engine"
 description = "Groups a code change into reviewable chapters and blocks"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sem-core = "0.27"
+sem-core.workspace = true
+ts-rs.workspace = true
+
+[lints]
+workspace = true
