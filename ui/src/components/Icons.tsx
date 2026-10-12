@@ -18,3 +18,11 @@ export function SlidersIcon() {
     </svg>
   )
 }
+
+export function ThreadIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden className="inline-block">
+      <path d="M2 2.5h8a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5l-2.5 2v-2H2a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  )
+}

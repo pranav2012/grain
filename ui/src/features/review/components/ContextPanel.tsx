@@ -5,17 +5,20 @@ import { Kbd } from '@/components/ui/Kbd'
 import { cn } from '@/lib/cn'
 import { shortPath } from '@/lib/format'
 import type { Block } from '@/types/generated/Block'
+import type { ReviewThread } from '@/types/generated/ReviewThread'
 import { meaningfulEntities, summaryOf } from '../model/describe'
 import { modes } from '../model/modes'
 import type { CommentKind, LoadedPr, Mode, ReviewComment } from '../model/types'
 import { CommentCard } from './CommentCard'
 import { Composer } from './Composer'
+import { ThreadCard } from './ThreadCard'
 
 interface ContextPanelProps {
   data: LoadedPr
   block: Block
   mode: Mode
   comments: ReviewComment[]
+  threads: ReviewThread[]
   composing: CommentKind | null
   agentName: string | null
   onCompose(kind: CommentKind | null): void
@@ -36,7 +39,7 @@ const listClass = 'flex flex-col gap-2'
 const noteClass = 'border-l-2 border-seam pl-3 leading-normal text-soft'
 const monoRow = 'truncate font-mono text-[11.5px] leading-normal text-fog'
 
-export function ContextPanel({ data, block, mode, comments, composing, agentName, onCompose, onComment, onDeleteComment }: ContextPanelProps) {
+export function ContextPanel({ data, block, mode, comments, threads, composing, agentName, onCompose, onComment, onDeleteComment }: ContextPanelProps) {
   const s = summaryOf(data, block)
   const copy = modes[mode]
   const askKind: CommentKind = mode === 'self' ? 'fix' : 'question'
@@ -90,6 +93,24 @@ export function ContextPanel({ data, block, mode, comments, composing, agentName
       ) : null}
       {s && agentName && (
         <p className="px-4 pt-0.5 text-[11.5px] text-dim">Summary and questions written by {agentName} from this block's diff. Checks come from Grain's own rules.</p>
+      )}
+
+      {threads.length > 0 && (
+        <Section title={`On GitHub (${threads.filter((t) => !t.resolved).length} open, ${threads.filter((t) => t.resolved).length} resolved)`}>
+          <ul className={listClass}>
+            {[...threads]
+              .sort((a, b) => Number(a.resolved) - Number(b.resolved))
+              .map((t) => (
+                <li key={t.id}>
+                  <p className="mb-1 truncate font-mono text-[11px] text-dim">
+                    {shortPath(t.path)}
+                    {t.line ? `:${t.line}` : ' (outdated)'}
+                  </p>
+                  <ThreadCard thread={t} compact />
+                </li>
+              ))}
+          </ul>
+        </Section>
       )}
 
       <Section title="Your notes on this block">

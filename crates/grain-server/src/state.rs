@@ -23,6 +23,21 @@ pub(crate) struct App {
 
 pub(crate) type Shared = Arc<App>;
 
+/// Runs a background step, turning a panic into an error so a job can never get stuck.
+pub(crate) fn guarded<T>(what: &str, f: impl FnOnce() -> anyhow::Result<T>) -> anyhow::Result<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|panic| {
+        let reason = panic
+            .downcast_ref::<&str>()
+            .map(ToString::to_string)
+            .or_else(|| panic.downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        tracing::error!(%what, %reason, "background step crashed");
+        Err(anyhow::anyhow!(
+            "Grain hit an internal error while {what} ({reason}). Please report it; reopening may help."
+        ))
+    })
+}
+
 impl App {
     pub(crate) fn new(home: Home) -> Shared {
         let settings = home.load_settings();
@@ -83,7 +98,9 @@ impl App {
                     m.clone_into(&mut j.message);
                 }
             };
-            let result = prepare::prepare(&app.home, &pr, &app.viewer(), &app.settings(), &report);
+            let result = guarded("preparing this pull request", || {
+                prepare::prepare(&app.home, &pr, &app.viewer(), &app.settings(), &report)
+            });
             report("done");
             tracing::info!(pr = %pr.number, total_ms = started.elapsed().as_millis(), "prepared");
             let (job, next) = match result {
@@ -101,7 +118,7 @@ impl App {
             if matches!(next, prepare::Next::Enrich) {
                 app.enriching.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone());
                 let t = std::time::Instant::now();
-                match prepare::enrich(&app.home, &pr) {
+                match guarded("checking how the changes are used", || prepare::enrich(&app.home, &pr)) {
                     Ok(()) => tracing::info!(pr = %pr.number, ms = t.elapsed().as_millis(), "enriched"),
                     Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "enrichment failed"),
                 }

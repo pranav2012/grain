@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CommandPalette, type Command } from '@/components/CommandPalette'
 import { useHotkeys } from '@/lib/useHotkeys'
+import { useConversation } from '../hooks/useConversation'
 import { useLiveReview } from '../hooks/useLiveReview'
 import { useReviewStatus } from '../hooks/useReviewStatus'
 import { useSummaries } from '../hooks/useSummaries'
@@ -43,6 +44,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
   const current = state.current && live.blocks.has(state.current) ? state.current : baseOrder[0]
   const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(live, status, baseOrder, current)
 
+  const { threadsFor } = useConversation(data)
   const sections = useMemo(() => sectionsFor(data, state.mode), [data, state.mode])
   const order = useMemo(() => sections.flatMap((s) => s.blocks), [sections])
   const reviewable = useMemo(() => order.filter((id) => !data.blocks.get(id)!.skim), [order, data])
@@ -136,7 +138,14 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
         onFinish={() => setOverlay('finish')}
       />
       <GrainMap data={data} sections={sections} states={state.states} current={current} onGo={go} />
-      <Outline data={data} sections={sections} states={state.states} current={current} onGo={go} />
+      <Outline
+        data={data}
+        sections={sections}
+        states={state.states}
+        current={current}
+        onGo={go}
+        openThreads={(id) => threadsFor(id).filter((t) => !t.resolved).length}
+      />
       <BlockView
         data={data}
         block={block}
@@ -151,6 +160,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
         onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
         state={state.states[current]}
         comments={blockComments}
+        threads={threadsFor(current)}
         onPrimary={primary}
         onSecondary={secondary}
         onComment={addComment}
@@ -162,6 +172,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
           block={block}
           mode={state.mode}
           comments={blockComments}
+          threads={threadsFor(current)}
           composing={composing}
           agentName={agentName}
           onCompose={setComposing}

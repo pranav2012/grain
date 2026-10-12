@@ -8,14 +8,16 @@ import { Segmented } from '@/components/ui/Segmented'
 import { cn } from '@/lib/cn'
 import { formatMinutes, minutesFor } from '@/lib/format'
 import type { Block } from '@/types/generated/Block'
+import type { ReviewThread } from '@/types/generated/ReviewThread'
 import { useBlockDiff } from '../hooks/useBlockDiff'
 import { blockTitle, factsSentence, summaryOf } from '../model/describe'
 import { modes } from '../model/modes'
 import type { BlockState, CommentKind, DiffStyle, LoadedPr, Mode, ReviewComment, Side } from '../model/types'
 import { CommentCard } from './CommentCard'
 import { Composer } from './Composer'
+import { ThreadCard } from './ThreadCard'
 
-type Note = { draft: true } | { draft: false; id: string }
+type Note = { kind: 'draft' } | { kind: 'note'; id: string } | { kind: 'thread'; id: string }
 
 interface Draft {
   file: string
@@ -40,6 +42,8 @@ interface BlockViewProps {
   onDiffStyle(style: DiffStyle): void
   state?: BlockState
   comments: ReviewComment[]
+  /** Existing GitHub review threads on this block's files. */
+  threads: ReviewThread[]
   onPrimary(): void
   onSecondary(): void
   onComment(c: Omit<ReviewComment, 'id' | 'createdAt' | 'blockId'>): void
@@ -71,11 +75,15 @@ export function BlockView(p: BlockViewProps) {
     return (diffs ?? []).map((fileDiff) => {
         const annotations: DiffLineAnnotation<Note>[] = p.comments
           .filter((c) => c.file === fileDiff.name && c.line)
-          .map((c) => ({ side: c.side ?? 'additions', lineNumber: c.endLine ?? c.line!, metadata: { draft: false, id: c.id } }))
-        if (draft?.file === fileDiff.name) annotations.push({ side: draft.side, lineNumber: draft.endLine, metadata: { draft: true } })
+          .map((c): DiffLineAnnotation<Note> => ({ side: c.side ?? 'additions', lineNumber: c.endLine ?? c.line!, metadata: { kind: 'note', id: c.id } }))
+        for (const t of p.threads) {
+          if (t.path === fileDiff.name && t.line && !t.outdated)
+            annotations.push({ side: t.side === 'LEFT' ? 'deletions' : 'additions', lineNumber: t.line, metadata: { kind: 'thread', id: t.id } })
+        }
+        if (draft?.file === fileDiff.name) annotations.push({ side: draft.side, lineNumber: draft.endLine, metadata: { kind: 'draft' } })
         return { id: fileDiff.name, type: 'diff', fileDiff, annotations, version: annotations.length * 2 + (draft ? 1 : 0) }
       })
-  }, [diffs, p.comments, draft])
+  }, [diffs, p.comments, p.threads, draft])
 
   const missing = diffs ? block.files.length - items.length : 0
 
@@ -153,7 +161,15 @@ export function BlockView(p: BlockViewProps) {
           renderAnnotation={(a) => {
             const meta = a.metadata
             if (!meta) return null
-            if (meta.draft && draft)
+            if (meta.kind === 'thread') {
+              const t = p.threads.find((x) => x.id === meta.id)
+              return t ? (
+                <div className="flex max-w-[760px] flex-col gap-1.5 py-2 pr-3 pl-16 font-sans">
+                  <ThreadCard thread={t} />
+                </div>
+              ) : null
+            }
+            if (meta.kind === 'draft' && draft)
               return (
                 <div className="flex max-w-[760px] flex-col gap-1.5 py-2 pr-3 pl-16 font-sans">
                   <Composer
@@ -167,7 +183,7 @@ export function BlockView(p: BlockViewProps) {
                   />
                 </div>
               )
-            const c = !meta.draft && p.comments.find((x) => x.id === meta.id)
+            const c = meta.kind === 'note' && p.comments.find((x) => x.id === meta.id)
             return c ? (
               <div className="flex max-w-[760px] flex-col gap-1.5 py-2 pr-3 pl-16 font-sans">
                 <CommentCard c={c} onDelete={() => p.onDeleteComment(c.id)} />

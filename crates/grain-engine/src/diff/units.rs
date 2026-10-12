@@ -65,7 +65,7 @@ pub(crate) fn build_units(changes: &[SemanticChange], hunks: &BTreeMap<String, F
                     }
                     (c.start_line, c.end_line)
                 };
-                (s <= line && line <= e).then_some((e - s, i))
+                (s <= line && line <= e).then(|| (e - s, i))
             })
             .min()
             .map(|(_, i)| i)

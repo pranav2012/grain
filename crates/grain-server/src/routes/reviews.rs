@@ -113,3 +113,9 @@ pub(super) async fn diff(
     let text = blocking(move || Ok(app.patches.get(&path)?.sections(&body.files))).await?;
     Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8"), (header::CACHE_CONTROL, "no-store")], text))
 }
+
+/// Existing GitHub review threads and submitted reviews for this PR.
+pub(super) async fn conversation(Path(p): Path<(String, String, u64)>) -> ApiResult<Json<grain_github::Conversation>> {
+    let pr = pr_of(p);
+    blocking(move || Ok(Json(grain_github::conversation(&pr)?))).await
+}

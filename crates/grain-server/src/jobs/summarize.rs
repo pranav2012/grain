@@ -38,7 +38,16 @@ impl App {
         s.status.running = true;
         drop(sums);
         let app = self.clone();
-        tokio::task::spawn_blocking(move || app.summarize_loop(&pr, agent));
+        tokio::task::spawn_blocking(move || {
+            let _ = crate::state::guarded("summarizing", || {
+                app.summarize_loop(&pr, agent);
+                Ok(())
+            });
+            // Whatever happened, let the next request start a fresh worker.
+            if let Some(s) = app.summarizers.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get_mut(&pr) {
+                s.status.running = false;
+            }
+        });
     }
 
     fn next_key(&self, pr: &PrRef) -> Option<String> {
