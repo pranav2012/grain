@@ -26,7 +26,7 @@ Each crate has one job. Dependencies only point down this list; nothing depends 
 |---|---|---|
 | `grain` | CLI (clap): start the server or run `grain analyze` | server, engine, github, lsp |
 | `grain-server` | axum routes, shared state, background jobs, typed API contract | engine, lsp, git, github, agent, store |
-| `grain-lsp` | Precise TS/JS outside usage from TypeScript 7's language server (downloaded once, checksum-verified) | engine |
+| `grain-lsp` | TypeScript 7 language server (downloaded once, checksum-verified): precise outside usage, go to definition, find references | engine |
 | `grain-engine` | Git range → blocks, a story of user-flow chapters, skim, facts, checks, estimated risk; optional `UsageProvider` hook | sem-core |
 | `grain-git` | git CLI operations (fetch, merge-base, worktrees, diffs) | — |
 | `grain-github` | PR and repo lookups, clones, via the user's `gh` login | — |
