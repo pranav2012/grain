@@ -17,7 +17,7 @@ Targets: macOS (Apple Silicon, Intel), Linux (x64, arm64, glibc), Windows (x64).
 ## One-time setup (not done yet)
 
 1. **Make the repository public** (`pranav2012/grain`). Installers download from GitHub Releases, which other people can't reach while the repo is private.
-   - The current files contain no secrets or internal names. **Older commits still mention internal repo names** (test examples, spike notes; no code or credentials), about 26 places: see `git log --all -p | grep -iE "acme|widgets|storefront"`. Decide before going public whether that's fine, or start the public repo from a single squashed commit.
+   - The current files contain no secrets or internal names. History was rewritten on 2026-10-13 so no commit mentions internal repositories, and the GitHub repo was recreated to drop old PR refs. Before going public, re-check with `git log --all -p | grep -iE "<internal names>"`.
 2. **Create the Homebrew tap**: an empty public repo `pranav2012/homebrew-tap`.
 3. **npm name: `grain-ci`** (`grain` belongs to another author since 2010; `grain-ci` was free on 2026-10-13). Publish soon to hold it. To change it, edit `npm-package` in `dist-workspace.toml` and run `dist generate`. The installed command is `grain` regardless.
 4. **Add repository secrets** (Settings → Secrets and variables → Actions):
