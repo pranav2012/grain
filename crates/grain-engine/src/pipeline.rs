@@ -14,13 +14,13 @@ use sem_core::parser::plugins::create_default_registry;
 
 use crate::classify::{is_test_path, kind_of, layer_of};
 use crate::diff::hunks::hunk_lines;
-use crate::diff::units::{Unit, Units, build_units};
+use crate::diff::units::{Unit, Units, build_units, merge_ranges};
 use crate::facts::checks::rule_checks;
 use crate::facts::removed::removed_names_still_mentioned;
 use crate::grouping::blocks::{block_dir, block_key, stable_hash};
 use crate::grouping::chapters::build_chapters;
-use crate::grouping::cluster::{CAP, group_v2};
-use crate::model::{Analysis, Block, EntityChange, Review, Risk};
+use crate::grouping::cluster::group_v2;
+use crate::model::{Analysis, Block, EntityChange, Review, Risk, Slice};
 
 /// How much of the repository the analysis may read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,9 +108,26 @@ pub fn analyze_with(repo: &Path, base: &str, head: &str, depth: Depth) -> Result
         still_mentioned: &still_mentioned,
         hunks: &hunks,
     };
-    let mut blocks: Vec<Block> =
-        member_sets.iter().map(|m| assemble_block(&ctx, m)).filter(|b| b.lines > 0 || !b.entities.is_empty()).collect();
-    blocks.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)).then(a.key.cmp(&b.key)));
+    let mut blocks: Vec<Block> = member_sets
+        .iter()
+        .map(|(m, part)| assemble_block(&ctx, m, *part))
+        .filter(|b| b.lines > 0 || !b.entities.is_empty())
+        .collect();
+    // Parts of a split file sort as one unit (by their combined size), in part order.
+    let mut split_lines: HashMap<String, usize> = HashMap::new();
+    for b in blocks.iter().filter(|b| b.slice.is_some()) {
+        *split_lines.entry(b.files[0].clone()).or_default() += b.lines;
+    }
+    let sort_key = |b: &Block| {
+        let lines = if b.slice.is_some() { split_lines[&b.files[0]] } else { b.lines };
+        (
+            b.layer,
+            std::cmp::Reverse(lines),
+            b.slice.as_ref().map(|_| b.files[0].clone()),
+            b.slice.as_ref().map(|s| s.part),
+        )
+    };
+    blocks.sort_by(|a, b| sort_key(a).cmp(&sort_key(b)).then(a.key.cmp(&b.key)));
     for (i, b) in blocks.iter_mut().enumerate() {
         b.id = i + 1;
     }
@@ -122,28 +139,48 @@ pub fn analyze_with(repo: &Path, base: &str, head: &str, depth: Depth) -> Result
     Ok(Analysis { review: Review { chapters, skim, blocks, total_lines: units.total_lines, complete }, summary })
 }
 
-/// Huge single-file groups (e.g. 10K-line test files) are cut into CAP-sized runs of consecutive entities.
-fn split_huge_files(groups: BTreeMap<usize, Vec<usize>>, units: &Units, changes: &[SemanticChange]) -> Vec<Vec<usize>> {
+/// `(split above, part size)` in changed lines. Code is cut finer than tests and fixtures,
+/// which are skimmed in bigger runs. A single entity larger than a part stays whole.
+fn slice_limits(file: &str) -> (usize, usize) {
+    if is_test_path(file) || file.to_ascii_lowercase().contains("fixture") { (1200, 600) } else { (400, 200) }
+}
+
+/// Huge single-file groups (big rewrites, 10K-line test files) are cut into runs of whole
+/// entities in file order (sizes from [`slice_limits`]). Returns each member set with its
+/// `(part, of)` when it is one part of a split.
+fn split_huge_files(
+    groups: BTreeMap<usize, Vec<usize>>,
+    units: &Units,
+    changes: &[SemanticChange],
+) -> Vec<(Vec<usize>, Option<(usize, usize)>)> {
     let mut member_sets = Vec::new();
     for members in groups.into_values() {
         let files: HashSet<&str> = members.iter().map(|&u| units.file(changes, u)).collect();
         let lines: usize = members.iter().map(|&u| units.lines[u]).sum();
-        if files.len() == 1 && lines > 2 * CAP && members.len() > 1 {
-            let mut sorted = members.clone();
-            sorted.sort_by_key(|&u| units.start_line(changes, u));
-            let mut cur: Vec<usize> = Vec::new();
-            let mut cur_lines = 0;
-            for u in sorted {
-                if cur_lines + units.lines[u] > CAP && !cur.is_empty() {
-                    member_sets.push(std::mem::take(&mut cur));
-                    cur_lines = 0;
-                }
-                cur_lines += units.lines[u];
-                cur.push(u);
+        let (split_over, slice) = files.iter().next().map_or((usize::MAX, usize::MAX), |f| slice_limits(f));
+        if files.len() != 1 || lines <= split_over || members.len() < 2 {
+            member_sets.push((members, None));
+            continue;
+        }
+        let mut sorted = members;
+        sorted.sort_by_key(|&u| (units.start_line(changes, u), u));
+        let mut parts: Vec<Vec<usize>> = Vec::new();
+        let mut cur: Vec<usize> = Vec::new();
+        let mut cur_lines = 0;
+        for u in sorted {
+            if cur_lines + units.lines[u] > slice && !cur.is_empty() {
+                parts.push(std::mem::take(&mut cur));
+                cur_lines = 0;
             }
-            member_sets.push(cur);
+            cur_lines += units.lines[u];
+            cur.push(u);
+        }
+        parts.push(cur);
+        let of = parts.len();
+        if of == 1 {
+            member_sets.extend(parts.into_iter().map(|p| (p, None)));
         } else {
-            member_sets.push(members);
+            member_sets.extend(parts.into_iter().enumerate().map(|(i, p)| (p, Some((i + 1, of)))));
         }
     }
     member_sets
@@ -161,7 +198,7 @@ struct BlockContext<'a> {
 }
 
 /// Builds one block: its entities, outside usage, skim reason, layer, checks and estimated risk.
-fn assemble_block(ctx: &BlockContext<'_>, members: &[usize]) -> Block {
+fn assemble_block(ctx: &BlockContext<'_>, members: &[usize], part: Option<(usize, usize)>) -> Block {
     let mut file_lines: BTreeMap<String, usize> = BTreeMap::new();
     let (mut entities, mut residue_files, mut mech, mut lines, mut tests) = (vec![], vec![], 0, 0, false);
     let mut changes_out: Vec<EntityChange> = Vec::new();
@@ -271,6 +308,15 @@ fn assemble_block(ctx: &BlockContext<'_>, members: &[usize]) -> Block {
         }
     }
     content.sort();
+    let slice = part.map(|(part, of)| {
+        let (mut new, mut old) = (vec![], vec![]);
+        for &u in members {
+            let (n, o) = ctx.units.ranges(ctx.changes, u);
+            new.extend(n);
+            old.extend(o);
+        }
+        Slice { part, of, new_lines: merge_ranges(new), old_lines: merge_ranges(old) }
+    });
     Block {
         id: 0,
         key: block_key(&files, &entities),
@@ -290,6 +336,7 @@ fn assemble_block(ctx: &BlockContext<'_>, members: &[usize]) -> Block {
         used_by_sample,
         checks,
         est_risk,
+        slice,
     }
 }
 

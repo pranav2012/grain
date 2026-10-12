@@ -2,6 +2,7 @@
 import type { Check } from "./Check";
 import type { EntityChange } from "./EntityChange";
 import type { Risk } from "./Risk";
+import type { Slice } from "./Slice";
 
 export type Block = { 
 /**
@@ -28,4 +29,8 @@ layer: number, dir: string, changes: Array<EntityChange>,
 /**
  * Production code outside the PR that depends on this block's changes.
  */
-usedBy: number, usedBySample: Array<string>, checks: Array<Check>, estRisk: Risk, };
+usedBy: number, usedBySample: Array<string>, checks: Array<Check>, estRisk: Risk, 
+/**
+ * Set when a huge single-file change was cut into parts: which part, and the lines it covers.
+ */
+slice: Slice | null, };

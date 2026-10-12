@@ -105,7 +105,8 @@ pub(crate) fn build_chapters(blocks: &[Block]) -> Vec<Chapter> {
                 (false, false) => format!("{base} › {top}"),
             };
             let mut ids: Vec<&Block> = members.iter().map(|&i| review[i]).collect();
-            ids.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)).then(a.key.cmp(&b.key)));
+            // Ids already follow reading order (layer, size, split parts together).
+            ids.sort_by_key(|b| b.id);
             Chapter {
                 id: 0,
                 title,

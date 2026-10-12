@@ -44,6 +44,7 @@ export function blockTitle(data: LoadedPr, b: Block): string {
   const main = (code.length ? code : b.files).reduce((a, f) => (count(f) > count(a) ? f : a))
   const name = main.split('/').pop()!.replace(/\.[^.]+$/, '')
   const others = b.files.length - 1
+  if (b.slice) return `${name}, part ${b.slice.part} of ${b.slice.of}`
   return others ? `${name} and ${others} related ${others === 1 ? 'file' : 'files'}` : name
 }
 

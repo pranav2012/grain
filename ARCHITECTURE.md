@@ -36,7 +36,7 @@ Each crate has one job. Dependencies only point down this list; nothing depends 
 
 ```
 lib.rs        public API: analyze(), model types, REVIEW_FORMAT
-pipeline.rs   orchestration of the steps below
+pipeline.rs   orchestration of the steps below; cuts huge single-file groups into parts (Block.slice)
 diff/         hunks.rs (git -U0 parsing, edit shapes), units.rs (lines → entity/residue units)
 grouping/     cluster.rs (units → blocks), chapters.rs (blocks → chapters), blocks.rs, union_find.rs
 facts/        checks.rs (rule checks, estimated risk), removed.rs (removed code still referenced)

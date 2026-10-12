@@ -16,6 +16,24 @@ pub(crate) struct Units {
     pub(crate) lines: Vec<usize>,
     pub(crate) total_lines: usize,
     pub(crate) covered_lines: usize,
+    /// Residue unit → its changed (new-side, old-side) line numbers.
+    residue_lines: HashMap<usize, (Vec<usize>, Vec<usize>)>,
+}
+
+/// Inclusive `(first, last)` line ranges.
+pub(crate) type Ranges = Vec<(usize, usize)>;
+
+/// Sorts and merges overlapping or touching ranges.
+pub(crate) fn merge_ranges(mut r: Ranges) -> Ranges {
+    r.sort_unstable();
+    let mut out: Ranges = Vec::with_capacity(r.len());
+    for (s, e) in r {
+        match out.last_mut() {
+            Some(last) if s <= last.1 + 1 => last.1 = last.1.max(e),
+            _ => out.push((s, e)),
+        }
+    }
+    out
 }
 
 impl Units {
@@ -29,7 +47,30 @@ impl Units {
     pub(crate) fn start_line(&self, changes: &[SemanticChange], u: usize) -> usize {
         match &self.items[u] {
             Unit::Entity(i) => changes[*i].start_line,
-            Unit::Residue(_) => 0,
+            Unit::Residue(_) => {
+                self.residue_lines.get(&u).and_then(|(new, old)| new.first().or(old.first()).copied()).unwrap_or(0)
+            }
+        }
+    }
+
+    /// Lines a unit covers on the (new, old) side of its file.
+    pub(crate) fn ranges(&self, changes: &[SemanticChange], u: usize) -> (Ranges, Ranges) {
+        match &self.items[u] {
+            Unit::Entity(i) => {
+                let c = &changes[*i];
+                match c.change_type {
+                    ChangeType::Deleted => (vec![], vec![(c.start_line, c.end_line)]),
+                    _ => {
+                        let old = c.old_start_line.zip(c.old_end_line).into_iter().collect();
+                        (vec![(c.start_line, c.end_line)], old)
+                    }
+                }
+            }
+            Unit::Residue(_) => {
+                let (new, old) = self.residue_lines.get(&u).cloned().unwrap_or_default();
+                let to_ranges = |v: Vec<usize>| merge_ranges(v.into_iter().map(|l| (l, l)).collect());
+                (to_ranges(new), to_ranges(old))
+            }
         }
     }
 }
@@ -71,6 +112,7 @@ pub(crate) fn build_units(changes: &[SemanticChange], hunks: &BTreeMap<String, F
             .map(|(_, i)| i)
     };
     let (mut total_lines, mut covered_lines) = (0usize, 0usize);
+    let mut residue_lines: HashMap<usize, (Vec<usize>, Vec<usize>)> = HashMap::new();
     for (path, fh) in hunks {
         let old_path = fh.old_path.as_deref().unwrap_or(path);
         let sides =
@@ -87,8 +129,21 @@ pub(crate) fn build_units(changes: &[SemanticChange], hunks: &BTreeMap<String, F
                     units.len() - 1
                 });
                 unit_lines[idx] += 1;
+                let (new, old) = residue_lines.entry(idx).or_default();
+                if old_side { old.push(line) } else { new.push(line) }
             }
         }
     }
-    Units { items: units, lines: unit_lines, total_lines, covered_lines }
+    Units { items: units, lines: unit_lines, total_lines, covered_lines, residue_lines }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_ranges;
+
+    #[test]
+    fn merges_overlapping_and_touching_ranges() {
+        assert_eq!(merge_ranges(vec![(10, 12), (1, 3), (4, 5), (11, 20), (30, 30)]), [(1, 5), (10, 20), (30, 30)]);
+        assert!(merge_ranges(vec![]).is_empty());
+    }
 }

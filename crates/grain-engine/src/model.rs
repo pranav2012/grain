@@ -58,6 +58,21 @@ pub struct Block {
     pub used_by_sample: Vec<String>,
     pub checks: Vec<Check>,
     pub est_risk: Risk,
+    /// Set when a huge single-file change was cut into parts: which part, and the lines it covers.
+    pub slice: Option<Slice>,
+}
+
+/// One part of a huge single-file change: whole entities in file order, about 200 lines each.
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Slice {
+    pub part: usize,
+    pub of: usize,
+    /// Inclusive line ranges on the new side; diff hunks touching them belong to this part.
+    pub new_lines: Vec<(usize, usize)>,
+    /// Inclusive line ranges on the old side (removed code).
+    pub old_lines: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]

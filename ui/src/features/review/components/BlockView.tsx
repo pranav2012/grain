@@ -74,7 +74,7 @@ export function BlockView(p: BlockViewProps) {
 
   const [view, setView] = useState<'since' | 'whole'>('since')
   const sinceReview = p.staleSince && view === 'since' ? p.staleSince : undefined
-  const { diffs, error: diffError } = useBlockDiff(data.id, data.pr?.headSha ?? '', block.files, p.nextFiles, sinceReview)
+  const { diffs, error: diffError } = useBlockDiff(data.id, data.pr?.headSha ?? '', block.files, p.nextFiles, sinceReview, block.slice)
   // Line comments must anchor to the PR's own diff, so they're only offered on the whole block.
   const options = useMemo(() => ({ ...baseOptions, diffStyle: p.diffStyle, enableLineSelection: !sinceReview }), [p.diffStyle, sinceReview])
   // Suggestions replace new code, so they're offered only on lines of the new version.
