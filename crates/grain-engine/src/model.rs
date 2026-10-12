@@ -7,8 +7,8 @@ use ts_rs::TS;
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Review {
-    /// Feature-level groups of review blocks, in reading order.
-    pub chapters: Vec<Chapter>,
+    /// Small, ordered review steps: foundations first, each a few related blocks.
+    pub layers: Vec<Layer>,
     /// Ids of low-attention blocks (lockfiles, assets, repeated or mechanical edits).
     pub skim: Vec<usize>,
     pub blocks: Vec<Block>,
@@ -30,16 +30,26 @@ pub struct BlockLink {
     pub weight: usize,
 }
 
+/// One step of the review: blocks that belong together (code that uses each other, code and its
+/// tests), ordered so code comes after what it builds on, and capped so it fits one sitting.
 #[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-pub struct Chapter {
+pub struct Layer {
+    /// Position in reading order, from 1.
     pub id: usize,
+    /// Stable identity from the member blocks' keys; layer summaries are cached by it.
+    pub key: String,
+    /// Main files, e.g. `voucherApi, useVoucher and 2 more`.
     pub title: String,
+    /// What kind of code it is: `Data and services`, `Hooks and state`, `Components`, `Screens`, `Code` or `Tests`.
+    pub role: String,
     pub dir: String,
     pub lines: usize,
-    pub layer: u8,
+    /// Block ids in reading order.
     pub blocks: Vec<usize>,
+    /// Other layers whose changed code this one uses.
+    pub uses: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]

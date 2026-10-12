@@ -6,6 +6,7 @@ import type { SubmitResponse } from '@/types/generated/SubmitResponse'
 import type { OpenResponse } from '@/types/generated/OpenResponse'
 import type { Review } from '@/types/generated/Review'
 import type { Status } from '@/types/generated/Status'
+import type { LayerSummary } from '@/types/generated/LayerSummary'
 import type { Summary } from '@/types/generated/Summary'
 import type { ThreadComment } from '@/types/generated/ThreadComment'
 import type { ThreadResolved } from '@/types/generated/ThreadResolved'
@@ -22,7 +23,7 @@ export const reviewApi = {
   /** `refresh` waits for new commits or local edits instead of returning the stored review. */
   open: (pr: string, refresh = false) => post<OpenResponse>('/api/open', { pr, refresh }),
   status: (id: string) => request<Status>(`/api/reviews/${id}/status`),
-  summaries: (id: string) => request<Record<string, Summary>>(`/api/reviews/${id}/files/summaries.json`),
+  summaries: (id: string) => request<Record<string, Summary | LayerSummary>>(`/api/reviews/${id}/files/summaries.json`),
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),
   /** `fullRepo` is `owner/repo`. */
   localRepo: (fullRepo: string) => request<LocalRepo>(`/api/repos/${fullRepo}/local`),
@@ -50,7 +51,7 @@ export const reviewApi = {
 export async function loadPr(id: string): Promise<LoadedPr> {
   const [review, summaries, pr, progress, owners] = await Promise.all([
     file(id, 'review.json').then((r) => json<Review>(r)),
-    file(id, 'summaries.json').then((r) => json<Record<string, Summary>>(r)),
+    file(id, 'summaries.json').then((r) => json<Record<string, Summary | LayerSummary>>(r)),
     file(id, 'pr.json').then((r) => json<PrMeta>(r)),
     request<unknown>(`/api/reviews/${id}/progress`).catch(() => null),
     file(id, 'owners.json').then((r) => json<Owners>(r)),
@@ -60,7 +61,12 @@ export async function loadPr(id: string): Promise<LoadedPr> {
 }
 
 export function withReview(base: Omit<LoadedPr, 'review' | 'blocks'>, review: Review): LoadedPr {
-  // Reviews stored by an older Grain lack newer fields; read them as empty instead of crashing.
-  const r: Review = { ...review, links: review.links ?? [] }
+  // Reviews stored by an older Grain lack newer fields; read them as empty (or one layer) instead of crashing.
+  const legacy = (): Review['layers'] => {
+    const blocks = review.blocks.filter((b) => !b.skim).map((b) => b.id)
+    const lines = review.blocks.filter((b) => !b.skim).reduce((n, b) => n + b.lines, 0)
+    return blocks.length ? [{ id: 1, key: 'all', title: 'All changes', role: 'Code', dir: '', lines, blocks, uses: [] }] : []
+  }
+  const r: Review = { ...review, links: review.links ?? [], layers: review.layers ?? legacy() }
   return { ...base, review: r, blocks: new Map(r.blocks.map((b) => [b.id, b])) }
 }

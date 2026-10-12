@@ -19,8 +19,8 @@ use crate::facts::checks::rule_checks;
 use crate::facts::removed::removed_names_still_mentioned;
 use crate::facts::usage::{UsageProvider, name_position};
 use crate::grouping::blocks::{block_dir, block_key, stable_hash};
-use crate::grouping::chapters::build_chapters;
 use crate::grouping::cluster::group_v2;
+use crate::grouping::layers::build_layers;
 use crate::model::{Analysis, Block, BlockLink, EntityChange, Review, Risk, Slice};
 
 /// How much of the repository the analysis may read.
@@ -38,7 +38,7 @@ pub fn analyze(repo: &Path, base: &str, head: &str) -> Result<Analysis> {
 }
 
 /// Analyzes `base..head`. With [`Depth::Fast`] only the changed files must be checked out;
-/// blocks and chapters are identical at both depths, only facts differ.
+/// blocks and layers are identical at both depths, only facts differ.
 pub fn analyze_with(repo: &Path, base: &str, head: &str, depth: Depth) -> Result<Analysis> {
     analyze_with_usage(repo, base, head, depth, None)
 }
@@ -151,12 +151,12 @@ pub fn analyze_with_usage(
     }
     let links = block_links(&blocks, &units, &changes, &graph);
     let blocks: Vec<Block> = blocks.into_iter().map(|(b, _)| b).collect();
-    let chapters = build_chapters(&blocks);
+    let layers = build_layers(&blocks, &links);
     let skim: Vec<usize> = blocks.iter().filter(|b| b.skim.is_some()).map(|b| b.id).collect();
 
-    let summary = summarize(&timings, &units, &blocks, &chapters, &skim, &graph_files, &changes, &graph);
+    let summary = summarize(&timings, &units, &blocks, &layers, &skim, &graph_files, &changes, &graph);
     let complete = depth == Depth::Complete;
-    Ok(Analysis { review: Review { chapters, skim, blocks, links, total_lines: units.total_lines, complete }, summary })
+    Ok(Analysis { review: Review { layers, skim, blocks, links, total_lines: units.total_lines, complete }, summary })
 }
 
 /// Which blocks use which: an edge `from → to` when code changed in `from` depends on code
@@ -409,7 +409,7 @@ fn summarize(
     timings: &[(&str, u128)],
     units: &Units,
     blocks: &[Block],
-    chapters: &[crate::model::Chapter],
+    layers: &[crate::model::Layer],
     skim: &[usize],
     graph_files: &[String],
     changes: &[SemanticChange],
@@ -431,8 +431,9 @@ fn summarize(
     );
     let _ = writeln!(
         s,
-        "{} chapters, {} review blocks, {} skim groups ({skim_lines} lines, {:.0}% of PR)",
-        chapters.len(),
+        "{} layers (largest {} lines), {} review blocks, {} skim groups ({skim_lines} lines, {:.0}% of PR)",
+        layers.len(),
+        layers.iter().map(|l| l.lines).max().unwrap_or(0),
         blocks.len() - skim.len(),
         skim.len(),
         pct(skim_lines, units.total_lines),

@@ -3,11 +3,12 @@ import { Kbd } from '@/components/ui/Kbd'
 
 const shortcuts: [string, string][] = [
   ['j / k', 'Next or previous block'],
-  ['Shift J / K', 'Next or previous chapter'],
+  ['Shift J / K', 'Next or previous layer'],
   ['space', 'Primary action for the mode, then jump to the next open block'],
   ['x', 'Request a change or ask the agent to fix'],
   ['c', 'Note on the whole block'],
   ['a', 'Summarize this block with your AI agent (opt-in)'],
+  ['Shift A', 'Explain the whole layer with your AI agent (opt-in)'],
   ['Line numbers', 'Click or drag to comment on lines'],
   ['1 / 2 / 3', 'Self review, peer review, maintainer'],
   ['s', 'Switch between unified and side-by-side diff'],

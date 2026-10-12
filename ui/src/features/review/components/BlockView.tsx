@@ -31,7 +31,7 @@ interface BlockViewProps {
   data: LoadedPr
   block: Block
   mode: Mode
-  chapterTitle: string
+  sectionLabel: string
   position: string
   diffStyle: DiffStyle
   /** Files of the next block, loaded ahead so moving on is instant. */
@@ -100,9 +100,9 @@ export function BlockView(p: BlockViewProps) {
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col [grid-area:main]">
-      <header className="border-b border-line px-6 pt-4.5 pb-3.5">
+      <header className="border-b border-line px-6 pt-3.5 pb-3.5">
         <div className="flex items-center gap-1.5 text-xs text-fg-subtle">
-          <span>{p.chapterTitle}</span>
+          <span>{p.sectionLabel}</span>
           <span aria-hidden>/</span>
           <span>{p.position}</span>
         </div>

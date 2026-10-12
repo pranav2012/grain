@@ -10,9 +10,10 @@ export function ownedBlocks(data: LoadedPr): Set<number> {
 }
 
 /**
- * Reading order: peer reads foundations-first like a story; self and maintainer go riskiest-first.
- * Parts of a split file share their riskiest part's rank so they stay in order. With `mineFirst`,
- * blocks the reviewer owns come first in their own section.
+ * Reading order: peer follows the layers, foundations first; self and maintainer take the
+ * riskiest layers first and the riskiest blocks first inside each. Parts of a split file share
+ * their riskiest part's rank so they stay in order. With `mineFirst`, blocks the reviewer owns
+ * come first in their own section.
  */
 export function sectionsFor(data: LoadedPr, mode: Mode, mineFirst = false): Section[] {
   const partRank = new Map<string, number>()
@@ -22,18 +23,23 @@ export function sectionsFor(data: LoadedPr, mode: Mode, mineFirst = false): Sect
     const b = data.blocks.get(id)!
     return b.slice ? partRank.get(b.files[0])! : riskRank[riskOf(data, id)]
   }
-  let chapters = data.review.chapters.map((c) => ({ ...c, blocks: [...c.blocks] }))
+  let sections: Section[] = data.review.layers.map((l) => ({ key: `l${l.id}`, kind: 'layer', title: l.title, layer: l, blocks: [...l.blocks] }))
   if (mode !== 'peer') {
-    chapters.forEach((c) => c.blocks.sort((a, b) => rank(a) - rank(b)))
-    chapters = [...chapters].sort((a, b) => Math.min(...a.blocks.map(rank)) - Math.min(...b.blocks.map(rank)))
+    sections.forEach((s) => s.blocks.sort((a, b) => rank(a) - rank(b)))
+    sections = [...sections].sort((a, b) => Math.min(...a.blocks.map(rank)) - Math.min(...b.blocks.map(rank)))
   }
-  let sections: Section[] = chapters.map((c) => ({ key: `c${c.id}`, title: c.title, chapterId: c.id, blocks: c.blocks }))
-  if (data.review.skim.length) sections.push({ key: 'skim', title: 'Skim', blocks: data.review.skim })
+  if (data.review.skim.length) sections.push({ key: 'skim', kind: 'skim', title: 'Skim', blocks: data.review.skim })
   const owned = mineFirst ? ownedBlocks(data) : new Set<number>()
   if (owned.size) {
     const mine = sections.flatMap((s) => s.blocks.filter((id) => owned.has(id)))
     sections = sections.map((s) => ({ ...s, blocks: s.blocks.filter((id) => !owned.has(id)) })).filter((s) => s.blocks.length)
-    sections.unshift({ key: 'mine', title: 'Your code (CODEOWNERS)', blocks: mine })
+    sections.unshift({ key: 'mine', kind: 'mine', title: 'Your code (CODEOWNERS)', blocks: mine })
   }
   return sections
+}
+
+/** Short label for a section: `Layer 3`, `Skim` or `Your code`. */
+export function sectionLabel(s: Section): string {
+  if (s.kind === 'layer') return `Layer ${s.layer!.id}`
+  return s.kind === 'skim' ? 'Skim' : 'Your code'
 }

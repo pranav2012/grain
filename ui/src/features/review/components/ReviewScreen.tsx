@@ -5,11 +5,11 @@ import { ThreadActionsContext, useConversation } from '../hooks/useConversation'
 import { useLiveReview } from '../hooks/useLiveReview'
 import { useReviewStatus } from '../hooks/useReviewStatus'
 import { useSummaries } from '../hooks/useSummaries'
-import { agentName as agentNameOf, blockTitle } from '../model/describe'
+import { agentName as agentNameOf, blockTitle, layerSummaryKey, layerSummaryOf, layerTitle } from '../model/describe'
 import { modeOrder, modes } from '../model/modes'
 import { blockProgress } from '../model/progress'
-import { ownedBlocks, sectionsFor } from '../model/sections'
-import type { CommentKind, LoadedPr, Mode, ReviewComment } from '../model/types'
+import { ownedBlocks, sectionLabel, sectionsFor } from '../model/sections'
+import type { CommentKind, LoadedPr, Mode, ReviewComment, Section } from '../model/types'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
 import { BlockView } from './BlockView'
@@ -18,6 +18,7 @@ import { ContextPanel, type PanelTab } from './ContextPanel'
 import { FinishDialog } from './FinishDialog'
 import { GrainMap } from './GrainMap'
 import { KeyHints } from './KeyHints'
+import { LayerHeader } from './LayerHeader'
 import { NewCommitsNotice } from './NewCommitsNotice'
 import { Outline } from './Outline'
 import { ShortcutsDialog } from './ShortcutsDialog'
@@ -71,7 +72,9 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     if (b) dispatch({ type: 'go', key: b.key })
   }
   const step = (d: number) => go(order[Math.min(order.length - 1, Math.max(0, order.indexOf(current) + d))])
-  const stepChapter = (d: number) => go(sections[sections.indexOf(section) + d]?.blocks[0])
+  const openSection = (s: Section | undefined) => s && go(s.blocks.find((id) => !states[id]) ?? s.blocks[0])
+  const stepLayer = (d: number) => openSection(sections[sections.indexOf(section) + d])
+  const openLayer = (id: number) => openSection(sections.find((s) => s.layer?.id === id))
   const nextOpen = () => order.slice(order.indexOf(current) + 1).find((id) => !states[id]) ?? order.find((id) => !states[id])
   const verdict = (state: 'ok' | 'change') => ({ state, hash: block.contentHash, head: data.pr?.headSha ?? '', files: block.files })
   const setMode = (mode: Mode) => dispatch({ type: 'mode', mode })
@@ -99,8 +102,12 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   useHotkeys({
     j: () => step(1),
     k: () => step(-1),
-    J: () => stepChapter(1),
-    K: () => stepChapter(-1),
+    J: () => stepLayer(1),
+    K: () => stepLayer(-1),
+    A: () => {
+      if (agentName) summarizeLayer()
+      else onSettings()
+    },
     ' ': primary,
     x: secondary,
     c: () => compose(copy.kinds[0][0]),
@@ -133,26 +140,39 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   }
   const agentName = agentNameOf(data)
   const summarizeCurrent = () => agentName && !block.skim && requestSummary([block.key])
+  const summarizeLayer = () => agentName && section.layer && requestSummary([layerSummaryKey(section.layer)])
   const commands: Command[] = [
     { id: 'finish', label: copy.finish, hint: 'Shift Enter', run: () => setOverlay('finish') },
     { id: 'switch', label: 'Open another pull request', hint: '⌘O', run: onSwitch },
     { id: 'settings', label: 'Settings: AI summaries', hint: ',', run: onSettings },
     ...modeOrder.map((m, i) => ({ id: `mode-${m}`, label: `Switch to ${modes[m].label.toLowerCase()}`, hint: String(i + 1), run: () => setMode(m) })),
     { id: 'next-open', label: 'Go to next unreviewed block', run: () => go(nextOpen()) },
-    ...(agentName ? [{ id: 'summarize', label: `Summarize this block with ${agentName}`, hint: 'a', run: summarizeCurrent }] : []),
+    ...(agentName
+      ? [
+          { id: 'summarize', label: `Summarize this block with ${agentName}`, hint: 'a', run: summarizeCurrent },
+          ...(section.layer && !layerSummaryOf(data, section.layer)
+            ? [{ id: 'summarize-layer', label: `Explain this layer with ${agentName}`, hint: '⇧A', run: summarizeLayer }]
+            : []),
+        ]
+      : []),
+    { id: 'next-layer', label: 'Go to the next layer', hint: '⇧J', run: () => stepLayer(1) },
     { id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show side-by-side diff', hint: 's', run: toggleDiffStyle },
     ...(owned.size
       ? [{ id: 'mine-first', label: prefs.mineFirst ? 'Show blocks in normal order' : 'Show your code first (CODEOWNERS)', hint: 'm', run: toggleMineFirst }]
       : []),
     { id: 'map', label: panelTab === 'map' && showContext ? 'Show block details' : 'Show the map of linked blocks', hint: 'g', run: toggleMap },
     { id: 'context', label: showContext ? 'Hide context panel' : 'Show context panel', hint: ']', run: () => setShowContext((v) => !v) },
-    ...order.map((id) => ({ id: `b${id}`, label: blockTitle(data, data.blocks.get(id)!), hint: sections.find((s) => s.blocks.includes(id))?.title, run: () => go(id) })),
+    ...sections.map((s) => ({ id: `s${s.key}`, label: `${sectionLabel(s)}: ${s.layer ? layerTitle(data, s.layer) : s.title}`, hint: s.layer?.role, run: () => openSection(s) })),
+    ...order.map((id) => {
+      const s = sections.find((x) => x.blocks.includes(id))
+      return { id: `b${id}`, label: blockTitle(data, data.blocks.get(id)!), hint: s && sectionLabel(s), run: () => go(id) }
+    }),
   ]
 
   return (
     <ThreadActionsContext value={threadActions}>
       <div
-        className={`grid h-screen grid-rows-[48px_1fr_30px] [grid-template-areas:'top_top_top_top'_'map_outline_main_context'_'keys_keys_keys_keys'] max-[1100px]:grid-cols-[34px_240px_minmax(0,1fr)_0] max-[760px]:grid-cols-[0_0_minmax(0,1fr)_0] ${
+        className={`grid h-screen grid-rows-[48px_auto_minmax(0,1fr)_30px] [grid-template-areas:'top_top_top_top'_'map_outline_layer_context'_'map_outline_main_context'_'keys_keys_keys_keys'] max-[1100px]:grid-cols-[34px_240px_minmax(0,1fr)_0] max-[760px]:grid-cols-[0_0_minmax(0,1fr)_0] ${
           showContext ? 'grid-cols-[34px_288px_minmax(0,1fr)_320px]' : 'grid-cols-[34px_288px_minmax(0,1fr)_0]'
         }`}
       >
@@ -166,10 +186,12 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           onSettings={onSettings}
           onFinish={() => setOverlay('finish')}
         />
-        <GrainMap data={data} sections={sections} states={states} stale={stale} current={current} onGo={go} />
+        <GrainMap data={data} sections={sections} section={section} states={states} stale={stale} current={current} onGo={go} />
         <Outline
           data={data}
           sections={sections}
+          section={section}
+          onOpenSection={openSection}
           states={states}
           stale={stale}
           current={current}
@@ -177,11 +199,25 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           openThreads={(id) => threadsFor(id).filter((t) => !t.resolved).length}
           owned={owned}
         />
+        <LayerHeader
+          data={data}
+          section={section}
+          step={sections.indexOf(section) + 1}
+          steps={sections.length}
+          current={current}
+          states={states}
+          onStep={stepLayer}
+          onGo={go}
+          onOpenLayer={openLayer}
+          agentName={agentName}
+          summaryPending={!!section.layer && summaryPending(layerSummaryKey(section.layer))}
+          onSummarize={summarizeLayer}
+        />
         <BlockView
           data={data}
           block={block}
           mode={state.mode}
-          chapterTitle={section.title}
+          sectionLabel={sectionLabel(section)}
           position={`Block ${section.blocks.indexOf(current) + 1} of ${section.blocks.length}`}
           diffStyle={prefs.diffStyle}
           nextFiles={data.blocks.get(order[order.indexOf(current) + 1])?.files}
@@ -219,7 +255,10 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
                 current={current}
                 states={states}
                 stale={stale}
-                chapterOf={(id) => sections.find((s) => s.chapterId !== undefined && s.blocks.includes(id))?.title}
+                sectionOf={(id) => {
+                  const s = sections.find((x) => x.blocks.includes(id))
+                  return s ? sectionLabel(s) : 'Skim'
+                }}
                 onGo={go}
               />
             }

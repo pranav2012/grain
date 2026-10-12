@@ -1,5 +1,7 @@
 import { joinList, plural } from '@/lib/format'
 import type { Block } from '@/types/generated/Block'
+import type { Layer } from '@/types/generated/Layer'
+import type { LayerSummary } from '@/types/generated/LayerSummary'
 import type { Risk } from '@/types/generated/Risk'
 import type { Summary } from '@/types/generated/Summary'
 import type { LoadedPr } from './types'
@@ -7,7 +9,19 @@ import type { LoadedPr } from './types'
 const isTestPath = (p: string) => /\.(test|spec)\.|__tests__\//.test(p)
 
 export function summaryOf(data: LoadedPr, b: Block): Summary | undefined {
-  return data.summaries[b.key]
+  return data.summaries[b.key] as Summary | undefined
+}
+
+/** Summary key for a layer; block keys never start with `layer:`. */
+export const layerSummaryKey = (layer: Layer) => `layer:${layer.key}`
+
+export function layerSummaryOf(data: LoadedPr, layer: Layer): LayerSummary | undefined {
+  return data.summaries[layerSummaryKey(layer)] as LayerSummary | undefined
+}
+
+/** The agent's layer title when there is one, else the engine's (main files). */
+export function layerTitle(data: LoadedPr, layer: Layer): string {
+  return layerSummaryOf(data, layer)?.title ?? layer.title
 }
 
 /** Agent risk when a summary exists, otherwise the engine's rule-based estimate. */

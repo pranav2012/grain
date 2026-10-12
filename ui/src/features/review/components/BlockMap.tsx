@@ -13,7 +13,7 @@ interface BlockMapProps {
   current: number
   states: Record<number, BlockState>
   stale: Record<number, string>
-  chapterOf(id: number): string | undefined
+  sectionOf(id: number): string
   onGo(id: number): void
 }
 
@@ -24,7 +24,7 @@ function neighbours(pairs: { id: number; weight: number }[]) {
 }
 
 /** The current block between the blocks that use its code (left) and those it uses (right). */
-export function BlockMap({ data, current, states, stale, chapterOf, onGo }: BlockMapProps) {
+export function BlockMap({ data, current, states, stale, sectionOf, onGo }: BlockMapProps) {
   const users = neighbours(data.review.links.filter((l) => l.to === current).map((l) => ({ id: l.from, weight: l.weight })))
   const uses = neighbours(data.review.links.filter((l) => l.from === current).map((l) => ({ id: l.to, weight: l.weight })))
   const rows = Math.max(users.shown.length, uses.shown.length, 1)
@@ -41,7 +41,7 @@ export function BlockMap({ data, current, states, stale, chapterOf, onGo }: Bloc
       <button
         key={`${id}-${x}`}
         onClick={() => onGo(id)}
-        title={`${blockTitle(data, b)} (${chapterOf(id) ?? 'Skim'})`}
+        title={`${blockTitle(data, b)} (${sectionOf(id)})`}
         style={{ left: x, top: y, width: COL, height: NODE_H }}
         className={cn(
           'absolute flex flex-col justify-center overflow-hidden rounded-md border bg-surface px-1.5 text-left text-2xs leading-tight hover:bg-raised',
@@ -52,7 +52,7 @@ export function BlockMap({ data, current, states, stale, chapterOf, onGo }: Bloc
         )}
       >
         <span className="line-clamp-2">{blockTitle(data, b)}</span>
-        <span className="truncate text-2xs text-fg-faint">{chapterOf(id) ?? 'Skim'}</span>
+        <span className="truncate text-2xs text-fg-faint">{sectionOf(id)}</span>
       </button>
     )
   }

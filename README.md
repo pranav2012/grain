@@ -3,7 +3,7 @@
 # grain
 
 Review any pull request as a series of small, connected blocks instead of a wall of files.
-Grain groups a PR into chapters and blocks by what the code does, puts low-attention changes in a skim pile, runs its own checks, and lets you review block by block from the keyboard. AI summaries from your own coding agent are optional.
+Grain groups a PR into small blocks by what the code does and stacks them into ordered layers: the code other changes build on comes first, tests sit with the code they test, and each layer is about 400 lines. Low-attention changes go to a skim pile, Grain runs its own checks, and you review one layer at a time from the keyboard. AI summaries from your own coding agent are optional.
 
 Everything runs on your machine. GitHub access goes through your `gh` login.
 

@@ -72,7 +72,7 @@ pub(crate) fn prepare(
     let paths = grain_git::changed_paths(&clone, &merge_base, &details.head_sha)?;
     grain_git::checkout_sparse(&clone, &home.worktree_dir(pr), &details.head_sha, &paths)?;
 
-    report("Grouping the changes into chapters and blocks");
+    report("Grouping the changes into layers and blocks");
     let analysis = grain_engine::analyze_with(&home.worktree_dir(pr), &merge_base, &details.head_sha, Depth::Fast)?;
 
     std::fs::create_dir_all(&out_dir)?;
@@ -90,7 +90,7 @@ pub(crate) fn git_dir(home: &Home, pr: &PrRef) -> Result<PathBuf> {
 }
 
 /// Stage 2: check out the whole repository and add whole-repo facts (outside usage, dangling
-/// removals). Blocks and chapters are unchanged; only facts are added. Local reviews read the
+/// removals). Blocks and layers are unchanged; only facts are added. Local reviews read the
 /// reviewer's working tree, which is already complete.
 pub(crate) fn enrich(home: &Home, pr: &PrRef) -> Result<()> {
     let out_dir = home.review_dir(pr);

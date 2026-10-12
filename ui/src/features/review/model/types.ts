@@ -1,5 +1,7 @@
 import type { Agent } from '@/types/generated/Agent'
 import type { Block } from '@/types/generated/Block'
+import type { Layer } from '@/types/generated/Layer'
+import type { LayerSummary } from '@/types/generated/LayerSummary'
 import type { PrDetails } from '@/types/generated/PrDetails'
 import type { Review } from '@/types/generated/Review'
 import type { Summary } from '@/types/generated/Summary'
@@ -52,8 +54,8 @@ export interface LoadedPr {
   /** `owner/repo/123` */
   id: string
   review: Review
-  /** Agent summaries keyed by block content key. */
-  summaries: Record<string, Summary>
+  /** Agent summaries keyed by block content key, and layer summaries by `layer:` + layer key. */
+  summaries: Record<string, Summary | LayerSummary>
   pr: PrMeta | null
   /** Review progress saved on the server (shape owned by `useReviewState`), if any. */
   progress: unknown
@@ -61,9 +63,11 @@ export interface LoadedPr {
   blocks: Map<number, Block>
 }
 
+/** One step of the outline: a layer, the reviewer's own code (CODEOWNERS), or the skim pile. */
 export interface Section {
   key: string
+  kind: 'layer' | 'mine' | 'skim'
   title: string
-  chapterId?: number
+  layer?: Layer
   blocks: number[]
 }
