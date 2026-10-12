@@ -11,6 +11,7 @@ const shortcuts: [string, string][] = [
   ['Line numbers', 'Click or drag to comment on lines'],
   ['1 / 2 / 3', 'Self review, peer review, maintainer'],
   ['s', 'Switch between unified and side-by-side diff'],
+  ['m', 'Show your code (CODEOWNERS) first'],
   [']', 'Show or hide the context panel'],
   ['⌘K', 'Jump anywhere or run a command'],
   ['⌘O', 'Open another pull request'],

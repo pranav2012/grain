@@ -44,6 +44,7 @@ export function ContextPanel({ data, block, mode, comments, threads, composing, 
   const copy = modes[mode]
   const askKind: CommentKind = mode === 'self' ? 'fix' : 'question'
   const entities = meaningfulEntities(block)
+  const owners = [...new Set(block.files.flatMap((f) => data.owners.files[f] ?? []))]
 
   return (
     <aside aria-label="Block context" className="overflow-auto border-l border-seam pt-1.5 pb-6 [grid-area:context]">
@@ -162,6 +163,11 @@ export function ContextPanel({ data, block, mode, comments, threads, composing, 
           ))}
         </ul>
       </Section>
+      {owners.length > 0 && (
+        <Section title="Code owners">
+          <p className="leading-normal text-soft">{owners.join(', ')}</p>
+        </Section>
+      )}
     </aside>
   )
 }

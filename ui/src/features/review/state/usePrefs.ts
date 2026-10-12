@@ -3,9 +3,11 @@ import type { DiffStyle } from '../model/types'
 
 export interface Prefs {
   diffStyle: DiffStyle
+  /** Show blocks in files you own (CODEOWNERS) first. */
+  mineFirst: boolean
 }
 
-const defaults: Prefs = { diffStyle: 'unified' }
+const defaults: Prefs = { diffStyle: 'unified', mineFirst: false }
 
 /** View preferences shared across PRs. */
 export function usePrefs() {

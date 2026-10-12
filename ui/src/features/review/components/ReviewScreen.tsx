@@ -8,7 +8,7 @@ import { useSummaries } from '../hooks/useSummaries'
 import { agentName as agentNameOf, blockTitle } from '../model/describe'
 import { modeOrder, modes } from '../model/modes'
 import { blockProgress } from '../model/progress'
-import { sectionsFor } from '../model/sections'
+import { ownedBlocks, sectionsFor } from '../model/sections'
 import type { CommentKind, LoadedPr, Mode, ReviewComment } from '../model/types'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
@@ -48,14 +48,15 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
 
   const status = useReviewStatus(base.id, settingsVersion)
   const live = useLiveReview(base, status)
-  const baseSections = useMemo(() => sectionsFor(live, state.mode), [live, state.mode])
+  const baseSections = useMemo(() => sectionsFor(live, state.mode, prefs.mineFirst), [live, state.mode, prefs.mineFirst])
   const baseOrder = useMemo(() => baseSections.flatMap((s) => s.blocks), [baseSections])
   const keyToId = useMemo(() => new Map([...live.blocks.values()].map((b) => [b.key, b.id])), [live])
   const current = (state.currentKey && keyToId.get(state.currentKey)) || baseOrder[0]
   const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(live, status, baseOrder, current)
 
   const { threadsFor, actions: threadActions } = useConversation(data)
-  const sections = useMemo(() => sectionsFor(data, state.mode), [data, state.mode])
+  const sections = useMemo(() => sectionsFor(data, state.mode, prefs.mineFirst), [data, state.mode, prefs.mineFirst])
+  const owned = useMemo(() => ownedBlocks(data), [data])
   const order = useMemo(() => sections.flatMap((s) => s.blocks), [sections])
   const reviewable = useMemo(() => order.filter((id) => !data.blocks.get(id)!.skim), [order, data])
   const block = data.blocks.get(current)!
@@ -73,6 +74,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const verdict = (state: 'ok' | 'change') => ({ state, hash: block.contentHash, head: data.pr?.headSha ?? '', files: block.files })
   const setMode = (mode: Mode) => dispatch({ type: 'mode', mode })
   const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
+  const toggleMineFirst = () => setPrefs((p) => ({ ...p, mineFirst: !p.mineFirst }))
   const compose = (kind: CommentKind) => {
     setShowContext(true)
     setComposing(kind)
@@ -97,6 +99,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     x: secondary,
     c: () => compose(copy.kinds[0][0]),
     s: toggleDiffStyle,
+    m: () => owned.size && toggleMineFirst(),
     a: () => {
       if (agentName) summarizeCurrent()
       else onSettings()
@@ -131,6 +134,9 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     { id: 'next-open', label: 'Go to next unreviewed block', run: () => go(nextOpen()) },
     ...(agentName ? [{ id: 'summarize', label: `Summarize this block with ${agentName}`, hint: 'a', run: summarizeCurrent }] : []),
     { id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show side-by-side diff', hint: 's', run: toggleDiffStyle },
+    ...(owned.size
+      ? [{ id: 'mine-first', label: prefs.mineFirst ? 'Show blocks in normal order' : 'Show your code first (CODEOWNERS)', hint: 'm', run: toggleMineFirst }]
+      : []),
     { id: 'context', label: showContext ? 'Hide context panel' : 'Show context panel', hint: ']', run: () => setShowContext((v) => !v) },
     ...order.map((id) => ({ id: `b${id}`, label: blockTitle(data, data.blocks.get(id)!), hint: sections.find((s) => s.blocks.includes(id))?.title, run: () => go(id) })),
   ]
@@ -161,6 +167,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           current={current}
           onGo={go}
           openThreads={(id) => threadsFor(id).filter((t) => !t.resolved).length}
+          owned={owned}
         />
         <BlockView
           data={data}
@@ -178,6 +185,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           staleSince={stale[current]}
           comments={blockComments}
           threads={threadsFor(current)}
+          owned={owned.has(current)}
           onPrimary={primary}
           onSecondary={secondary}
           onComment={addComment}

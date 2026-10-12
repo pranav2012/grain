@@ -39,6 +39,15 @@ export type PrMeta = PrDetails & {
   local?: { path: string; branch: string | null; base: string | null } | null
 }
 
+/** `owners.json`: CODEOWNERS for the changed files, from the PR's base. */
+export interface Owners {
+  /** Which CODEOWNERS file was used; null when the repository has none. */
+  source: string | null
+  files: Record<string, string[]>
+  /** Changed files the reviewer owns, directly or through a team. */
+  mine: string[]
+}
+
 export interface LoadedPr {
   /** `owner/repo/123` */
   id: string
@@ -48,6 +57,7 @@ export interface LoadedPr {
   pr: PrMeta | null
   /** Review progress saved on the server (shape owned by `useReviewState`), if any. */
   progress: unknown
+  owners: Owners
   blocks: Map<number, Block>
 }
 

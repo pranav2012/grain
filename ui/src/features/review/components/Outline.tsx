@@ -13,9 +13,11 @@ interface OutlineProps {
   onGo(id: number): void
   /** Unresolved GitHub threads per block. */
   openThreads(id: number): number
+  /** Blocks in files the reviewer owns (CODEOWNERS). */
+  owned: Set<number>
 }
 
-export function Outline({ data, sections, states, stale, current, onGo, openThreads }: OutlineProps) {
+export function Outline({ data, sections, states, stale, current, onGo, openThreads, owned }: OutlineProps) {
   const currentRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     currentRef.current?.scrollIntoView({ block: 'nearest' })
@@ -45,6 +47,11 @@ export function Outline({ data, sections, states, stale, current, onGo, openThre
                 <StatusIcon state={states[id]} current={isCurrent} stale={!!stale[id]} />
                 <span className="truncate">{blockTitle(data, b)}</span>
                 <span className="inline-flex items-center gap-1.5 text-[11.5px] text-dim tabular-nums">
+                  {owned.has(id) && (
+                    <span className="rounded border border-seam px-1 text-[10.5px] text-periwinkle" title="You own these files (CODEOWNERS)">
+                      yours
+                    </span>
+                  )}
                   {openThreads(id) > 0 && (
                     <span className="inline-flex items-center gap-0.5 text-fog" title={`${openThreads(id)} open GitHub threads`}>
                       <ThreadIcon />

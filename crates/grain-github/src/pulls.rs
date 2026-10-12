@@ -131,6 +131,13 @@ pub fn pr_details(pr: &PrRef) -> Result<PrDetails> {
     })
 }
 
+/// The signed-in user's teams as `org/team` (for CODEOWNERS); empty when unavailable.
+pub fn viewer_teams() -> Vec<String> {
+    crate::gh::gh_text(&["api", "user/teams", "--paginate", "--jq", r#".[] | "\(.organization.login)/\(.slug)""#])
+        .map(|out| out.lines().map(str::to_string).filter(|l| !l.is_empty()).collect())
+        .unwrap_or_default()
+}
+
 /// Whether the PR is still open (false once merged or closed).
 pub fn pr_is_open(pr: &PrRef) -> Result<bool> {
     let v = gh(&["api", &format!("repos/{}/pulls/{}", pr.full_repo(), pr.number), "--jq", "{state: .state}"])?;

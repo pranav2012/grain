@@ -8,11 +8,24 @@ use grain_store::{Home, Settings};
 use crate::contract::{Job, Stage};
 use crate::jobs::{local, prepare, summarize::Summarizer};
 
+/// Refreshes `owners.json` for a prepared review; ownership is a nice-to-have, so failures are only logged.
+fn owners_for(app: &App, pr: &PrRef) {
+    let out_dir = app.home.review_dir(pr);
+    let Some(pr_json) = grain_store::read_json(&out_dir.join("pr.json")) else { return };
+    let base = pr_json["baseSha"].as_str().unwrap_or_default().to_string();
+    let result = prepare::git_dir(&app.home, pr)
+        .and_then(|git| crate::jobs::owners::write(&out_dir, &git, &base, &app.viewer(), &app.teams()));
+    if let Err(e) = result {
+        tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "couldn't read CODEOWNERS");
+    }
+}
+
 /// State shared by all requests and background jobs.
 pub(crate) struct App {
     pub(crate) home: Home,
     pub(crate) settings: Mutex<Settings>,
     viewer: Mutex<Option<String>>,
+    teams: Mutex<Option<Vec<String>>>,
     pub(crate) jobs: Mutex<HashMap<PrRef, Job>>,
     pub(crate) summarizers: Mutex<HashMap<PrRef, Summarizer>>,
     /// PRs with a preparation or enrichment pass running; never two at once per PR.
@@ -48,6 +61,7 @@ impl App {
             home,
             settings: Mutex::new(settings),
             viewer: Mutex::new(None),
+            teams: Mutex::new(None),
             jobs: Mutex::new(HashMap::new()),
             summarizers: Mutex::new(HashMap::new()),
             busy: Mutex::new(HashSet::new()),
@@ -92,6 +106,12 @@ impl App {
         v
     }
 
+    /// The signed-in user's teams (`org/team`), looked up once.
+    pub(crate) fn teams(&self) -> Vec<String> {
+        let mut teams = self.teams.lock().unwrap_or_else(PoisonError::into_inner);
+        teams.get_or_insert_with(grain_github::viewer_teams).clone()
+    }
+
     /// Starts (or re-checks) preparation of a PR in the background: stage 1 makes the review
     /// openable, stage 2 then adds whole-repo facts while the reviewer reads. A stored review is
     /// offered right away unless `refresh` asks to wait for the re-check.
@@ -129,6 +149,9 @@ impl App {
                     prepare::prepare(&app.home, &pr, &app.viewer(), &app.settings(), &report)
                 }
             });
+            if matches!(result, Ok(prepare::Next::Done | prepare::Next::Enrich)) {
+                owners_for(&app, &pr);
+            }
             report("done");
             tracing::info!(pr = %pr.number, total_ms = started.elapsed().as_millis(), "prepared");
             let (job, next) = match result {

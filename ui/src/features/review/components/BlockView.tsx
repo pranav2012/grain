@@ -47,6 +47,8 @@ interface BlockViewProps {
   comments: ReviewComment[]
   /** Existing GitHub review threads on this block's files. */
   threads: ReviewThread[]
+  /** The reviewer owns some of this block's files (CODEOWNERS). */
+  owned: boolean
   onPrimary(): void
   onSecondary(): void
   onComment(c: Omit<ReviewComment, 'id' | 'createdAt' | 'blockId' | 'blockKey'>): void
@@ -138,6 +140,7 @@ export function BlockView(p: BlockViewProps) {
           <span>
             {block.lines} changed lines in {block.files.length} {block.files.length === 1 ? 'file' : 'files'}
           </span>
+          {p.owned && <span className="text-periwinkle">You own this code</span>}
           {block.hasTests && <span>Includes tests</span>}
           {block.skim && <span>Low attention: skim and confirm</span>}
           <span>About {formatMinutes(minutesFor(block.lines))}</span>

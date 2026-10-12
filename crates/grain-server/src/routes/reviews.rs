@@ -116,7 +116,7 @@ pub(super) async fn file(
     State(app): State<Shared>,
     Path((owner, repo, number, name)): Path<(String, String, u64, String)>,
 ) -> ApiResult<impl IntoResponse> {
-    if !matches!(name.as_str(), "review.json" | "pr.json" | "summaries.json" | "diff.patch") {
+    if !matches!(name.as_str(), "review.json" | "pr.json" | "summaries.json" | "diff.patch" | "owners.json") {
         return Err(ApiError::not_found("unknown file"));
     }
     let path = app.home.review_dir(&pr_of((owner, repo, number))).join(&name);
@@ -125,6 +125,7 @@ pub(super) async fn file(
     let bytes = match tokio::fs::read(&path).await {
         Ok(bytes) => bytes,
         Err(_) if name == "summaries.json" => b"{}".to_vec(),
+        Err(_) if name == "owners.json" => br#"{"source":null,"files":{},"mine":[]}"#.to_vec(),
         Err(_) => return Err(ApiError::not_found("not prepared")),
     };
     Ok(([(header::CONTENT_TYPE, content_type), (header::CACHE_CONTROL, "no-store")], bytes))

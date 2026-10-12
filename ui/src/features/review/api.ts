@@ -9,7 +9,7 @@ import type { Status } from '@/types/generated/Status'
 import type { Summary } from '@/types/generated/Summary'
 import type { ThreadComment } from '@/types/generated/ThreadComment'
 import type { ThreadResolved } from '@/types/generated/ThreadResolved'
-import type { LoadedPr, PrMeta } from './model/types'
+import type { LoadedPr, Owners, PrMeta } from './model/types'
 
 const file = (id: string, name: string) => fetch(`/api/reviews/${id}/files/${name}`)
 
@@ -48,16 +48,17 @@ export const reviewApi = {
 
 /** Loads a prepared PR (`owner/repo/123`). Diffs are fetched per block, never all at once. */
 export async function loadPr(id: string): Promise<LoadedPr> {
-  const [review, summaries, pr, progress] = await Promise.all([
+  const [review, summaries, pr, progress, owners] = await Promise.all([
     file(id, 'review.json').then((r) => json<Review>(r)),
     file(id, 'summaries.json').then((r) => json<Record<string, Summary>>(r)),
     file(id, 'pr.json').then((r) => json<PrMeta>(r)),
     request<unknown>(`/api/reviews/${id}/progress`).catch(() => null),
+    file(id, 'owners.json').then((r) => json<Owners>(r)),
   ])
   if (!review) throw new Error(`"${id}" hasn't been prepared yet.`)
-  return withReview({ id, summaries: summaries ?? {}, pr, progress }, review)
+  return withReview({ id, summaries: summaries ?? {}, pr, progress, owners: owners ?? { source: null, files: {}, mine: [] } }, review)
 }
 
-export function withReview(base: Pick<LoadedPr, 'id' | 'summaries' | 'pr' | 'progress'>, review: Review): LoadedPr {
+export function withReview(base: Omit<LoadedPr, 'review' | 'blocks'>, review: Review): LoadedPr {
   return { ...base, review, blocks: new Map(review.blocks.map((b) => [b.id, b])) }
 }

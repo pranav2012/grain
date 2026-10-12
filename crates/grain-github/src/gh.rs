@@ -19,6 +19,18 @@ pub(crate) fn gh(args: &[&str]) -> Result<Value> {
     Ok(serde_json::from_slice(&out.stdout)?)
 }
 
+/// Runs `gh` and returns its raw output (for `--jq` lines and other non-JSON output).
+pub(crate) fn gh_text(args: &[&str]) -> Result<String> {
+    let out = Command::new("gh")
+        .args(args)
+        .output()
+        .context("`gh` is not installed. Install it from https://cli.github.com")?;
+    if !out.status.success() {
+        bail!("gh {}: {}", args.first().unwrap_or(&""), String::from_utf8_lossy(&out.stderr).trim());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
 /// Runs `gh` with `input` on stdin (e.g. `gh api ... --input -`) and parses its JSON output.
 pub(crate) fn gh_with_input(args: &[&str], input: &str) -> Result<Value> {
     use std::io::Write as _;
