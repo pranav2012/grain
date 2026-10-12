@@ -55,12 +55,20 @@ impl App {
         }
         let app = self.clone();
         tokio::task::spawn_blocking(move || {
+            let started = std::time::Instant::now();
+            let last = Mutex::new((String::from("start"), std::time::Instant::now()));
             let report = |m: &str| {
+                let mut last = last.lock().unwrap_or_else(PoisonError::into_inner);
+                tracing::info!(pr = %pr.number, step = %last.0, ms = last.1.elapsed().as_millis(), "prepare step done");
+                *last = (m.to_string(), std::time::Instant::now());
                 if let Some(j) = app.jobs.lock().unwrap_or_else(PoisonError::into_inner).get_mut(&pr) {
                     m.clone_into(&mut j.message);
                 }
             };
-            let job = match prepare::prepare(&app.home, &pr, &app.viewer(), &app.settings(), &report) {
+            let result = prepare::prepare(&app.home, &pr, &app.viewer(), &app.settings(), &report);
+            report("done");
+            tracing::info!(pr = %pr.number, total_ms = started.elapsed().as_millis(), "prepared");
+            let job = match result {
                 Ok(()) => Job { stage: Stage::Ready, message: "Ready".into() },
                 Err(e) => Job { stage: Stage::Failed, message: format!("{e:#}") },
             };

@@ -62,7 +62,8 @@ pub(super) async fn status(State(app): State<Shared>, Path(p): Path<(String, Str
         });
     let summarizer =
         app.summarizers.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&pr).map(|s| s.status.clone());
-    Json(Status { job, summarizer, agent: app.settings().agent })
+    let settings = app.settings();
+    Json(Status { job, summarizer, agent: settings.agent, auto_summarize: settings.auto_summarize })
 }
 
 pub(super) async fn file(

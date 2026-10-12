@@ -3,4 +3,4 @@ import type { Agent } from "./Agent";
 import type { Job } from "./Job";
 import type { SummarizerStatus } from "./SummarizerStatus";
 
-export type Status = { job: Job, summarizer: SummarizerStatus | null, agent: Agent | null, };
+export type Status = { job: Job, summarizer: SummarizerStatus | null, agent: Agent | null, autoSummarize: boolean, };

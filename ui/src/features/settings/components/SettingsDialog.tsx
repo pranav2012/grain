@@ -34,7 +34,7 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
     <Dialog label="Settings" onClose={onClose} className="p-5">
       <h2 className="mb-1 text-[17px] font-semibold">Settings</h2>
       <p className="mb-3.5 leading-relaxed text-fog">
-        AI summaries are optional. When on, Grain runs your own agent read-only, one block at a time, only near where you are reading, and caches every answer.
+        AI is off unless you turn it on. With an agent chosen, Grain only summarizes a block when you ask (press a), runs your own agent read-only, and caches every answer.
       </p>
       {s && (
         <>
@@ -59,7 +59,20 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
               )
             })}
           </div>
-          <label className="mt-1.5 flex items-center justify-between gap-3 text-fog">
+          <label className="mt-1.5 flex items-start gap-2.5 text-fog has-[:disabled]:opacity-50">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={s.autoSummarize}
+              disabled={!s.agent}
+              onChange={(e) => setS({ ...s, autoSummarize: e.target.checked })}
+            />
+            <span>
+              Also summarize the next blocks automatically while I read
+              <small className="block text-dim">Never runs when a pull request first opens. Off by default.</small>
+            </span>
+          </label>
+          <label className="mt-3 flex items-center justify-between gap-3 text-fog">
             Summaries per review, at most
             <input
               type="number"

@@ -3,10 +3,15 @@ import type { Agent } from "./Agent";
 
 export type Settings = { 
 /**
- * `None` means review without AI.
+ * `None` means review without AI (the default).
  */
 agent: Agent | null, model: string | null, 
 /**
  * Fresh (non-cached) agent requests allowed per PR review.
  */
-maxSummariesPerReview: number, };
+maxSummariesPerReview: number, 
+/**
+ * Summarize the next blocks automatically while reading. Off by default: summaries are
+ * otherwise only made when the reviewer asks for one, and never for the initial view.
+ */
+autoSummarize: boolean, };

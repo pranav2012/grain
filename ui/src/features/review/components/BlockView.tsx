@@ -30,6 +30,10 @@ interface BlockViewProps {
   chapterTitle: string
   position: string
   diffStyle: DiffStyle
+  /** Set when the reviewer has chosen an agent; summaries are only made on request. */
+  agentName: string | null
+  summaryPending: boolean
+  onSummarize(): void
   onDiffStyle(style: DiffStyle): void
   state?: BlockState
   comments: ReviewComment[]
@@ -109,6 +113,11 @@ export function BlockView(p: BlockViewProps) {
           <Button variant="danger" onClick={p.onSecondary}>
             {copy.secondary} <Kbd>x</Kbd>
           </Button>
+          {p.agentName && !summary && !block.skim && (
+            <Button variant="ghost" onClick={p.onSummarize} disabled={p.summaryPending}>
+              {p.summaryPending ? `Summarizing with ${p.agentName}…` : `Summarize with ${p.agentName}`} <Kbd>a</Kbd>
+            </Button>
+          )}
           <div className="ml-auto flex items-center gap-1">
             <Segmented
               label="Diff layout"

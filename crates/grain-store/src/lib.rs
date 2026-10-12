@@ -58,19 +58,22 @@ impl Home {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 #[ts(export)]
 pub struct Settings {
-    /// `None` means review without AI.
+    /// `None` means review without AI (the default).
     pub agent: Option<Agent>,
     pub model: Option<String>,
     /// Fresh (non-cached) agent requests allowed per PR review.
     pub max_summaries_per_review: usize,
+    /// Summarize the next blocks automatically while reading. Off by default: summaries are
+    /// otherwise only made when the reviewer asks for one, and never for the initial view.
+    pub auto_summarize: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { agent: None, model: None, max_summaries_per_review: 30 }
+        Settings { agent: None, model: None, max_summaries_per_review: 30, auto_summarize: false }
     }
 }
 

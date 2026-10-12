@@ -7,6 +7,7 @@ const shortcuts: [string, string][] = [
   ['space', 'Primary action for the mode, then jump to the next open block'],
   ['x', 'Request a change or ask the agent to fix'],
   ['c', 'Note on the whole block'],
+  ['a', 'Summarize this block with your AI agent (opt-in)'],
   ['Line numbers', 'Click or drag to comment on lines'],
   ['1 / 2 / 3', 'Self review, peer review, maintainer'],
   ['s', 'Switch between unified and side-by-side diff'],

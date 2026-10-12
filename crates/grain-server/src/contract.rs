@@ -76,10 +76,12 @@ pub(crate) struct SummarizerStatus {
 
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Status {
     pub job: Job,
     pub summarizer: Option<SummarizerStatus>,
     pub agent: Option<Agent>,
+    pub auto_summarize: bool,
 }
 
 #[derive(Debug, Deserialize, TS)]

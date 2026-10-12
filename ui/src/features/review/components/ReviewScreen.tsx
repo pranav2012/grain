@@ -36,7 +36,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
   const baseSections = useMemo(() => sectionsFor(base, state.mode), [base, state.mode])
   const baseOrder = useMemo(() => baseSections.flatMap((s) => s.blocks), [baseSections])
   const current = state.current && base.blocks.has(state.current) ? state.current : baseOrder[0]
-  const { data, note } = useSummaries(base, baseOrder, current, settingsVersion)
+  const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(base, baseOrder, current, settingsVersion)
 
   const sections = useMemo(() => sectionsFor(data, state.mode), [data, state.mode])
   const order = useMemo(() => sections.flatMap((s) => s.blocks), [sections])
@@ -76,6 +76,10 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
     x: secondary,
     c: () => compose(copy.kinds[0][0]),
     s: toggleDiffStyle,
+    a: () => {
+      if (agentName) summarizeCurrent()
+      else onSettings()
+    },
     '1': () => setMode('self'),
     '2': () => setMode('peer'),
     '3': () => setMode('maintainer'),
@@ -97,12 +101,14 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
     reviewLines: lines(reviewable),
   }
   const agentName = agentNameOf(data)
+  const summarizeCurrent = () => agentName && !block.skim && requestSummary([block.key])
   const commands: Command[] = [
     { id: 'finish', label: copy.finish, hint: 'Shift Enter', run: () => setOverlay('finish') },
     { id: 'switch', label: 'Open another pull request', hint: '⌘O', run: onSwitch },
     { id: 'settings', label: 'Settings: AI summaries', hint: ',', run: onSettings },
     ...modeOrder.map((m, i) => ({ id: `mode-${m}`, label: `Switch to ${modes[m].label.toLowerCase()}`, hint: String(i + 1), run: () => setMode(m) })),
     { id: 'next-open', label: 'Go to next unreviewed block', run: () => go(nextOpen()) },
+    ...(agentName ? [{ id: 'summarize', label: `Summarize this block with ${agentName}`, hint: 'a', run: summarizeCurrent }] : []),
     { id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show side-by-side diff', hint: 's', run: toggleDiffStyle },
     { id: 'context', label: showContext ? 'Hide context panel' : 'Show context panel', hint: ']', run: () => setShowContext((v) => !v) },
     ...order.map((id) => ({ id: `b${id}`, label: blockTitle(data, data.blocks.get(id)!), hint: sections.find((s) => s.blocks.includes(id))?.title, run: () => go(id) })),
@@ -133,6 +139,9 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
         chapterTitle={section.title}
         position={`Block ${section.blocks.indexOf(current) + 1} of ${section.blocks.length}`}
         diffStyle={prefs.diffStyle}
+        agentName={agentName}
+        summaryPending={summaryPending(block.key)}
+        onSummarize={summarizeCurrent}
         onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
         state={state.states[current]}
         comments={blockComments}

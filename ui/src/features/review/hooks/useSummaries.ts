@@ -4,12 +4,15 @@ import { reviewApi } from '../api'
 import type { LoadedPr } from '../model/types'
 
 /**
- * Live agent summaries for an open review. Asks for the current block and the next two
- * (never the whole PR), follows settings changes, and reports why summaries stopped.
+ * Agent summaries for an open review. Nothing is requested on open: the reviewer asks for a
+ * block's summary, or turns on auto-summarize to get the current block and the next two.
+ * Follows settings changes and reports why summaries stopped.
  */
 export function useSummaries(base: LoadedPr, order: number[], current: number, settingsVersion: number) {
   const [summaries, setSummaries] = useState(base.summaries)
   const [agent, setAgent] = useState<Agent | null>(base.pr?.agent ?? null)
+  const [auto, setAuto] = useState(false)
+  const [requested, setRequested] = useState<Set<string>>(new Set())
   const [note, setNote] = useState<string | null>(null)
 
   useEffect(() => {
@@ -17,6 +20,7 @@ export function useSummaries(base: LoadedPr, order: number[], current: number, s
       const st = await reviewApi.status(base.id).catch(() => null)
       if (!st) return
       setAgent(st.agent)
+      setAuto(st.autoSummarize)
       if (!st.agent) return setNote(null)
       setNote(st.summarizer?.stopped ?? (st.summarizer?.running ? 'Summarizing the next blocks' : null))
       const latest = await reviewApi.summaries(base.id).catch(() => null)
@@ -27,6 +31,18 @@ export function useSummaries(base: LoadedPr, order: number[], current: number, s
     return () => clearInterval(t)
   }, [base.id, settingsVersion])
 
+  const send = (keys: string[]) => {
+    const fresh = keys.filter((k) => !summaries[k])
+    if (fresh.length) reviewApi.summarize(base.id, fresh).catch(() => {})
+    return fresh
+  }
+  /** Reviewer asked for these blocks' summaries; they show as pending until they arrive. */
+  const request = (keys: string[]) => {
+    const fresh = send(keys.filter((k) => !requested.has(k)))
+    if (fresh.length) setRequested((prev) => new Set([...prev, ...fresh]))
+  }
+  const pending = (key: string) => requested.has(key) && !summaries[key]
+
   const requestNearby = useEffectEvent(() => {
     const i = order.indexOf(current)
     const keys = order
@@ -34,12 +50,13 @@ export function useSummaries(base: LoadedPr, order: number[], current: number, s
       .map((id) => base.blocks.get(id)!)
       .filter((b) => !b.skim && !summaries[b.key])
       .map((b) => b.key)
-    if (keys.length) reviewApi.summarize(base.id, keys).catch(() => {})
+    send(keys)
   })
   useEffect(() => {
-    if (agent) requestNearby()
-  }, [current, agent])
+    if (agent && auto) requestNearby()
+  }, [current, agent, auto])
+
 
   const data = useMemo(() => ({ ...base, summaries, pr: base.pr && { ...base.pr, agent } }), [base, summaries, agent])
-  return { data, note }
+  return { data, note, request, pending }
 }
