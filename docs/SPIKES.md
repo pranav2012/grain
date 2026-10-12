@@ -91,3 +91,42 @@ Rust `agent-client-protocol` 3.3 client. It sends one block diff (~260 lines), a
 - Grouping: v2 algorithm as the deterministic baseline; AI enrichment only adds titles, intent and risk on top.
 - UI: React + `@pierre/diffs` `CodeView` with the worker pool.
 - Agents: ACP only (Claude and Codex adapters, OpenCode native), a warm session, and all tool permissions rejected during review.
+
+## Follow-up (same day): provider terms + grouping v3
+
+### Agents v2 (`spikes/agents`), within provider terms
+
+The ACP adapter for Claude is built on the Agent SDK, which Anthropic says third-party products should only use with API keys.
+The default transport is now the **user's own CLI** (T3 Code's approach); ACP is limited to API-key setups. See [COMPLIANCE.md](COMPLIANCE.md).
+
+| Agent | Command | Time (same 260-line block) | Valid JSON |
+|---|---|---|---|
+| Claude | `claude -p --json-schema … --tools ""` | 27 s | yes (schema-validated `structured_output`) |
+| Codex | `codex exec -s read-only --output-schema …` | 21 s | yes |
+
+- Cache hits are instant.
+- Guards verified:
+  - subscription use in CI is refused (exit 2);
+  - ACP without an API key is refused;
+  - a Claude subscription inside OpenCode is refused;
+  - rate or usage limits stop the run (exit 75).
+
+### Grouping v3: chapters → blocks + skim
+
+- **Skim bucket**: lockfiles, generated files, assets, docs, near-identical edits across ≥ 3 sibling files, and blocks whose entities are all mechanical (formatting-only, pure moves or renames).
+- **Blocks**:
+  - cap raised to 600 lines;
+  - merges need a link that is strong relative to the smaller side (weight / size ≥ 0.01), so one incidental call no longer fuses two features;
+  - tiny leftovers are absorbed by longest shared path;
+  - single files over 1,200 lines are split into runs of consecutive entities.
+- **Chapters**:
+  - a top-down split along the directory tree, targeting about √(lines/150) chapters (between 1 and 12);
+  - chapters under 3% of the PR are folded into their nearest chapter;
+  - layer ordering (types/data → hooks/state → components → screens → other) is applied to chapters and blocks.
+
+| PR | v2 (flat) | v3 |
+|---|---|---|
+| Small (692 lines) | 7 blocks | 1 chapter, **2 blocks** (checkout fix + its tests; debug overlay) + skim |
+| Medium (13K) | 53 blocks | **7 chapters, 35 blocks** + skim (15% of lines) |
+| Large (52K) | 163 blocks | 10 chapters, ~128 blocks + skim (12%) |
+| Stress (400K) | 1,047 blocks | 12 chapters, ~900 blocks + skim (39%) |

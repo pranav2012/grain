@@ -2,14 +2,14 @@
 # Try the Phase 0 spikes on any GitHub PR: semantic grouping -> block-by-block viewer,
 # optionally with AI summaries from your own agent.
 #
-# Usage: spikes/try.sh <owner/repo> <pr-number> [claude|codex|opencode|none] [max-summaries]
-# Example: spikes/try.sh acme/widgets 2671 claude 5
+# Usage: spikes/try.sh <owner/repo> <pr-number> [claude|codex|opencode|none] [max-summaries=3]
+# Example: spikes/try.sh acme/widgets 2671 claude
 set -euo pipefail
 
 REPO=${1:?owner/repo}
 PR=${2:?pr number}
 AGENT=${3:-none}
-MAX_SUMMARIES=${4:-5}
+MAX_SUMMARIES=${4:-3}
 ROOT=$(cd "$(dirname "$0")" && pwd)
 WORK=${GRAIN_SPIKE_DIR:-$HOME/.grain-spike}
 NAME="${REPO##*/}-$PR"
@@ -30,26 +30,34 @@ git -C "$CLONE" -c core.quotepath=off diff -M --no-color --no-ext-diff "$MB" "$H
 cp "$WORK/out/$NAME/blocks.json" "$WORK/patches/$NAME.blocks.json"
 rm -f "$WORK/patches/$NAME.summaries.json"
 
+cp "$WORK/out/$NAME/review.json" "$WORK/patches/$NAME.review.json"
+
 if [ "$AGENT" != "none" ]; then
-  echo "▸ Asking $AGENT to summarize up to $MAX_SUMMARIES code blocks (in parallel, ~30-60s)"
-  cargo build -q --release --manifest-path "$ROOT/acp-agents/Cargo.toml"
+  # One request at a time, cached, stops on the first usage limit (docs/COMPLIANCE.md).
+  echo "▸ Asking your own $AGENT CLI to summarize the first $MAX_SUMMARIES blocks (one at a time)"
+  cargo build -q --release --manifest-path "$ROOT/agents/Cargo.toml"
   ids=$(python3 -c "
-import json, sys
-b = json.load(open('$WORK/out/$NAME/blocks.json'))
-print(' '.join([str(x['id']) for x in b if x['kind'] in ('code', 'mixed') and x['lines'] <= 1500][:$MAX_SUMMARIES]))")
-  for id in $ids; do
-    files=$(python3 -c "
 import json
-b = {x['id']: x for x in json.load(open('$WORK/out/$NAME/blocks.json'))}
-print('\n'.join(b[$id]['files']))")
-    (
-      echo "$files" | tr '\n' '\0' | xargs -0 git -C "$CLONE" -c core.quotepath=off diff "$MB" "$HEAD" -- > "$WORK/acp/$NAME-$id.diff"
-      "$ROOT/acp-agents/target/release/acp-agents-spike" "$AGENT" "$WORK/acp/$NAME-$id.diff" "$WORK/wt/$NAME" \
-        > "$WORK/acp/$NAME-$id.json" 2> "$WORK/acp/$NAME-$id.err" || echo "  block $id: agent failed (see $WORK/acp/$NAME-$id.err)"
-    ) &
+r = json.load(open('$WORK/out/$NAME/review.json'))
+order = [b for c in r['chapters'] for b in c['blocks']]
+print(' '.join(map(str, order[:$MAX_SUMMARIES])))")
+  for id in $ids; do
+    python3 -c "
+import json
+b = {x['id']: x for x in json.load(open('$WORK/out/$NAME/review.json'))['blocks']}
+print('\n'.join(b[$id]['files']))" | tr '\n' '\0' | xargs -0 git -C "$CLONE" -c core.quotepath=off diff "$MB" "$HEAD" -- > "$WORK/acp/$NAME-$id.diff"
+    set +e
+    "$ROOT/agents/target/release/agents-spike" "$AGENT" "$WORK/acp/$NAME-$id.diff" --cache-dir "$WORK/cache" > "$WORK/acp/$NAME-$id.json"
+    code=$?
+    set -e
+    case $code in
+      0) echo "  block $id ✓ $(python3 -c "import json;print(json.load(open('$WORK/acp/$NAME-$id.json'))['summary']['title'])")" ;;
+      2) echo "  refused: $(python3 -c "import json;print(json.load(open('$WORK/acp/$NAME-$id.json'))['refused'])")"; break ;;
+      75) echo "  usage limit reached — stopping (no retries)"; break ;;
+      *) echo "  block $id failed (see $WORK/acp/$NAME-$id.json)" ;;
+    esac
   done
-  wait
-  python3 - "$WORK" "$NAME" $ids <<'EOF'
+  python3 - "$WORK" "$NAME" $ids <<'EOF2'
 import json, sys, os
 work, name, ids = sys.argv[1], sys.argv[2], sys.argv[3:]
 out = {}
@@ -60,8 +68,7 @@ for i in ids:
         if isinstance(r.get("summary"), dict):
             out[i] = r["summary"]
 json.dump(out, open(f"{work}/patches/{name}.summaries.json", "w"), indent=2)
-print(f"  {len(out)}/{len(ids)} blocks summarized")
-EOF
+EOF2
 fi
 
 echo "▸ Starting viewer"

@@ -168,6 +168,9 @@ struct BlockOut {
     mechanical_entities: usize,
     has_tests: bool,
     kind: String,
+    skim: Option<String>,
+    layer: u8,
+    dir: String,
 }
 
 fn main() -> Result<()> {
@@ -335,27 +338,64 @@ fn main() -> Result<()> {
             }
         }
     }
+    let mut pattern_files: HashSet<String> = HashSet::new();
     if !args.iter().any(|a| a == "--v1") {
-        uf = group_v2(&changes, &units, &unit_lines, &graph, &hunks);
+        (uf, pattern_files) = group_v2(&changes, &units, &unit_lines, &graph, &hunks);
     }
     timings.push(("grouping", t.elapsed().as_millis()));
 
+    let unit_file = |u: usize| -> &str {
+        match &units[u] {
+            Unit::Entity(i) => &changes[*i].file_path,
+            Unit::Residue(p) => p,
+        }
+    };
+    let unit_start = |u: usize| -> usize {
+        match &units[u] {
+            Unit::Entity(i) => changes[*i].start_line,
+            Unit::Residue(_) => 0,
+        }
+    };
     let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for u in 0..units.len() {
         let r = uf.find(u);
         groups.entry(r).or_default().push(u);
     }
-    let mut blocks: Vec<BlockOut> = groups
-        .values()
+    // Huge single-file groups (e.g. 10K-line test files) are cut into CAP-sized runs of consecutive entities.
+    let mut member_sets: Vec<Vec<usize>> = Vec::new();
+    for members in groups.into_values() {
+        let files: HashSet<&str> = members.iter().map(|&u| unit_file(u)).collect();
+        let lines: usize = members.iter().map(|&u| unit_lines[u]).sum();
+        if files.len() == 1 && lines > 2 * CAP && members.len() > 1 {
+            let mut sorted = members.clone();
+            sorted.sort_by_key(|&u| unit_start(u));
+            let mut cur: Vec<usize> = Vec::new();
+            let mut cur_lines = 0;
+            for u in sorted {
+                if cur_lines + unit_lines[u] > CAP && !cur.is_empty() {
+                    member_sets.push(std::mem::take(&mut cur));
+                    cur_lines = 0;
+                }
+                cur_lines += unit_lines[u];
+                cur.push(u);
+            }
+            member_sets.push(cur);
+        } else {
+            member_sets.push(members);
+        }
+    }
+
+    let mut blocks: Vec<BlockOut> = member_sets
+        .iter()
         .map(|members| {
-            let mut files = HashSet::new();
+            let mut file_lines: BTreeMap<String, usize> = BTreeMap::new();
             let (mut entities, mut residue_files, mut mech, mut lines, mut tests) = (vec![], vec![], 0, 0, false);
             for &u in members {
                 lines += unit_lines[u];
+                *file_lines.entry(unit_file(u).to_string()).or_default() += unit_lines[u];
                 match &units[u] {
                     Unit::Entity(i) => {
                         let c = &changes[*i];
-                        files.insert(c.file_path.clone());
                         tests |= is_test_path(&c.file_path);
                         let mechanical = c.structural_change == Some(false)
                             || (matches!(c.change_type, ChangeType::Moved | ChangeType::Renamed | ChangeType::Reordered) && !c.has_content_change());
@@ -363,33 +403,216 @@ fn main() -> Result<()> {
                         entities.push(format!("{} {} `{}` ({})", c.change_type, c.entity_type, c.entity_name, c.file_path));
                     }
                     Unit::Residue(p) => {
-                        files.insert(p.clone());
                         tests |= is_test_path(p);
                         residue_files.push(p.clone());
                     }
                 }
             }
-            let mut files: Vec<String> = files.into_iter().collect();
-            files.sort();
+            let files: Vec<String> = file_lines.keys().cloned().collect();
             let kinds: HashSet<&str> = files.iter().map(|f| kind_of(f)).collect();
             let kind = if kinds.len() == 1 { kinds.into_iter().next().unwrap().to_string() } else if kinds.contains("code") { "code".into() } else { "mixed".into() };
-            BlockOut { id: 0, lines, files, entities, residue_files, mechanical_entities: mech, has_tests: tests, kind }
+            let skim = if matches!(kind.as_str(), "lockfile" | "generated" | "asset" | "docs") {
+                Some(kind.clone())
+            } else if files.len() >= 3 && files.iter().all(|f| pattern_files.contains(f)) {
+                Some("repeated edit".to_string())
+            } else if !entities.is_empty() && mech == entities.len() && residue_files.is_empty() {
+                Some("mechanical".to_string())
+            } else {
+                None
+            };
+            let layer = files.iter().filter(|f| !is_test_path(f)).map(|f| layer_of(f)).min().unwrap_or(4);
+            let dir = block_dir(&file_lines);
+            BlockOut { id: 0, lines, files, entities, residue_files, mechanical_entities: mech, has_tests: tests, kind, skim, layer, dir }
         })
         .filter(|b| b.lines > 0 || !b.entities.is_empty())
         .collect();
-    blocks.sort_by(|a, b| b.lines.cmp(&a.lines));
+    blocks.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)));
     for (i, b) in blocks.iter_mut().enumerate() {
         b.id = i + 1;
     }
+    let chapters = build_chapters(&blocks);
+    timings.push(("grouping (total)", t.elapsed().as_millis()));
 
     std::fs::write(out_dir.join("blocks.json"), serde_json::to_string_pretty(&blocks)?)?;
+    let skim: Vec<usize> = blocks.iter().filter(|b| b.skim.is_some()).map(|b| b.id).collect();
+    let review = serde_json::json!({ "chapters": chapters, "skim": skim, "blocks": blocks, "totalLines": total_lines });
+    std::fs::write(out_dir.join("review.json"), serde_json::to_string_pretty(&review)?)?;
     write_report(out_dir, &args, &timings, &changes, &graph_files, &graph, matched_in_graph, edges_between_changed, test_links, total_lines, covered_lines, &blocks, full_graph_stats)?;
-    println!("{}", std::fs::read_to_string(out_dir.join("summary.txt"))?);
+    let skim_lines: usize = blocks.iter().filter(|b| b.skim.is_some()).map(|b| b.lines).sum();
+    let mut summary = std::fs::read_to_string(out_dir.join("summary.txt"))?;
+    summary.push_str(&format!(
+        "v3: {} chapters, {} review blocks, {} skim groups ({} lines, {:.0}% of PR)\n",
+        chapters.len(),
+        blocks.len() - skim.len(),
+        skim.len(),
+        skim_lines,
+        100.0 * skim_lines as f64 / total_lines.max(1) as f64
+    ));
+    for c in &chapters {
+        summary.push_str(&format!("  chapter {:<44} {:>6} lines  {:>3} blocks\n", c.title, c.lines, c.blocks.len()));
+    }
+    std::fs::write(out_dir.join("summary.txt"), &summary)?;
+    println!("{summary}");
     Ok(())
 }
 
-const CAP: usize = 400;
-const SMALL: usize = 30;
+/// Foundations-first layer from path conventions: 0 types/data/services, 1 hooks/state, 2 components, 3 screens, 4 other.
+fn layer_of(path: &str) -> u8 {
+    let p = format!("/{}", path.to_lowercase());
+    let has = |xs: &[&str]| xs.iter().any(|x| p.contains(x));
+    if p.ends_with(".d.ts") || has(&["/types/", "/models/", "/schema", "/constants/", "/api/", "/services/", "/store/", "/util/", "/utils/", "/lib/", "/migrations/", "/db/"]) {
+        0
+    } else if has(&["/hooks/", "/context/", "/contexts/", "/providers/", "/state/"]) || p.rsplit('/').next().is_some_and(|n| n.starts_with("use")) {
+        1
+    } else if has(&["/components/", "/atoms/", "/molecules/", "/ui/", "/widgets/"]) {
+        2
+    } else if has(&["/screens/", "/pages/", "/app/", "/routes/", "/views/"]) {
+        3
+    } else {
+        4
+    }
+}
+
+/// Directory that best describes a block: the files' common directory, or the heaviest file's directory.
+fn block_dir(file_lines: &BTreeMap<String, usize>) -> String {
+    let dirs: Vec<Vec<&str>> = file_lines.keys().map(|f| f.split('/').collect::<Vec<_>>()).map(|v| v[..v.len() - 1].to_vec()).collect();
+    let mut common: Vec<&str> = dirs.first().cloned().unwrap_or_default();
+    for d in &dirs[1.min(dirs.len())..] {
+        let n = common.iter().zip(d).take_while(|(a, b)| a == b).count();
+        common.truncate(n);
+    }
+    if common.len() >= 2 {
+        return common.join("/");
+    }
+    let heaviest = file_lines.iter().max_by_key(|(_, &l)| l).map(|(f, _)| f.as_str()).unwrap_or("");
+    heaviest.rsplit_once('/').map(|x| x.0.to_string()).unwrap_or_default()
+}
+
+#[derive(Serialize)]
+struct ChapterOut {
+    id: usize,
+    title: String,
+    dir: String,
+    lines: usize,
+    layer: u8,
+    blocks: Vec<usize>,
+}
+
+/// Top-down split of review blocks into feature chapters along the directory tree.
+/// Target count grows with PR size (about sqrt(lines / 150), between 1 and 12).
+fn build_chapters(blocks: &[BlockOut]) -> Vec<ChapterOut> {
+    let review: Vec<&BlockOut> = blocks.iter().filter(|b| b.skim.is_none()).collect();
+    let total: usize = review.iter().map(|b| b.lines).sum();
+    let target = ((total as f64 / 150.0).sqrt().round() as usize).clamp(1, 12);
+    let segs = |b: &BlockOut| -> Vec<String> { b.dir.split('/').filter(|s| !s.is_empty()).map(str::to_string).collect() };
+    let common_depth = |members: &[usize]| -> usize {
+        let all: Vec<Vec<String>> = members.iter().map(|&i| segs(review[i])).collect();
+        let first = all.first().cloned().unwrap_or_default();
+        (0..first.len()).take_while(|&d| all.iter().all(|s| s.get(d) == first.get(d))).count()
+    };
+    let lines_of = |m: &[usize]| -> usize { m.iter().map(|&i| review[i].lines).sum() };
+
+    let mut chapters: Vec<(Vec<usize>, bool)> = vec![((0..review.len()).collect(), true)];
+    while chapters.len() < target {
+        let Some(ci) = chapters.iter().enumerate().filter(|(_, c)| c.1 && c.0.len() > 1).max_by_key(|(_, c)| lines_of(&c.0)).map(|(i, _)| i) else {
+            break;
+        };
+        let (members, _) = chapters.swap_remove(ci);
+        let depth = common_depth(&members);
+        let mut by_seg: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for &i in &members {
+            by_seg.entry(segs(review[i]).get(depth).cloned().unwrap_or_default()).or_default().push(i);
+        }
+        // Tiny sub-areas stay together instead of becoming their own chapter.
+        let mut parts: Vec<Vec<usize>> = Vec::new();
+        let mut rest: Vec<usize> = Vec::new();
+        for (_, m) in by_seg {
+            if lines_of(&m) * 25 < total.max(1) {
+                rest.extend(m);
+            } else {
+                parts.push(m);
+            }
+        }
+        parts.sort_by_key(|m| std::cmp::Reverse(lines_of(m)));
+        let room = target.saturating_sub(chapters.len()).max(1);
+        while parts.len() > room {
+            rest.extend(parts.pop().unwrap());
+        }
+        if !rest.is_empty() {
+            if parts.len() == room {
+                parts.last_mut().unwrap().extend(rest);
+            } else {
+                parts.push(rest);
+            }
+        }
+        if parts.len() <= 1 {
+            chapters.push((parts.into_iter().next().unwrap_or(members), false));
+        } else {
+            chapters.extend(parts.into_iter().map(|m| (m, true)));
+        }
+    }
+
+    // Fold chapters under 3% of the PR into the chapter sharing the longest directory prefix.
+    let mut chapters = chapters;
+    loop {
+        if chapters.len() <= 1 {
+            break;
+        }
+        let Some(ti) = (0..chapters.len()).filter(|&i| lines_of(&chapters[i].0) * 33 < total).min_by_key(|&i| lines_of(&chapters[i].0)) else {
+            break;
+        };
+        let (tiny, _) = chapters.swap_remove(ti);
+        let my = segs(review[tiny[0]]);
+        let best = (0..chapters.len())
+            .max_by_key(|&j| {
+                let other = segs(review[chapters[j].0[0]]);
+                (other.iter().zip(&my).take_while(|(a, b)| a == b).count(), std::cmp::Reverse(lines_of(&chapters[j].0)))
+            })
+            .unwrap();
+        chapters[best].0.extend(tiny);
+    }
+    let mut out: Vec<ChapterOut> = chapters
+        .into_iter()
+        .map(|(members, _)| {
+            let depth = common_depth(&members);
+            let first = segs(review[members[0]]);
+            let dir = first[..depth.min(first.len())].join("/");
+            // Name after the heaviest sub-area so sibling chapters don't share a title.
+            let mut area: HashMap<String, usize> = HashMap::new();
+            for &i in &members {
+                let s = segs(review[i]);
+                let tail = s[depth.min(s.len())..].iter().take(2).cloned().collect::<Vec<_>>().join("/");
+                *area.entry(tail).or_default() += review[i].lines;
+            }
+            let top = area.into_iter().max_by_key(|(_, l)| *l).map(|(a, _)| a).unwrap_or_default();
+            let base = dir.rsplit('/').next().unwrap_or("").to_string();
+            let title = match (base.is_empty(), top.is_empty()) {
+                (true, true) => "Across the codebase".to_string(),
+                (true, false) => top,
+                (false, true) => base,
+                (false, false) => format!("{base} › {top}"),
+            };
+            let mut ids: Vec<&BlockOut> = members.iter().map(|&i| review[i]).collect();
+            ids.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)));
+            ChapterOut {
+                id: 0,
+                title,
+                dir,
+                lines: lines_of(&members),
+                layer: ids.iter().map(|b| b.layer).min().unwrap_or(4),
+                blocks: ids.iter().map(|b| b.id).collect(),
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| a.layer.cmp(&b.layer).then(b.lines.cmp(&a.lines)));
+    for (i, c) in out.iter_mut().enumerate() {
+        c.id = i + 1;
+    }
+    out
+}
+
+const CAP: usize = 600;
+const SMALL: usize = 60;
 
 /// v2: file-level nodes, repeated-edit patterns, size-capped agglomerative merge, small-block absorption.
 fn group_v2(
@@ -398,7 +621,7 @@ fn group_v2(
     unit_lines: &[usize],
     graph: &EntityGraph,
     hunks: &BTreeMap<String, FileHunks>,
-) -> Uf {
+) -> (Uf, HashSet<String>) {
     let unit_file = |u: usize| -> &str {
         match &units[u] {
             Unit::Entity(i) => &changes[*i].file_path,
@@ -453,8 +676,10 @@ fn group_v2(
     for &fi in sigs.keys() {
         pat_groups.entry(pat.find(fi)).or_default().push(fi);
     }
+    let mut pattern_files: HashSet<String> = HashSet::new();
     for group in pat_groups.values().filter(|g| g.len() >= 3) {
         for &f in group {
+            pattern_files.insert(files[f].clone());
             uf.union(group[0], f);
             frozen[f] = true;
         }
@@ -502,8 +727,14 @@ fn group_v2(
         csize[ra] += csize[rb];
         true
     };
-    for &((a, b), _) in &edges {
-        merge(&mut uf, a, b, CAP, &mut csize);
+    // Merge only when the link is strong relative to the smaller side, so one incidental call
+    // doesn't fuse two unrelated features; small pairs always merge.
+    for &((a, b), w) in &edges {
+        let (ra, rb) = (uf.find(a), uf.find(b));
+        let small = csize[ra].min(csize[rb]).max(1);
+        if csize[ra] + csize[rb] <= 120 || w / small as f64 >= 0.01 {
+            merge(&mut uf, a, b, CAP, &mut csize);
+        }
     }
 
     // Absorb small clusters: strongest neighbour first, then nearest directory sibling.
@@ -533,7 +764,21 @@ fn group_v2(
             let mut sib: Vec<usize> = (0..n).filter(|&g| roots[g] != r && dir(&files[g]) == my_dir).map(|g| roots[g]).collect();
             sib.sort_by_key(|&g| csize[g]);
             sib.dedup();
-            let _ = sib.into_iter().any(|g| merge(&mut uf, r, g, CAP * 3 / 2, &mut csize));
+            if sib.into_iter().any(|g| merge(&mut uf, r, g, CAP * 3 / 2, &mut csize)) {
+                continue;
+            }
+            // Last resort: the cluster sharing the longest path prefix (at least one directory).
+            let my: Vec<&str> = files[f].split('/').collect();
+            let mut near: Vec<(usize, usize, usize)> = (0..n)
+                .filter(|&g| roots[g] != r && !frozen[roots[g]])
+                .map(|g| {
+                    let common = files[g].split('/').zip(&my).take_while(|(a, b)| a == *b).count();
+                    (common, roots[g], csize[roots[g]])
+                })
+                .filter(|&(common, _, _)| common >= 1)
+                .collect();
+            near.sort_by(|a, b| b.0.cmp(&a.0).then(a.2.cmp(&b.2)));
+            let _ = near.into_iter().any(|(_, g, _)| merge(&mut uf, r, g, CAP * 3 / 2, &mut csize));
         }
     }
 
@@ -549,7 +794,7 @@ fn group_v2(
             }
         }
     }
-    out
+    (out, pattern_files)
 }
 
 #[allow(clippy::too_many_arguments)]
