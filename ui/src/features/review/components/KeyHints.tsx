@@ -13,7 +13,7 @@ export function KeyHints({ copy, diffStyle, note }: { copy: ModeCopy; diffStyle:
     [['s'], diffStyle === 'split' ? 'Unified' : 'Side by side'],
   ]
   return (
-    <footer className="flex items-center gap-[18px] border-t border-seam px-3.5 text-xs text-fog [grid-area:keys]">
+    <footer className="flex items-center gap-4.5 border-t border-line px-3.5 text-xs text-fg-subtle [grid-area:keys]">
       {hints.map(([keys, label]) => (
         <span key={label} className="inline-flex items-center gap-1.5">
           {keys.map((k) => (
@@ -22,7 +22,7 @@ export function KeyHints({ copy, diffStyle, note }: { copy: ModeCopy; diffStyle:
           {label}
         </span>
       ))}
-      <span className="ml-auto truncate text-dim">{note}</span>
+      <span className="ml-auto truncate text-fg-faint">{note}</span>
     </footer>
   )
 }

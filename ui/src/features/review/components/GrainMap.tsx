@@ -13,17 +13,17 @@ interface GrainMapProps {
 }
 
 const grain: Record<string, string> = {
-  ok: 'var(--color-sage)',
-  change: 'var(--color-coral)',
-  skim: '#343842',
-  stale: 'var(--color-amber)',
-  todo: '#3a3f4a',
+  ok: 'var(--color-success)',
+  change: 'var(--color-danger)',
+  skim: 'var(--color-line)',
+  stale: 'var(--color-warning)',
+  todo: 'var(--color-line-strong)',
 }
 
 /** The whole PR as wood grain: one band per block, height by size, filled in as it's reviewed. */
 export function GrainMap({ data, sections, states, stale, current, onGo }: GrainMapProps) {
   return (
-    <nav aria-label="PR map" className="flex min-h-0 flex-col gap-[9px] border-r border-seam px-[7px] py-2.5 [grid-area:map]">
+    <nav aria-label="PR map" className="flex min-h-0 flex-col gap-2 border-r border-line px-1.5 py-2.5 [grid-area:map]">
       {sections.map((s) => {
         const lines = s.blocks.reduce((n, id) => n + (data.blocks.get(id)?.lines ?? 0), 0)
         return (
@@ -40,10 +40,10 @@ export function GrainMap({ data, sections, states, stale, current, onGo }: Grain
                   onClick={() => onGo(id)}
                   style={style}
                   className={cn(
-                    'relative min-h-[3px] w-full rounded-[1px] opacity-90 hover:opacity-100',
+                    'relative min-h-[3px] w-full rounded-xs opacity-90 hover:opacity-100',
                     b.skim && !states[id] ? 'grain-hatch' : 'grain-stripes',
-                    riskOf(data, id) === 'high' && 'after:absolute after:inset-y-0 after:-right-[5px] after:w-0.5 after:rounded-[1px] after:bg-coral',
-                    current === id && 'opacity-100 outline-[1.5px] outline-offset-2 outline-periwinkle',
+                    riskOf(data, id) === 'high' && 'after:absolute after:inset-y-0 after:-right-[5px] after:w-0.5 after:rounded-xs after:bg-danger',
+                    current === id && 'opacity-100 outline-[1.5px] outline-offset-2 outline-accent',
                   )}
                 />
               )

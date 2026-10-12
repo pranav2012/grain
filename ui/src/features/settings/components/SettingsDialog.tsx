@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
-import { Dialog } from '@/components/ui/Dialog'
+import { Choice, ChoiceGroup } from '@/components/ui/Choice'
+import { Dialog, DialogActions, DialogTitle } from '@/components/ui/Dialog'
+import { Input } from '@/components/ui/Field'
 import type { Agent } from '@/types/generated/Agent'
 import type { Settings } from '@/types/generated/Settings'
 import { settingsApi } from '../api'
@@ -32,34 +34,28 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
 
   return (
     <Dialog label="Settings" onClose={onClose} className="p-5">
-      <h2 className="mb-1 text-[17px] font-semibold">Settings</h2>
-      <p className="mb-3.5 leading-relaxed text-fog">
+      <DialogTitle>Settings</DialogTitle>
+      <p className="mb-3.5 leading-relaxed text-fg-subtle">
         AI is off unless you turn it on. With an agent chosen, Grain only summarizes a block when you ask (press a), runs your own agent read-only, and caches every answer.
       </p>
       {s && (
         <>
-          <div role="radiogroup" aria-label="AI summaries" className="my-3 flex flex-col gap-1.5">
+          <ChoiceGroup label="AI summaries" className="my-3">
             {agents.map(([id, label, help]) => {
               const missing = id !== null && !installed.includes(id)
               return (
-                <button
+                <Choice
                   key={label}
-                  role="radio"
-                  aria-checked={s.agent === id}
+                  checked={s.agent === id}
                   disabled={missing}
-                  onClick={() => setS({ ...s, agent: id })}
-                  className="grid grid-cols-[18px_1fr] gap-2.5 rounded-lg border border-seam px-3 py-2.5 text-left aria-checked:border-fog aria-checked:bg-slate-2 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <span>{s.agent === id ? '●' : '○'}</span>
-                  <span>
-                    {label}
-                    <small className="mt-0.5 block text-fog">{missing ? 'Not installed on this machine.' : help}</small>
-                  </span>
-                </button>
+                  onSelect={() => setS({ ...s, agent: id })}
+                  label={label}
+                  help={missing ? 'Not installed on this machine.' : help}
+                />
               )
             })}
-          </div>
-          <label className="mt-1.5 flex items-start gap-2.5 text-fog has-[:disabled]:opacity-50">
+          </ChoiceGroup>
+          <label className="mt-1.5 flex items-start gap-2.5 text-fg-subtle has-[:disabled]:opacity-50">
             <input
               type="checkbox"
               className="mt-1"
@@ -69,36 +65,36 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
             />
             <span>
               Also summarize the next blocks automatically while I read
-              <small className="block text-dim">Never runs when a pull request first opens. Off by default.</small>
+              <small className="block text-sm text-fg-faint">Never runs when a pull request first opens. Off by default.</small>
             </span>
           </label>
-          <label className="mt-3 flex items-start gap-2.5 text-fog">
+          <label className="mt-3 flex items-start gap-2.5 text-fg-subtle">
             <input type="checkbox" className="mt-1" checked={s.prefetch} onChange={(e) => setS({ ...s, prefetch: e.target.checked })} />
             <span>
               Get my newest review requests ready in the background
-              <small className="block text-dim">Up to 5 at a time, so they open instantly. Git and grouping only, never AI.</small>
+              <small className="block text-sm text-fg-faint">Up to 5 at a time, so they open instantly. Git and grouping only, never AI.</small>
             </span>
           </label>
-          <label className="mt-3 flex items-center justify-between gap-3 text-fog">
+          <label className="mt-3 flex items-center justify-between gap-3 text-fg-subtle">
             Summaries per review, at most
-            <input
+            <Input
               type="number"
               min={1}
               max={500}
               value={s.maxSummariesPerReview}
               onChange={(e) => setS({ ...s, maxSummariesPerReview: Math.max(1, Number(e.target.value) || 1) })}
-              className="w-20 rounded-md border border-seam bg-graphite px-2 py-1 text-chalk"
+              className="w-20"
             />
           </label>
         </>
       )}
-      {error && <p className="mt-3 text-coral">{error}</p>}
-      <div className="mt-3.5 flex justify-end gap-2">
+      {error && <p className="mt-3 text-danger">{error}</p>}
+      <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
         <Button variant="primary" onClick={save} disabled={!s}>
           Save settings
         </Button>
-      </div>
+      </DialogActions>
     </Dialog>
   )
 }

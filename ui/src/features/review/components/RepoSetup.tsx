@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
+import { DialogActions, DialogTitle } from '@/components/ui/Dialog'
+import { Input } from '@/components/ui/Field'
 import { reviewApi } from '../api'
 
 /**
@@ -30,14 +33,14 @@ export function RepoSetup({ fullRepo, onDone }: { fullRepo: string; onDone(): vo
   }
 
   return (
-    <div className="w-[min(560px,92vw)] rounded-xl border border-seam bg-slate p-5 text-left">
-      <h2 className="mb-1 text-[17px] font-semibold text-chalk">Do you already have {fullRepo} on this computer?</h2>
-      <p className="mb-3.5 leading-relaxed text-fog">
+    <Card className="w-[min(560px,92vw)] rounded-xl p-5 text-left">
+      <DialogTitle>Do you already have {fullRepo} on this computer?</DialogTitle>
+      <p className="mb-3.5 leading-relaxed text-fg-subtle">
         Grain can reuse your clone's files instead of downloading another copy, which makes big pull requests open much faster. Your repository is
         only read, never changed. You'll only be asked once.
       </p>
       {candidates === null ? (
-        <p className="text-fog">Looking for it in your usual code folders…</p>
+        <p className="text-fg-subtle">Looking for it in your usual code folders…</p>
       ) : (
         candidates.length > 0 && (
           <div className="mb-2.5 flex flex-col gap-1.5">
@@ -46,7 +49,7 @@ export function RepoSetup({ fullRepo, onDone }: { fullRepo: string; onDone(): vo
                 key={c}
                 onClick={() => setPath(c)}
                 aria-pressed={path === c}
-                className="truncate rounded-lg border border-seam px-3 py-2 text-left font-mono text-xs text-fog aria-pressed:border-fog aria-pressed:bg-slate-2 aria-pressed:text-chalk"
+                className="truncate rounded-lg border border-line px-3 py-2 text-left font-mono text-xs text-fg-subtle hover:bg-raised aria-pressed:border-fg-subtle aria-pressed:bg-raised aria-pressed:text-fg"
               >
                 {c}
               </button>
@@ -54,22 +57,22 @@ export function RepoSetup({ fullRepo, onDone }: { fullRepo: string; onDone(): vo
           </div>
         )
       )}
-      <input
+      <Input
         value={path}
         onChange={(e) => setPath(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && path.trim() && save(path)}
         placeholder={`Path to your clone, e.g. ~/code/${fullRepo.split('/')[1]}`}
-        className="w-full rounded-lg border border-seam bg-graphite px-3 py-2 font-mono text-xs text-chalk outline-none focus:border-fog"
+        className="w-full font-mono text-xs"
       />
-      {error && <p className="mt-2 text-coral">{error}</p>}
-      <div className="mt-3.5 flex justify-end gap-2">
+      {error && <p className="mt-2 text-danger">{error}</p>}
+      <DialogActions>
         <Button onClick={() => save(null)} disabled={saving}>
           No, download a copy
         </Button>
         <Button variant="primary" onClick={() => save(path)} disabled={saving || !path.trim()}>
           Use this folder
         </Button>
-      </div>
-    </div>
+      </DialogActions>
+    </Card>
   )
 }

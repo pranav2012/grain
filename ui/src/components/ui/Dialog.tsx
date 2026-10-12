@@ -1,6 +1,15 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 
+/** Dimmed full-page backdrop; closes on a click outside its content. */
+export function Scrim({ onClose, children }: { onClose?(): void; children: ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-10 flex items-start justify-center bg-scrim pt-[12vh]" onMouseDown={onClose}>
+      {children}
+    </div>
+  )
+}
+
 interface DialogProps {
   label: string
   onClose(): void
@@ -11,19 +20,24 @@ interface DialogProps {
 /** Modal panel over a dimmed page; closes on Escape or a click outside. */
 export function Dialog({ label, onClose, children, className }: DialogProps) {
   return (
-    <div className="fixed inset-0 z-10 flex items-start justify-center bg-[rgba(8,9,12,0.6)] pt-[12vh]" onMouseDown={onClose}>
+    <Scrim onClose={onClose}>
       <div
         role="dialog"
         aria-label={label}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === 'Escape' && onClose()}
-        className={cn(
-          'w-[min(560px,92vw)] rounded-xl border border-seam bg-slate shadow-[0_24px_80px_rgba(0,0,0,0.55)] motion-safe:animate-rise',
-          className,
-        )}
+        className={cn('w-[min(560px,92vw)] rounded-xl border border-line bg-surface shadow-overlay motion-safe:animate-rise', className)}
       >
         {children}
       </div>
-    </div>
+    </Scrim>
   )
+}
+
+export function DialogTitle({ children }: { children: ReactNode }) {
+  return <h2 className="mb-1 text-lg font-semibold text-fg">{children}</h2>
+}
+
+export function DialogActions({ children }: { children: ReactNode }) {
+  return <div className="mt-4 flex justify-end gap-2">{children}</div>
 }

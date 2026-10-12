@@ -65,7 +65,7 @@ features/
   settings/   AI agent and limits
 components/   shared, feature-agnostic UI: ui/ primitives, CommandPalette, Icons
 lib/          framework-free helpers: http, formatting, PR refs, hotkeys
-styles/       Tailwind entry and design tokens (@theme)
+styles/       Tailwind entry and design tokens (@theme); see docs/DESIGN.md
 types/generated/   TypeScript types generated from Rust (do not edit)
 ```
 
@@ -74,5 +74,5 @@ types/generated/   TypeScript types generated from Rust (do not edit)
 - A feature exposes itself only through its `index.ts`; nothing imports `features/<name>/<file>` from outside.
 - Features never import each other or `app/`; `app/` composes them.
 - `components/` and `lib/` never import features or `app/`.
-- Styling uses Tailwind utilities with the tokens in `styles/index.css` (`bg-graphite`, `text-fog`, `text-coral`…). Colour carries meaning only: sage reviewed, coral risk or change, amber warning, periwinkle focus.
+- Styling follows [docs/DESIGN.md](docs/DESIGN.md): semantic tokens from `styles/index.css` (`bg-surface`, `text-fg-subtle`, `text-danger`…) and primitives from `components/ui/`. Colour carries meaning only: success reviewed, danger risk or change, warning changed or caution, accent focus. `pnpm lint` rejects raw colours, pixel font sizes and one-off radii.
 - Server types come from `types/generated`. Change the Rust type, run `cargo test`, and commit the regenerated files.

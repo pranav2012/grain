@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
-import { Dialog } from '@/components/ui/Dialog'
+import { Choice, ChoiceGroup } from '@/components/ui/Choice'
+import { Dialog, DialogActions, DialogTitle } from '@/components/ui/Dialog'
+import { Textarea } from '@/components/ui/Field'
 import type { ReviewEvent } from '@/types/generated/ReviewEvent'
 import type { SubmitResponse } from '@/types/generated/SubmitResponse'
 import { reviewApi } from '../api'
@@ -97,9 +99,9 @@ export function FinishDialog({ data, mode, states, comments, reviewable, onPoste
   if (posted !== null)
     return (
       <Dialog label="Review posted" onClose={onClose} className="p-5">
-        <h2 className="mb-1 text-[17px] font-semibold">Posted to GitHub</h2>
-        <p className="mb-3.5 leading-relaxed text-fog">Your review is on pull request #{data.pr?.number}. Posted comments won't be sent again.</p>
-        <div className="flex justify-end gap-2">
+        <DialogTitle>Posted to GitHub</DialogTitle>
+        <p className="mb-3.5 leading-relaxed text-fg-subtle">Your review is on pull request #{data.pr?.number}. Posted comments won't be sent again.</p>
+        <DialogActions>
           {posted && (
             <a href={posted} target="_blank" rel="noreferrer">
               <Button>Open on GitHub</Button>
@@ -108,71 +110,50 @@ export function FinishDialog({ data, mode, states, comments, reviewable, onPoste
           <Button variant="primary" onClick={onClose}>
             Done
           </Button>
-        </div>
+        </DialogActions>
       </Dialog>
     )
 
   return (
     <Dialog label={modes[mode].finish} onClose={onClose} className="p-5">
-      <h2 className="mb-1 text-[17px] font-semibold">{modes[mode].finish}</h2>
-      <div className="mt-2.5 mb-1 flex gap-[18px]">
+      <DialogTitle>{modes[mode].finish}</DialogTitle>
+      <div className="mt-2.5 mb-1 flex gap-4.5">
         {tally.map(([n, label, alert]) => (
           <div key={label} className="flex flex-col">
-            <b className={`text-xl font-semibold tabular-nums ${alert ? 'text-coral' : ''}`}>{n}</b>
-            <span className="text-xs text-fog">{label}</span>
+            <b className={`text-xl font-semibold tabular-nums ${alert ? 'text-danger' : ''}`}>{n}</b>
+            <span className="text-xs text-fg-subtle">{label}</span>
           </div>
         ))}
       </div>
-      {left > 0 && <p className="mb-3 leading-relaxed text-fog">{left} blocks are still unreviewed. You can finish now and come back to them later.</p>}
+      {left > 0 && <p className="mb-3 leading-relaxed text-fg-subtle">{left} blocks are still unreviewed. You can finish now and come back to them later.</p>}
       {selfReview ? (
         <>
-          <p className="mb-3 leading-relaxed text-fog">
+          <p className="mb-3 leading-relaxed text-fg-subtle">
             {local
               ? 'Hand your notes to your coding agent as one prompt. Once you fix them, Grain offers to refresh and keeps the blocks you already checked.'
               : 'Hand your notes to your coding agent as one prompt, or post them on the pull request as a comment.'}
           </p>
-          <textarea
-            readOnly
-            value={unposted.length ? agentPrompt(data, unposted) : 'No notes yet. Add notes with c, or select lines in the diff.'}
-            className="min-h-[90px] w-full resize-y rounded-lg border border-seam bg-graphite p-2.5 leading-normal"
-          />
+          <Textarea readOnly value={unposted.length ? agentPrompt(data, unposted) : 'No notes yet. Add notes with c, or select lines in the diff.'} />
         </>
       ) : (
         <>
-          <div role="radiogroup" className="my-3 flex flex-col gap-1.5">
+          <ChoiceGroup label="Verdict" className="my-3">
             {verdicts.map(([v, label, help]) => (
-              <button
-                key={v}
-                role="radio"
-                aria-checked={event === v}
-                onClick={() => setEvent(v)}
-                className="grid grid-cols-[18px_1fr] gap-2.5 rounded-lg border border-seam px-3 py-2.5 text-left aria-checked:border-fog aria-checked:bg-slate-2"
-              >
-                <span>{event === v ? '●' : '○'}</span>
-                <span>
-                  {label}
-                  <small className="mt-0.5 block text-fog">{help}</small>
-                </span>
-              </button>
+              <Choice key={v} checked={event === v} onSelect={() => setEvent(v)} label={label} help={help} />
             ))}
-          </div>
-          <textarea
-            value={overall}
-            onChange={(e) => setOverall(e.target.value)}
-            placeholder="Overall comment (optional)"
-            className="min-h-[90px] w-full resize-y rounded-lg border border-seam bg-graphite p-2.5 leading-normal"
-          />
+          </ChoiceGroup>
+          <Textarea value={overall} onChange={(e) => setOverall(e.target.value)} placeholder="Overall comment (optional)" />
         </>
       )}
       {preview && (
-        <p className="mt-2.5 text-xs text-fog">
+        <p className="mt-2.5 text-xs text-fg-subtle">
           Posts one review as you with {preview.payload.comments.length} line {preview.payload.comments.length === 1 ? 'comment' : 'comments'}
           {preview.payload.body ? ' and a summary' : ''}.
           {preview.movedToBody > 0 && ` ${preview.movedToBody} ${preview.movedToBody === 1 ? 'comment is' : 'comments are'} on lines GitHub can't anchor, so they go into the summary.`}
         </p>
       )}
-      {error && <p className="mt-2.5 text-coral">{error}</p>}
-      <div className="mt-3.5 flex justify-end gap-2">
+      {error && <p className="mt-2.5 text-danger">{error}</p>}
+      <DialogActions>
         <Button onClick={onClose}>Keep reviewing</Button>
         {selfReview && (
           <Button
@@ -188,7 +169,7 @@ export function FinishDialog({ data, mode, states, comments, reviewable, onPoste
             {posting ? 'Posting…' : selfReview ? 'Post as PR comment' : postLabel[event]}
           </Button>
         )}
-      </div>
+      </DialogActions>
     </Dialog>
   )
 }

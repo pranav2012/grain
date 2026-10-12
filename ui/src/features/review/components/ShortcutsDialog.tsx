@@ -1,4 +1,4 @@
-import { Dialog } from '@/components/ui/Dialog'
+import { Dialog, DialogTitle } from '@/components/ui/Dialog'
 import { Kbd } from '@/components/ui/Kbd'
 
 const shortcuts: [string, string][] = [
@@ -23,12 +23,12 @@ const shortcuts: [string, string][] = [
 export function ShortcutsDialog({ onClose }: { onClose(): void }) {
   return (
     <Dialog label="Keyboard shortcuts" onClose={onClose} className="p-5">
-      <h2 className="text-[17px] font-semibold">Keyboard shortcuts</h2>
-      <div className="mt-3.5 grid grid-cols-[auto_1fr] gap-x-[18px] gap-y-2.5">
+      <DialogTitle>Keyboard shortcuts</DialogTitle>
+      <div className="mt-3.5 grid grid-cols-[auto_1fr] gap-x-4.5 gap-y-2.5">
         {shortcuts.map(([k, d]) => (
           <div key={k} className="contents">
             <Kbd className="justify-self-start">{k}</Kbd>
-            <span className="text-fog">{d}</span>
+            <span className="text-fg-subtle">{d}</span>
           </div>
         ))}
       </div>

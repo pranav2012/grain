@@ -62,10 +62,10 @@ const baseOptions: CodeViewReactOptions<Note, undefined> = {
   enableLineSelection: true,
   lineHoverHighlight: 'number',
   layout: { paddingTop: 12, paddingBottom: 48, gap: 12 },
-  unsafeCSS: '* { --diffs-dark-bg: #16181d !important; }',
+  unsafeCSS: '* { --diffs-dark-bg: var(--color-canvas) !important; }',
 }
 
-const riskColor = { high: 'text-coral', medium: 'text-amber', low: 'text-sage' } as const
+const riskColor = { high: 'text-danger', medium: 'text-warning', low: 'text-success' } as const
 
 export function BlockView(p: BlockViewProps) {
   const { data, block, mode } = p
@@ -100,16 +100,16 @@ export function BlockView(p: BlockViewProps) {
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col [grid-area:main]">
-      <header className="border-b border-seam px-6 pt-[18px] pb-3.5">
-        <div className="flex items-center gap-1.5 text-xs text-fog">
+      <header className="border-b border-line px-6 pt-4.5 pb-3.5">
+        <div className="flex items-center gap-1.5 text-xs text-fg-subtle">
           <span>{p.chapterTitle}</span>
           <span aria-hidden>/</span>
           <span>{p.position}</span>
         </div>
-        <h1 className="mt-1.5 mb-2 max-w-[70ch] text-[19px] leading-tight font-semibold tracking-[-0.015em]">{blockTitle(data, block)}</h1>
+        <h1 className="mt-1.5 mb-2 max-w-[70ch] text-xl leading-tight font-semibold tracking-[-0.015em]">{blockTitle(data, block)}</h1>
         {p.staleSince && !p.state && (
-          <div className="mb-2.5 flex flex-wrap items-center gap-3 rounded-lg border border-amber/40 bg-amber/10 px-3 py-2 text-[13px]">
-            <span className="text-amber">Changed since you reviewed it.</span>
+          <div className="mb-2.5 flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-base">
+            <span className="text-warning">Changed since you reviewed it.</span>
             <Segmented<'since' | 'whole'>
               label="What to show"
               size="sm"
@@ -122,13 +122,13 @@ export function BlockView(p: BlockViewProps) {
                 ] as ['since' | 'whole', string][]
               }
             />
-            {sinceReview && <span className="text-xs text-fog">Switch to the whole block to comment on lines.</span>}
+            {sinceReview && <span className="text-xs text-fg-subtle">Switch to the whole block to comment on lines.</span>}
           </div>
         )}
-        <p className="mb-2.5 max-w-[78ch] text-[13.5px] leading-relaxed text-soft">
+        <p className="mb-2.5 max-w-[78ch] text-base leading-relaxed text-fg-muted">
           {summary?.intent ? <InlineCode text={summary.intent} /> : factsSentence(block)}
         </p>
-        <div className="flex flex-wrap items-center gap-3.5 text-xs text-fog">
+        <div className="flex flex-wrap items-center gap-3.5 text-xs text-fg-subtle">
           {risk && (
             <span
               className={cn('inline-flex items-center gap-1.5 font-medium before:size-[7px] before:rounded-full before:bg-current', riskColor[risk])}
@@ -140,7 +140,7 @@ export function BlockView(p: BlockViewProps) {
           <span>
             {block.lines} changed lines in {block.files.length} {block.files.length === 1 ? 'file' : 'files'}
           </span>
-          {p.owned && <span className="text-periwinkle">You own this code</span>}
+          {p.owned && <span className="text-accent">You own this code</span>}
           {block.hasTests && <span>Includes tests</span>}
           {block.skim && <span>Low attention: skim and confirm</span>}
           <span>About {formatMinutes(minutesFor(block.lines))}</span>
@@ -173,15 +173,15 @@ export function BlockView(p: BlockViewProps) {
         </div>
       </header>
       {!diffs ? (
-        <div className="m-auto text-fog">{diffError ?? 'Loading the diff…'}</div>
+        <div className="m-auto text-fg-subtle">{diffError ?? 'Loading the diff…'}</div>
       ) : items.length === 0 ? (
-        <div className="m-auto max-w-[44ch] text-center leading-relaxed text-fog">
+        <div className="m-auto max-w-[44ch] text-center leading-relaxed text-fg-subtle">
           {sinceReview ? 'Nothing in these files changed since your review.' : 'This block only renames or moves files. There are no line changes to show.'}
         </div>
       ) : (
         <CodeView<Note, undefined>
           key={`${block.id}-${p.diffStyle}`}
-          className="min-h-0 flex-1 overflow-auto bg-graphite"
+          className="min-h-0 flex-1 overflow-auto bg-canvas"
           items={items}
           options={options}
           selectedLines={draft ? { id: draft.file, range: { start: draft.line, end: draft.endLine, side: draft.side } } : null}
@@ -225,7 +225,7 @@ export function BlockView(p: BlockViewProps) {
           }}
         />
       )}
-      {missing > 0 && items.length > 0 && !sinceReview && <div className="px-4 pt-0.5 text-[11.5px] text-dim">{missing} binary or unchanged files not shown.</div>}
+      {missing > 0 && items.length > 0 && !sinceReview && <div className="px-4 pt-0.5 text-xs text-fg-faint">{missing} binary or unchanged files not shown.</div>}
     </main>
   )
 }

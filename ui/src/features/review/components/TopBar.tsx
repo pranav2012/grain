@@ -1,6 +1,7 @@
 import { GrainGlyph, SlidersIcon } from '@/components/Icons'
 import { Button } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Kbd'
+import { Progress } from '@/components/ui/Progress'
 import { Segmented } from '@/components/ui/Segmented'
 import { formatMinutes, minutesFor } from '@/lib/format'
 import { modeOrder, modes } from '../model/modes'
@@ -19,14 +20,14 @@ interface TopBarProps {
 
 export function TopBar({ data, mode, onMode, progress, onSwitch, onPalette, onSettings, onFinish }: TopBarProps) {
   const left = progress.reviewLines - progress.okLines - progress.changeLines
-  const pct = (n: number) => `${(100 * n) / Math.max(progress.reviewLines, 1)}%`
+  const frac = (n: number) => n / Math.max(progress.reviewLines, 1)
   return (
-    <header className="flex items-center gap-4 border-b border-seam bg-graphite px-3.5 [grid-area:top]">
-      <div className="flex items-center gap-[7px] text-sm font-semibold tracking-[-0.01em]">
+    <header className="flex items-center gap-4 border-b border-line bg-canvas px-3.5 [grid-area:top]">
+      <div className="flex items-center gap-1.5 text-md font-semibold tracking-[-0.01em]">
         <GrainGlyph /> grain
       </div>
-      <button onClick={onSwitch} title="Open another pull request (⌘O)" className="group -ml-1.5 flex min-w-0 items-baseline gap-2 rounded-md px-1.5 py-1 text-left text-fog hover:bg-slate">
-        <strong title={data.pr?.title} className="max-w-[46ch] truncate font-medium text-chalk">
+      <button onClick={onSwitch} title="Open another pull request (⌘O)" className="group -ml-1.5 flex min-w-0 items-baseline gap-2 rounded-md px-1.5 py-1 text-left text-fg-subtle hover:bg-surface">
+        <strong title={data.pr?.title} className="max-w-[46ch] truncate font-medium text-fg">
           {data.pr?.title ?? data.id}
         </strong>
         {data.pr?.local ? (
@@ -50,19 +51,16 @@ export function TopBar({ data, mode, onMode, progress, onSwitch, onPalette, onSe
         onChange={onMode}
         options={modeOrder.map((m) => [m, modes[m].label])}
       />
-      <div className="flex min-w-[150px] flex-col gap-1 text-xs text-fog">
+      <div className="flex min-w-[150px] flex-col gap-1 text-xs text-fg-subtle">
         <span>
           {progress.done} of {progress.total} blocks, {left > 0 ? `about ${formatMinutes(minutesFor(left))} left` : 'all read'}
         </span>
-        <div className="flex h-[3px] overflow-hidden rounded-sm bg-seam" aria-hidden>
-          <span className="h-full bg-sage" style={{ width: pct(progress.okLines) }} />
-          <span className="h-full bg-coral" style={{ width: pct(progress.changeLines) }} />
-        </div>
+        <Progress ok={frac(progress.okLines)} change={frac(progress.changeLines)} />
       </div>
       <Button onClick={onPalette}>
         Commands <Kbd>⌘K</Kbd>
       </Button>
-      <Button onClick={onSettings} aria-label="Settings" title="Settings (,)" className="px-2 py-1.5">
+      <Button onClick={onSettings} aria-label="Settings" title="Settings (,)" size="icon">
         <SlidersIcon />
       </Button>
       <Button variant="primary" onClick={onFinish}>

@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
 import { Segmented } from '@/components/ui/Segmented'
-import { Button } from '@/components/ui/Button'
+import { Button, LinkButton } from '@/components/ui/Button'
 import { InlineCode } from '@/components/ui/InlineCode'
 import { Kbd } from '@/components/ui/Kbd'
+import { SectionLabel } from '@/components/ui/SectionLabel'
 import { cn } from '@/lib/cn'
 import { shortPath } from '@/lib/format'
 import type { Block } from '@/types/generated/Block'
@@ -36,15 +37,15 @@ export type PanelTab = 'block' | 'map'
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="px-4 pt-3.5 pb-1.5">
-      <h3 className="mb-2 text-xs font-medium text-fog">{title}</h3>
+      <SectionLabel className="mb-2">{title}</SectionLabel>
       {children}
     </section>
   )
 }
 
 const listClass = 'flex flex-col gap-2'
-const noteClass = 'border-l-2 border-seam pl-3 leading-normal text-soft'
-const monoRow = 'truncate font-mono text-[11.5px] leading-normal text-fog'
+const noteClass = 'border-l-2 border-line pl-3 leading-normal text-fg-muted'
+const monoRow = 'truncate font-mono text-xs leading-normal text-fg-subtle'
 
 export function ContextPanel({
   data,
@@ -68,7 +69,7 @@ export function ContextPanel({
   const owners = [...new Set(block.files.flatMap((f) => data.owners.files[f] ?? []))]
 
   return (
-    <aside aria-label="Block context" className="overflow-auto border-l border-seam pt-1.5 pb-6 [grid-area:context]">
+    <aside aria-label="Block context" className="overflow-auto border-l border-line pt-1.5 pb-6 [grid-area:context]">
       <div className="flex items-center gap-2 px-4 pt-2.5">
         <Segmented
           label="Panel"
@@ -79,20 +80,20 @@ export function ContextPanel({
             ['map', 'Map'],
           ]}
         />
-        <span className="ml-auto text-[11px] text-dim">g</span>
+        <Kbd className="ml-auto">g</Kbd>
       </div>
       {tab === 'map' ? (
         map
       ) : (
         <>
           {!data.review.complete && !block.skim && (
-            <p className="px-4 pt-3.5 text-[11.5px] text-dim">Still checking how this code is used across the repo. More checks may appear.</p>
+            <p className="px-4 pt-3.5 text-xs text-fg-faint">Still checking how this code is used across the repo. More checks may appear.</p>
           )}
           {block.checks.length > 0 && (
             <Section title="Checks">
               <ul className={listClass}>
                 {block.checks.map((c) => (
-                  <li key={c.text} className={cn(noteClass, c.level === 'warn' && 'border-amber')}>
+                  <li key={c.text} className={cn(noteClass, c.level === 'warn' && 'border-warning')}>
                     {c.text}
                   </li>
                 ))}
@@ -107,12 +108,9 @@ export function ContextPanel({
                     <span>
                       <InlineCode text={q} />
                     </span>
-                    <button
-                      onClick={() => onComment({ body: q, kind: askKind })}
-                      className="text-xs whitespace-nowrap text-fog underline decoration-seam underline-offset-[3px] hover:text-chalk"
-                    >
+                    <LinkButton onClick={() => onComment({ body: q, kind: askKind })} className="whitespace-nowrap">
                       {mode === 'self' ? 'Send to agent' : 'Ask'}
-                    </button>
+                    </LinkButton>
                   </li>
                 ))}
               </ul>
@@ -130,7 +128,7 @@ export function ContextPanel({
             </Section>
           ) : null}
           {s && agentName && (
-            <p className="px-4 pt-0.5 text-[11.5px] text-dim">Summary and questions written by {agentName} from this block's diff. Checks come from Grain's own rules.</p>
+            <p className="px-4 pt-0.5 text-xs text-fg-faint">Summary and questions written by {agentName} from this block's diff. Checks come from Grain's own rules.</p>
           )}
 
           {threads.length > 0 && (
@@ -140,7 +138,7 @@ export function ContextPanel({
                   .sort((a, b) => Number(a.resolved) - Number(b.resolved))
                   .map((t) => (
                     <li key={t.id}>
-                      <p className="mb-1 truncate font-mono text-[11px] text-dim">
+                      <p className="mb-1 truncate font-mono text-2xs text-fg-faint">
                         {shortPath(t.path)}
                         {t.line ? `:${t.line}` : ' (outdated)'}
                       </p>
@@ -177,7 +175,7 @@ export function ContextPanel({
                 </Button>
               )}
             </div>
-            <p className="pt-2 text-[11.5px] text-dim">Select line numbers in the diff to comment on specific lines.</p>
+            <p className="pt-2 text-xs text-fg-faint">Select line numbers in the diff to comment on specific lines.</p>
           </Section>
 
           <Section title="Grouped together because they change">
@@ -202,7 +200,7 @@ export function ContextPanel({
           </Section>
           {owners.length > 0 && (
             <Section title="Code owners">
-              <p className="leading-normal text-soft">{owners.join(', ')}</p>
+              <p className="leading-normal text-fg-muted">{owners.join(', ')}</p>
             </Section>
           )}
         </>

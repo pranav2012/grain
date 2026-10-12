@@ -44,15 +44,15 @@ export function BlockMap({ data, current, states, stale, chapterOf, onGo }: Bloc
         title={`${blockTitle(data, b)} (${chapterOf(id) ?? 'Skim'})`}
         style={{ left: x, top: y, width: COL, height: NODE_H }}
         className={cn(
-          'absolute flex flex-col justify-center overflow-hidden rounded-md border bg-slate px-1.5 text-left text-[11px] leading-tight hover:bg-slate-2',
-          isCurrent ? 'border-periwinkle text-chalk' : 'border-seam text-soft',
-          !isCurrent && state === 'ok' && 'border-sage/70',
-          !isCurrent && state === 'change' && 'border-coral/70',
-          !isCurrent && stale[id] && 'border-amber/70',
+          'absolute flex flex-col justify-center overflow-hidden rounded-md border bg-surface px-1.5 text-left text-2xs leading-tight hover:bg-raised',
+          isCurrent ? 'border-accent text-fg' : 'border-line text-fg-muted',
+          !isCurrent && state === 'ok' && 'border-success/70',
+          !isCurrent && state === 'change' && 'border-danger/70',
+          !isCurrent && stale[id] && 'border-warning/70',
         )}
       >
         <span className="line-clamp-2">{blockTitle(data, b)}</span>
-        <span className="truncate text-[10px] text-dim">{chapterOf(id) ?? 'Skim'}</span>
+        <span className="truncate text-2xs text-fg-faint">{chapterOf(id) ?? 'Skim'}</span>
       </button>
     )
   }
@@ -60,18 +60,18 @@ export function BlockMap({ data, current, states, stale, chapterOf, onGo }: Bloc
   const centerX = (WIDTH - COL) / 2
   const rightX = WIDTH - COL
   if (!users.shown.length && !uses.shown.length)
-    return <p className="px-4 py-3 leading-normal text-fog">This block doesn&apos;t use, and isn&apos;t used by, other blocks in this PR.</p>
+    return <p className="px-4 py-3 leading-normal text-fg-subtle">This block doesn&apos;t use, and isn&apos;t used by, other blocks in this PR.</p>
 
   return (
     <div className="px-4 pt-3 pb-2">
-      <div className="mb-2 flex justify-between text-[11px] text-dim">
+      <div className="mb-2 flex justify-between text-2xs text-fg-faint">
         <span style={{ width: COL }}>Used by</span>
         <span style={{ width: COL }} className="text-right">
           Uses
         </span>
       </div>
       <div className="relative" style={{ width: WIDTH, height }}>
-        <svg width={WIDTH} height={height} className="absolute inset-0 text-seam" aria-hidden>
+        <svg width={WIDTH} height={height} className="absolute inset-0 text-line" aria-hidden>
           {users.shown.map((_, i) => (
             <path key={`u${i}`} d={curve(COL, top(i, users.shown.length) + NODE_H / 2, centerX, centerTop + NODE_H / 2)} fill="none" stroke="currentColor" strokeWidth="1.2" />
           ))}
@@ -84,12 +84,12 @@ export function BlockMap({ data, current, states, stale, chapterOf, onGo }: Bloc
         {uses.shown.map((id, i) => node(id, rightX, top(i, uses.shown.length)))}
       </div>
       {(users.more > 0 || uses.more > 0) && (
-        <div className="mt-2 flex justify-between text-[11px] text-dim">
+        <div className="mt-2 flex justify-between text-2xs text-fg-faint">
           <span>{users.more > 0 && `+${users.more} more`}</span>
           <span>{uses.more > 0 && `+${uses.more} more`}</span>
         </div>
       )}
-      <p className="mt-3 text-[11px] leading-normal text-dim">Lines connect code changed in this PR. Border colour shows your review: green looks good, red needs changes, amber changed since you reviewed.</p>
+      <p className="mt-3 text-2xs leading-normal text-fg-faint">Lines connect code changed in this PR. Border colour shows your review: green looks good, red needs changes, amber changed since you reviewed.</p>
     </div>
   )
 }

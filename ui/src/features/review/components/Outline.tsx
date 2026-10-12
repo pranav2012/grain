@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { ThreadIcon } from '@/components/Icons'
+import { Badge } from '@/components/ui/Badge'
 import { blockTitle, riskOf } from '../model/describe'
 import type { BlockState, LoadedPr, Section } from '../model/types'
 import { RiskDot, StatusIcon } from './StatusIcon'
@@ -24,11 +25,11 @@ export function Outline({ data, sections, states, stale, current, onGo, openThre
   }, [current])
 
   return (
-    <nav aria-label="Chapters and blocks" className="overflow-auto border-r border-seam pt-2 pb-6 [grid-area:outline]">
+    <nav aria-label="Chapters and blocks" className="overflow-auto border-r border-line pt-2 pb-6 [grid-area:outline]">
       {sections.map((s) => (
         <section key={s.key}>
-          <div className="flex items-baseline gap-2 px-3.5 pt-3 pb-1 text-xs font-medium text-fog">
-            <span className="truncate text-chalk">{s.title}</span>
+          <div className="flex items-baseline gap-2 px-3.5 pt-3 pb-1 text-xs font-medium text-fg-subtle">
+            <span className="truncate text-fg">{s.title}</span>
             <span className="ml-auto tabular-nums">
               {s.blocks.filter((id) => states[id]).length}/{s.blocks.length}
             </span>
@@ -42,18 +43,18 @@ export function Outline({ data, sections, states, stale, current, onGo, openThre
                 ref={isCurrent ? currentRef : undefined}
                 aria-current={isCurrent}
                 onClick={() => onGo(id)}
-                className="grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2 border-l-2 border-transparent py-[5px] pr-3.5 pl-3 text-left text-fog hover:bg-slate hover:text-chalk aria-[current=true]:border-periwinkle aria-[current=true]:bg-slate-2 aria-[current=true]:text-chalk"
+                className="grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2 border-l-2 border-transparent py-1 pr-3.5 pl-3 text-left text-fg-subtle hover:bg-surface hover:text-fg aria-[current=true]:border-accent aria-[current=true]:bg-raised aria-[current=true]:text-fg"
               >
                 <StatusIcon state={states[id]} current={isCurrent} stale={!!stale[id]} />
                 <span className="truncate">{blockTitle(data, b)}</span>
-                <span className="inline-flex items-center gap-1.5 text-[11.5px] text-dim tabular-nums">
+                <span className="inline-flex items-center gap-1.5 text-xs text-fg-faint tabular-nums">
                   {owned.has(id) && (
-                    <span className="rounded border border-seam px-1 text-[10.5px] text-periwinkle" title="You own these files (CODEOWNERS)">
+                    <Badge tone="accent" title="You own these files (CODEOWNERS)">
                       yours
-                    </span>
+                    </Badge>
                   )}
                   {openThreads(id) > 0 && (
-                    <span className="inline-flex items-center gap-0.5 text-fog" title={`${openThreads(id)} open GitHub threads`}>
+                    <span className="inline-flex items-center gap-0.5 text-fg-subtle" title={`${openThreads(id)} open GitHub threads`}>
                       <ThreadIcon />
                       {openThreads(id)}
                     </span>

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "lint": "oxlint --deny-warnings",
+    "lint": "oxlint --deny-warnings && sh scripts/check-tokens.sh",
     "check": "pnpm typecheck && pnpm lint && pnpm build",
     "preview": "vite preview"
   },
