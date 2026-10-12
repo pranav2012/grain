@@ -48,6 +48,13 @@ pub struct LayerSummary {
     pub reviewer_questions: Vec<String>,
 }
 
+pub(crate) const ASK_PROMPT: &str = "You are helping a human review a pull request. They stay the reviewer: \
+explain, don't judge or approve. Answer their question in 2-5 plain sentences, only from the code \
+below; do not use tools. Say so if the code doesn't show the answer.\n\n";
+
+pub(crate) const ASK_SCHEMA: &str = r#"{"type":"object","additionalProperties":false,"required":["answer"],
+"properties":{"answer":{"type":"string"}}}"#;
+
 /// Extracts the first top-level JSON object from free text (tolerates stray prose or fences).
 pub(crate) fn extract_json(text: &str) -> Option<serde_json::Value> {
     let (start, end) = (text.find('{')?, text.rfind('}')?);

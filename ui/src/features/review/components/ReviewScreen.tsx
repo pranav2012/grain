@@ -10,7 +10,8 @@ import { agentName as agentNameOf, blockTitle, chapterSummaryKey, chapterSummary
 import { modeOrder, modes } from '../model/modes'
 import { blockProgress } from '../model/progress'
 import { chapterBlocks, chaptersFor, linesOf, ownedBlocks } from '../model/story'
-import type { BlockState, LoadedPr, Mode, ReviewComment } from '../model/types'
+import { reviewApi } from '../api'
+import type { Ask, BlockState, LoadedPr, Mode, ReviewComment } from '../model/types'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
 import { ChapterView } from './ChapterView'
@@ -42,6 +43,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const [prefs, setPrefs] = usePrefs()
   const [overlay, setOverlay] = useState<'palette' | 'finish' | 'help' | null>(null)
   const [composeTick, setComposeTick] = useState(0)
+  const [asks, setAsks] = useState<Record<string, Ask[]>>({})
   const [focusRequest, setFocusRequest] = useState<{ blockId: number; n: number } | null>(null)
   const copy = modes[state.mode]
 
@@ -97,6 +99,17 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     const b = data.blocks.get(id)!
     if (!agentName) return onSettings()
     if (!b.skim) requestSummary([b.key])
+  }
+  const ask = (blockId: number, question: string, code?: string, about?: string) => {
+    const key = data.blocks.get(blockId)!.key
+    const id = crypto.randomUUID()
+    const update = (patch: Partial<Ask>) => setAsks((all) => ({ ...all, [key]: (all[key] ?? []).map((q) => (q.id === id ? { ...q, ...patch } : q)) }))
+    setAsks((all) => ({ ...all, [key]: [...(all[key] ?? []), { id, question, about }] }))
+    focus(blockId)
+    reviewApi.ask(data.id, { key, question, code: code ?? null }).then(
+      (r) => update({ answer: r.answer }),
+      (e: Error) => update({ error: e.message }),
+    )
   }
   const addComment = (blockId: number, c: NewComment) => dispatch({ type: 'comment', comment: newComment(c, blockId, data.blocks.get(blockId)!.key) })
 
@@ -180,6 +193,8 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           agentName={agentName}
           summaryPending={summaryPending}
           composeTick={composeTick}
+          asksFor={(key) => asks[key] ?? []}
+          onAsk={ask}
           focusRequest={focusRequest}
           onFocus={(id) => focus(id, false)}
           onMark={mark}

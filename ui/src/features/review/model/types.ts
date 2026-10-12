@@ -61,3 +61,13 @@ export interface LoadedPr {
   owners: Owners
   blocks: Map<number, Block>
 }
+
+/** A question to the agent about one change, and its answer once it arrives. */
+export interface Ask {
+  id: string
+  question: string
+  /** Which lines it was about, when asked from a selection. */
+  about?: string
+  answer?: string
+  error?: string
+}

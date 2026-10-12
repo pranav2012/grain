@@ -13,7 +13,7 @@ import { chapterSummaryOf } from '../model/describe'
 import { modes } from '../model/modes'
 import { chapterBlocks, chapterHighlights, kindLabel, linesOf } from '../model/story'
 import { newLines } from '../model/suggestion'
-import type { BlockState, CommentKind, DiffStyle, LoadedPr, Mode, ReviewComment, Side } from '../model/types'
+import type { Ask, BlockState, CommentKind, DiffStyle, LoadedPr, Mode, ReviewComment, Side } from '../model/types'
 import { BlockCard } from './BlockCard'
 import { CommentCard } from './CommentCard'
 import { Composer } from './Composer'
@@ -45,6 +45,8 @@ interface ChapterViewProps {
   agentName: string | null
   summaryPending(key: string): boolean
   composeTick: number
+  asksFor(blockKey: string): Ask[]
+  onAsk(blockId: number, question: string, code?: string, about?: string): void
   /** Scrolls to this change when it (or `n`) changes. */
   focusRequest: { blockId: number; n: number } | null
   onFocus(blockId: number): void
@@ -248,6 +250,8 @@ export function ChapterView(p: ChapterViewProps) {
                   agentName={p.agentName}
                   summaryPending={p.summaryPending(block.key)}
                   composeTick={p.composeTick}
+                  asks={p.asksFor(block.key)}
+                  onAsk={(q) => p.onAsk(m.blockId, q)}
                   onFocus={() => p.onFocus(m.blockId)}
                   onMark={(s) => p.onMark(m.blockId, s)}
                   onExplain={() => p.onExplain(m.blockId)}
@@ -284,7 +288,22 @@ export function ChapterView(p: ChapterViewProps) {
           }
           if (meta.kind === 'draft' && draft)
             return wrap(
-              <Composer
+              <>
+                {p.agentName && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="self-start text-accent"
+                    onClick={() => {
+                      const range = `${draft.file.split('/').pop()}:${draft.line}${draft.endLine !== draft.line ? `–${draft.endLine}` : ''}`
+                      p.onAsk(draft.blockId, 'What do these lines do, and is anything off?', suggestionSeed ?? undefined, range)
+                      setDraft(null)
+                    }}
+                  >
+                    Explain these lines with {p.agentName}
+                  </Button>
+                )}
+                <Composer
                 kinds={copy.kinds}
                 placeholder={`Comment on line ${draft.line}${draft.endLine !== draft.line ? `–${draft.endLine}` : ''}`}
                 suggestionSeed={suggestionSeed}
@@ -293,7 +312,8 @@ export function ChapterView(p: ChapterViewProps) {
                   p.onComment(draft.blockId, { body, kind, suggestion, file: draft.file, side: draft.side, line: draft.line, endLine: draft.endLine })
                   setDraft(null)
                 }}
-              />,
+              />
+              </>,
             )
           const c = meta.kind === 'note' && p.comments.find((x) => x.id === meta.id)
           return c ? wrap(<CommentCard c={c} onDelete={() => p.onDeleteComment(c.id)} />) : null

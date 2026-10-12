@@ -115,6 +115,24 @@ pub(crate) struct Status {
     pub head_sha: Option<String>,
 }
 
+/// A reviewer's question to their agent about one change.
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct AskRequest {
+    /// Block content key.
+    pub key: String,
+    pub question: String,
+    /// Selected lines, when asking about specific code.
+    pub code: Option<String>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub(crate) struct AskResponse {
+    pub answer: String,
+}
+
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub(crate) struct SummarizeRequest {

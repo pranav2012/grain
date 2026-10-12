@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import { Button, LinkButton } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Field'
 import { InlineCode } from '@/components/ui/InlineCode'
 import { Kbd } from '@/components/ui/Kbd'
 import { cn } from '@/lib/cn'
@@ -9,7 +10,7 @@ import type { ReviewThread } from '@/types/generated/ReviewThread'
 import { blockTitle, riskOf, summaryOf } from '../model/describe'
 import { modes } from '../model/modes'
 import { whatChanged } from '../model/story'
-import type { BlockState, CommentKind, LoadedPr, Mode, ReviewComment } from '../model/types'
+import type { Ask, BlockState, CommentKind, LoadedPr, Mode, ReviewComment } from '../model/types'
 import { CommentCard } from './CommentCard'
 import { Composer } from './Composer'
 import { ThreadCard } from './ThreadCard'
@@ -32,6 +33,8 @@ interface BlockCardProps {
   summaryPending: boolean
   /** Bumped by the `c` and `x` keys to open the composer on the current change. */
   composeTick: number
+  asks: Ask[]
+  onAsk(question: string): void
   onFocus(): void
   onMark(state: BlockState | null): void
   onExplain(): void
@@ -48,6 +51,7 @@ export function BlockCard(p: BlockCardProps) {
   const summary = summaryOf(data, block)
   const risk = riskOf(data, block.id)
   const [composing, setComposing] = useState<{ kind: CommentKind; body?: string } | null>(null)
+  const [question, setQuestion] = useState('')
   const askKind: CommentKind = p.mode === 'self' ? 'fix' : 'question'
   // A new tick from the keyboard opens the composer on the current change (state adjusted during render).
   const [seenTick, setSeenTick] = useState(p.composeTick)
@@ -103,6 +107,46 @@ export function BlockCard(p: BlockCardProps) {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {p.agentName && !block.skim && (
+        <div className="mt-2.5 flex flex-col gap-1.5">
+          {p.asks.map((q) => (
+            <div key={q.id} className="rounded-md border-l-2 border-accent bg-canvas/40 px-3 py-2 text-sm">
+              <p className="text-fg-subtle">
+                {q.about && <span className="font-mono text-xs">{q.about} · </span>}
+                {q.question}
+              </p>
+              <p className={cn('mt-0.5 leading-relaxed', q.error ? 'text-danger' : 'text-fg-muted')}>
+                {q.error ?? (q.answer ? <InlineCode text={q.answer} /> : `${p.agentName} is thinking…`)}
+              </p>
+              {q.answer && (
+                <LinkButton className="mt-1" onClick={() => setComposing({ kind: askKind, body: q.answer })}>
+                  turn into comment
+                </LinkButton>
+              )}
+            </div>
+          ))}
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (question.trim()) p.onAsk(question.trim())
+              setQuestion('')
+            }}
+          >
+            <Input
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              placeholder={`Ask ${p.agentName} about this change…`}
+              className="min-w-0 flex-1 py-1 text-sm"
+            />
+            <Button size="sm" type="submit" disabled={!question.trim()}>
+              Ask
+            </Button>
+          </form>
         </div>
       )}
 

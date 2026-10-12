@@ -1,4 +1,6 @@
 import { post, put, request, serverFetch } from '@/lib/http'
+import type { AskRequest } from '@/types/generated/AskRequest'
+import type { AskResponse } from '@/types/generated/AskResponse'
 import type { Conversation } from '@/types/generated/Conversation'
 import type { LocalRepo } from '@/types/generated/LocalRepo'
 import type { SubmitRequest } from '@/types/generated/SubmitRequest'
@@ -25,6 +27,8 @@ export const reviewApi = {
   status: (id: string) => request<Status>(`/api/reviews/${id}/status`),
   summaries: (id: string) => request<Record<string, Summary | LayerSummary>>(`/api/reviews/${id}/files/summaries.json`),
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),
+  /** Asks the reviewer's agent about one change; can take a while. */
+  ask: (id: string, req: AskRequest) => post<AskResponse>(`/api/reviews/${id}/ask`, req),
   /** `fullRepo` is `owner/repo`. */
   localRepo: (fullRepo: string) => request<LocalRepo>(`/api/repos/${fullRepo}/local`),
   setLocalRepo: (fullRepo: string, path: string | null) => put<LocalRepo>(`/api/repos/${fullRepo}/local`, { path }),

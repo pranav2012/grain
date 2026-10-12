@@ -18,7 +18,7 @@ pub fn resolve_program(name: &str) -> std::path::PathBuf {
     which::which(name).unwrap_or_else(|_| std::path::PathBuf::from(name))
 }
 pub use policy::policy_check;
-use prompt::{LAYER_PROMPT, LAYER_SCHEMA, PROMPT, SCHEMA};
+use prompt::{ASK_PROMPT, ASK_SCHEMA, LAYER_PROMPT, LAYER_SCHEMA, PROMPT, SCHEMA};
 pub use prompt::{LayerSummary, Summary};
 use transport::cli;
 
@@ -57,6 +57,13 @@ pub fn summarize(agent: Agent, model: Option<&str>, diff: &str, cache_dir: &Path
 /// Writes a chapter intro from the chapter's combined diff; cached like [`summarize`].
 pub fn summarize_layer(agent: Agent, model: Option<&str>, diff: &str, cache_dir: &Path) -> Outcome {
     ask(agent, model, LAYER_PROMPT, LAYER_SCHEMA, diff, cache_dir)
+}
+
+/// Answers a reviewer's question about a change (`context`: the diff, and any selected lines).
+/// The summary value is `{ "answer": "…" }`; identical questions are answered from the cache.
+pub fn answer(agent: Agent, model: Option<&str>, context: &str, question: &str, cache_dir: &Path) -> Outcome {
+    let body = format!("QUESTION: {question}\n\nCODE:\n{context}");
+    ask(agent, model, ASK_PROMPT, ASK_SCHEMA, &body, cache_dir)
 }
 
 fn ask(agent: Agent, model: Option<&str>, head: &str, schema: &str, diff: &str, cache_dir: &Path) -> Outcome {
