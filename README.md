@@ -30,6 +30,8 @@ grain .                     # self-review your branch plus uncommitted and new f
 
 Self-review reads your repository without changing it: Grain records your working tree as a commit object using its own index, so your branch, staging area and files stay untouched. When you edit files, the review offers to refresh and keeps the blocks you already checked.
 
+For TypeScript and JavaScript, "used by" facts come from TypeScript 7's language server, which Grain downloads once from npm (about 27 MB, checksum-verified) the first time it's needed; other languages use Grain's own code graph.
+
 AI summaries are optional. Press `,` in the app to pick Claude Code, Codex or OpenCode if you have one installed.
 
 ## Run from source

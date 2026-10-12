@@ -229,7 +229,24 @@ pub(crate) fn full(port: u16) -> Vec<Check> {
     }
     checks.push(check_port(port));
     checks.extend(check_agents());
+    checks.push(check_typescript());
     checks
+}
+
+/// TypeScript 7 gives precise "used by" facts for TS/JS; Grain downloads it on first need.
+fn check_typescript() -> Check {
+    let cache = grain_store::Home::locate().cache_dir();
+    match grain_lsp::typescript::locate(&cache) {
+        Some(p) => ok("TypeScript 7", false, format!("Ready for precise TS/JS usage facts ({})", p.display())),
+        None => ok(
+            "TypeScript 7",
+            false,
+            format!(
+                "Downloads automatically from npm (~27 MB, checksum-verified) the first time a TS/JS review needs it (v{})",
+                grain_lsp::typescript::VERSION
+            ),
+        ),
+    }
 }
 
 pub(crate) fn has_blockers(checks: &[Check]) -> bool {

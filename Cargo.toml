@@ -17,6 +17,7 @@ grain-agent = { path = "crates/grain-agent" }
 grain-engine = { path = "crates/grain-engine" }
 grain-git = { path = "crates/grain-git" }
 grain-github = { path = "crates/grain-github" }
+grain-lsp = { path = "crates/grain-lsp" }
 grain-server = { path = "crates/grain-server" }
 grain-store = { path = "crates/grain-store" }
 
@@ -39,6 +40,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing = "0.1.44"
 tempfile = "3.27.0"
 globset = "0.4.20"
+base64 = "0.22"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -12,6 +12,7 @@ grain-agent.workspace = true
 grain-engine.workspace = true
 grain-git.workspace = true
 grain-github.workspace = true
+grain-lsp.workspace = true
 grain-store.workspace = true
 dirs.workspace = true
 anyhow.workspace = true

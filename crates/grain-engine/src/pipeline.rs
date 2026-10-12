@@ -17,6 +17,7 @@ use crate::diff::hunks::hunk_lines;
 use crate::diff::units::{Unit, Units, build_units, merge_ranges};
 use crate::facts::checks::rule_checks;
 use crate::facts::removed::removed_names_still_mentioned;
+use crate::facts::usage::{UsageProvider, name_position};
 use crate::grouping::blocks::{block_dir, block_key, stable_hash};
 use crate::grouping::chapters::build_chapters;
 use crate::grouping::cluster::group_v2;
@@ -39,6 +40,18 @@ pub fn analyze(repo: &Path, base: &str, head: &str) -> Result<Analysis> {
 /// Analyzes `base..head`. With [`Depth::Fast`] only the changed files must be checked out;
 /// blocks and chapters are identical at both depths, only facts differ.
 pub fn analyze_with(repo: &Path, base: &str, head: &str, depth: Depth) -> Result<Analysis> {
+    analyze_with_usage(repo, base, head, depth, None)
+}
+
+/// Like [`analyze_with`]; at [`Depth::Complete`], `usage` answers outside usage for the files it
+/// supports (precise), and the entity graph answers the rest.
+pub fn analyze_with_usage(
+    repo: &Path,
+    base: &str,
+    head: &str,
+    depth: Depth,
+    usage: Option<&dyn UsageProvider>,
+) -> Result<Analysis> {
     let mut timings: Vec<(&str, u128)> = Vec::new();
 
     let t = Instant::now();
@@ -103,6 +116,11 @@ pub fn analyze_with(repo: &Path, base: &str, head: &str, depth: Depth) -> Result
         changes: &changes,
         units: &units,
         full_graph: full_graph.as_ref(),
+        usage: usage.filter(|_| depth == Depth::Complete),
+        pr_files: file_changes
+            .iter()
+            .flat_map(|f| std::iter::once(f.file_path.as_str()).chain(f.old_file_path.as_deref()))
+            .collect(),
         changed_ids: changes.iter().map(|c| c.entity_id.as_str()).collect(),
         pattern_files: &pattern_files,
         still_mentioned: &still_mentioned,
@@ -189,6 +207,9 @@ struct BlockContext<'a> {
     units: &'a Units,
     /// Whole-repo graph; `None` at [`Depth::Fast`].
     full_graph: Option<&'a EntityGraph>,
+    usage: Option<&'a dyn UsageProvider>,
+    /// Every path the PR touches; usage inside the PR doesn't count as outside usage.
+    pr_files: HashSet<&'a str>,
     changed_ids: HashSet<&'a str>,
     pattern_files: &'a HashSet<String>,
     still_mentioned: &'a HashMap<String, Vec<String>>,
@@ -221,9 +242,22 @@ fn assemble_block(ctx: &BlockContext<'_>, members: &[usize], part: Option<(usize
                     old_name: c.old_entity_name.clone().filter(|o| o != &c.entity_name),
                     file: c.file_path.clone(),
                 });
-                if let Some(full_graph) = ctx.full_graph
-                    && !matches!(c.change_type, ChangeType::Deleted)
-                    && !is_test_path(&c.file_path)
+                let outside = !matches!(c.change_type, ChangeType::Deleted) && !is_test_path(&c.file_path);
+                let precise = ctx.usage.filter(|_| outside).and_then(|u| {
+                    let (line, character) = name_position(c)?;
+                    u.referencing_files(&c.file_path, line, character)
+                });
+                if let Some(files) = precise {
+                    for f in files.into_iter().filter(|f| !ctx.pr_files.contains(f.as_str())) {
+                        if is_test_path(&f) {
+                            test_users.insert(f);
+                        } else {
+                            let label = f.rsplit('/').next().unwrap_or(&f).to_string();
+                            users.insert(f, label);
+                        }
+                    }
+                } else if let Some(full_graph) = ctx.full_graph
+                    && outside
                 {
                     for dep in full_graph.dependents().get(c.entity_id.as_str()).into_iter().flatten() {
                         if ctx.changed_ids.contains(dep.as_str()) {

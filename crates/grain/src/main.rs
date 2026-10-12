@@ -52,6 +52,9 @@ enum Command {
         /// Only read the changed files (skips whole-repo facts).
         #[arg(long)]
         fast: bool,
+        /// Use TypeScript 7 for TS/JS outside usage (downloaded once if missing).
+        #[arg(long, conflicts_with = "fast")]
+        typescript: bool,
     },
 }
 
@@ -61,9 +64,16 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter(std::env::var("GRAIN_LOG").unwrap_or_else(|_| "info".into())).init();
     let cli = Cli::parse();
     match cli.command {
-        Some(Command::Analyze { repo, base, head, json, fast }) => {
+        Some(Command::Analyze { repo, base, head, json, fast, typescript }) => {
             let depth = if fast { grain_engine::Depth::Fast } else { grain_engine::Depth::Complete };
-            let analysis = grain_engine::analyze_with(&repo, &base, &head, depth)?;
+            let usage = if typescript {
+                let tsc = grain_lsp::typescript::ensure(&grain_store::Home::locate().cache_dir())?;
+                Some(grain_lsp::TsUsage::start(&tsc, &repo)?)
+            } else {
+                None
+            };
+            let usage = usage.as_ref().map(|u| u as &dyn grain_engine::UsageProvider);
+            let analysis = grain_engine::analyze_with_usage(&repo, &base, &head, depth, usage)?;
             let out = if json { serde_json::to_string_pretty(&analysis.review)? } else { analysis.summary };
             println!("{out}");
             return Ok(());

@@ -19,6 +19,7 @@ path = "src/main.rs"
 grain-agent.workspace = true
 grain-engine.workspace = true
 grain-github.workspace = true
+grain-lsp.workspace = true
 grain-server.workspace = true
 grain-store.workspace = true
 serde.workspace = true

@@ -104,7 +104,14 @@ pub(crate) fn enrich(home: &Home, pr: &PrRef) -> Result<()> {
         grain_git::expand_worktree(&worktree)?;
         worktree
     };
-    let analysis = grain_engine::analyze_with(&worktree, &merge_base, &head, Depth::Complete)?;
+    let usage = typescript_usage(home, &out_dir, &worktree);
+    let analysis = grain_engine::analyze_with_usage(
+        &worktree,
+        &merge_base,
+        &head,
+        Depth::Complete,
+        usage.as_ref().map(|u| u as &dyn grain_engine::UsageProvider),
+    )?;
     // A newer push may have been prepared meanwhile; never overwrite it with older facts.
     let current = read_json(&out_dir.join("pr.json")).and_then(|v| v["headSha"].as_str().map(str::to_string));
     if current.as_deref() == Some(head.as_str()) {
@@ -112,6 +119,29 @@ pub(crate) fn enrich(home: &Home, pr: &PrRef) -> Result<()> {
         write_atomic(&out_dir.join("analysis.txt"), analysis.summary.as_bytes())?;
     }
     Ok(())
+}
+
+/// TypeScript 7's language server for reviews that change TS/JS files (downloaded once when
+/// missing). `None` falls back to the entity graph; precise usage is never worth failing over.
+fn typescript_usage(home: &Home, out_dir: &Path, worktree: &Path) -> Option<grain_lsp::TsUsage> {
+    let review = read_json(&out_dir.join("review.json"))?;
+    let has_ts =
+        review["blocks"].as_array()?.iter().flat_map(|b| b["files"].as_array().into_iter().flatten()).any(|f| {
+            let ext = f.as_str().and_then(|f| f.rsplit_once('.')).map(|(_, e)| e).unwrap_or_default();
+            matches!(ext, "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs")
+        });
+    if !has_ts {
+        return None;
+    }
+    let started =
+        grain_lsp::typescript::ensure(&home.cache_dir()).and_then(|tsc| grain_lsp::TsUsage::start(&tsc, worktree));
+    match started {
+        Ok(usage) => Some(usage),
+        Err(e) => {
+            tracing::warn!(error = %format!("{e:#}"), "TypeScript usage unavailable; using the entity graph");
+            None
+        }
+    }
 }
 
 /// Writes `pr.json`: the PR's details plus what the server knows (viewer, agent, merge base,

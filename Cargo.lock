@@ -126,6 +126,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -521,6 +527,7 @@ dependencies = [
  "grain-agent",
  "grain-engine",
  "grain-github",
+ "grain-lsp",
  "grain-server",
  "grain-store",
  "open",
@@ -574,6 +581,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "grain-lsp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "grain-engine",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "grain-server"
 version = "0.1.0"
 dependencies = [
@@ -584,6 +604,7 @@ dependencies = [
  "grain-engine",
  "grain-git",
  "grain-github",
+ "grain-lsp",
  "grain-store",
  "mime_guess",
  "rust-embed",
