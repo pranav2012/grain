@@ -2,7 +2,9 @@
 
 Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) (the tool uv and ruff use). The configuration is in `dist-workspace.toml`; `.github/workflows/release.yml` is generated from it. Don't edit that workflow by hand: change the config and run `dist generate`.
 
-Pushing a version tag (`v0.1.0`) builds the UI and the binary for every target, creates a GitHub Release with archives, checksums and installers, then publishes to Homebrew and npm.
+Releases are automatic. When CI passes on `main` and the new commits include a `feat`, `fix`, `perf`, `revert` or breaking change (Conventional Commits), the `release` job in `ci.yml` bumps the version, prepends the section to `CHANGELOG.md`, commits `chore(release): vX.Y.Z`, tags it, and starts the *Release* workflow. That builds the UI and the binary for every target, creates a GitHub Release (notes from `CHANGELOG.md`) with archives, checksums and installers, then publishes to Homebrew and npm. Commits that are only `docs`, `chore`, `refactor`, `test`, `ci`, `build` or `style` never release.
+
+Version bumps (before 1.0): `fix`/`perf` → patch (0.1.0 → 0.1.1); `feat` or breaking (`feat!:`) → minor (0.1.1 → 0.2.0). Rules live in `cliff.toml`; `scripts/next-release.sh` prints what the next release would be.
 
 | Channel | Install command | Published by |
 |---|---|---|
@@ -14,23 +16,16 @@ Pushing a version tag (`v0.1.0`) builds the UI and the binary for every target, 
 
 Targets: macOS (Apple Silicon, Intel), Linux (x64, arm64, glibc), Windows (x64).
 
-## One-time setup (not done yet)
+## One-time setup (done on 2026-10-13)
 
-1. **Make the repository public** (`pranav2012/grain`). Installers download from GitHub Releases, which other people can't reach while the repo is private.
-   - The current files contain no secrets or internal names. History was rewritten on 2026-10-13 so no commit mentions internal repositories, and the GitHub repo was recreated to drop old PR refs. Before going public, re-check with `git log --all -p | grep -iE "<internal names>"`.
-2. **Create the Homebrew tap**: an empty public repo `pranav2012/homebrew-tap`.
-3. **npm name: `grain-ci`** (`grain` belongs to another author since 2010; `grain-ci` was free on 2026-10-13). Publish soon to hold it. To change it, edit `npm-package` in `dist-workspace.toml` and run `dist generate`. The installed command is `grain` regardless.
-4. **Add repository secrets** (Settings → Secrets and variables → Actions):
-   - `HOMEBREW_TAP_TOKEN`: a fine-grained token with *Contents: read and write* on `pranav2012/homebrew-tap`.
-   - `NPM_TOKEN`: an npm *automation* token from the account that owns the package.
+- Repository public; history checked for internal names before going public.
+- Homebrew tap: public repo `pranav2012/homebrew-tap`.
+- npm package: `grain-ci` (`grain` belongs to another author). The installed command is `grain` regardless.
+- Repository secrets: `HOMEBREW_TAP_TOKEN` (fine-grained, *Contents: read and write* on the tap) and `NPM_TOKEN` (npm granular token, expires 2027-01-11; rotate it, or move to npm trusted publishing).
 
-## Cutting a release
+## Releasing by hand
 
-1. Make sure `main` is green (`scripts/check.sh`).
-2. Bump `version` in the root `Cargo.toml` (`[workspace.package]`), run `cargo build`, and commit `Cargo.toml` and `Cargo.lock`.
-3. If the engine's output changed since the last release, make sure `grain_engine::REVIEW_FORMAT` was bumped.
-4. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
-5. Watch the *Release* workflow. When it's done, try one channel from a clean machine: `grain --version`, then `grain doctor`.
+Normally nothing is needed. To re-run a release (for example after a failed publish), start the *Release* workflow from the Actions tab with the existing tag (`v0.2.0`), or run `gh workflow run release.yml --ref v0.2.0 -f tag=v0.2.0`. If the engine's output changed, make sure `grain_engine::REVIEW_FORMAT` was bumped in the same change.
 
 ## Trying the release locally
 

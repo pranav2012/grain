@@ -14,6 +14,19 @@ cargo run -p grain -- --no-open      # API on :7420
 pnpm --dir ui dev --port 5174        # UI with hot reload
 ```
 
+## Commit messages
+
+Titles are [Conventional Commits](https://www.conventionalcommits.org); they decide releases and the changelog. CI rejects other titles.
+
+```
+feat(ui): show linked blocks          # new minor release
+fix: keep part order when sorting     # new patch release
+feat!: change the review format       # breaking change
+docs: / chore: / refactor: / test: / ci: / build: / style:   # no release
+```
+
+Check titles before pushing with the hook: `git config core.hooksPath .githooks` (once per clone).
+
 ## Before you push
 
 ```bash

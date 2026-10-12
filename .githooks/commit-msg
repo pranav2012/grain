@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Rejects commit titles that aren't Conventional Commits; they decide the next release.
+# Enable once per clone: git config core.hooksPath .githooks
+exec "$(git rev-parse --show-toplevel)/scripts/check-commit-title.sh" "$(head -1 "$1")"

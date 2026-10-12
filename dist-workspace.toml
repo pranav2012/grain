@@ -29,3 +29,4 @@ publish-jobs = ["homebrew", "npm"]
 github-build-setup = "../build-setup.yml"
 # Never run the release workflow on pull requests (including from forks); only on pushed tags.
 pr-run-mode = "skip"
+dispatch-releases = true
