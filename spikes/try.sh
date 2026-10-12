@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Try the Phase 0 spikes on any GitHub PR: semantic grouping -> block-by-block viewer,
-# optionally with AI summaries from your own agent.
+# Review any GitHub PR in the Grain prototype: semantic grouping -> chapters and blocks,
+# optionally with block summaries from your own agent CLI (see docs/COMPLIANCE.md).
 #
 # Usage: spikes/try.sh <owner/repo> <pr-number> [claude|codex|opencode|none] [max-summaries=3]
 # Example: spikes/try.sh acme/widgets 2671 claude
@@ -28,9 +28,12 @@ cargo build -q --release --manifest-path "$ROOT/sem-grouping/Cargo.toml"
 "$ROOT/sem-grouping/target/release/sem-grouping-spike" "$WORK/wt/$NAME" "$MB" "$HEAD" "$WORK/out/$NAME" | grep -E "^(changed|blocks|time  (semantic|grouping))"
 git -C "$CLONE" -c core.quotepath=off diff -M --no-color --no-ext-diff "$MB" "$HEAD" > "$WORK/patches/$NAME.patch"
 cp "$WORK/out/$NAME/blocks.json" "$WORK/patches/$NAME.blocks.json"
-rm -f "$WORK/patches/$NAME.summaries.json"
 
 cp "$WORK/out/$NAME/review.json" "$WORK/patches/$NAME.review.json"
+gh pr view "$PR" -R "$REPO" --json number,title,url,author,headRefName,baseRefName,additions,deletions,changedFiles \
+  | python3 -c "import json,sys,subprocess; d=json.load(sys.stdin); d['viewer']=subprocess.run(['gh','api','user','--jq','.login'],capture_output=True,text=True).stdout.strip(); print(json.dumps(d))" \
+  > "$WORK/patches/$NAME.pr.json"
+rm -f "$WORK/patches/$NAME.summaries.json"
 
 if [ "$AGENT" != "none" ]; then
   # One request at a time, cached, stops on the first usage limit (docs/COMPLIANCE.md).
@@ -71,11 +74,11 @@ json.dump(out, open(f"{work}/patches/{name}.summaries.json", "w"), indent=2)
 EOF2
 fi
 
-echo "▸ Starting viewer"
-cd "$ROOT/diff-ui"
+echo "▸ Opening Grain"
+cd "$ROOT/../ui"
 [ -d node_modules ] || pnpm install --silent
-ln -sfn "$WORK/patches" public/patches
-URL="http://localhost:5173/?lib=blocks&pr=$NAME"
+ln -sfn "$WORK/patches" public/data
+URL="http://localhost:5174/?pr=$NAME"
 echo "  $URL   (Ctrl-C to stop)"
 [ -n "${GRAIN_NO_OPEN:-}" ] || (sleep 2 && open "$URL") &
-exec pnpm exec vite --port 5173 --strictPort
+exec pnpm exec vite --port 5174
