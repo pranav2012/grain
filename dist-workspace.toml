@@ -27,4 +27,5 @@ npm-package = "grain-ci"
 publish-jobs = ["homebrew", "npm"]
 # The UI is embedded in the binary, so build it before every target's Rust build.
 github-build-setup = "../build-setup.yml"
-pr-run-mode = "plan"
+# Never run the release workflow on pull requests (including from forks); only on pushed tags.
+pr-run-mode = "skip"

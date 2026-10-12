@@ -5,12 +5,17 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   rust:
+    # Only this repository's own pushes and PRs run CI; forks and PRs from forks never do.
+    if: github.repository == 'pranav2012/grain' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -24,6 +29,8 @@ jobs:
         run: git diff --exit-code -- ui/src/types/generated
 
   ui:
+    # Only this repository's own pushes and PRs run CI; forks and PRs from forks never do.
+    if: github.repository == 'pranav2012/grain' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     defaults:
       run:
