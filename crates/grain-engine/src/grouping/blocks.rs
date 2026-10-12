@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 
 /// Stable content key for a block (files + changed entities), so summaries survive regrouping and renumbering.
 pub(crate) fn block_key(files: &[String], entities: &[String]) -> String {
@@ -15,7 +16,11 @@ pub(crate) fn stable_hash<'a>(parts: impl Iterator<Item = &'a str>) -> String {
         h.update((p.len() as u64).to_le_bytes());
         h.update(p.as_bytes());
     }
-    h.finalize().iter().take(8).map(|b| format!("{b:02x}")).collect()
+    let mut out = String::with_capacity(16);
+    for b in h.finalize().iter().take(8) {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
 }
 
 /// Directory that best describes a block: the files' common directory, or the heaviest file's directory.
