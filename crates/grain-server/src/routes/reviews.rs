@@ -112,8 +112,18 @@ pub(super) async fn diff(
     Path(p): Path<(String, String, u64)>,
     Json(body): Json<DiffRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let path = app.home.review_dir(&pr_of(p)).join("diff.patch");
-    let text = blocking(move || Ok(app.patches.get(&path)?.sections(&body.files))).await?;
+    let pr = pr_of(p);
+    let text = blocking(move || {
+        if let Some(since) = body.since.filter(|s| s.chars().all(|c| c.is_ascii_hexdigit()) && !s.is_empty()) {
+            // Only what changed since an earlier review: diff between the two heads.
+            let pr_json = read_json(&app.home.review_dir(&pr).join("pr.json"))
+                .ok_or_else(|| anyhow::anyhow!("PR not prepared"))?;
+            let head = pr_json["headSha"].as_str().unwrap_or_default().to_string();
+            return grain_git::diff(&app.home.clone_dir(&pr), &since, &head, &body.files);
+        }
+        Ok(app.patches.get(&app.home.review_dir(&pr).join("diff.patch"))?.sections(&body.files))
+    })
+    .await?;
     Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8"), (header::CACHE_CONTROL, "no-store")], text))
 }
 

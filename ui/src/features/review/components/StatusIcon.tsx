@@ -1,6 +1,13 @@
 import type { BlockState } from '../model/types'
 
-export function StatusIcon({ state, current }: { state?: BlockState; current?: boolean }) {
+export function StatusIcon({ state, current, stale }: { state?: BlockState; current?: boolean; stale?: boolean }) {
+  if (!state && stale)
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-label="Changed since you reviewed it">
+        <circle cx="7" cy="7" r="5.75" fill="none" stroke="var(--color-amber)" strokeWidth="1.5" />
+        <circle cx="7" cy="7" r="2" fill="var(--color-amber)" />
+      </svg>
+    )
   if (state === 'ok')
     return (
       <svg width="14" height="14" viewBox="0 0 14 14" aria-label="Reviewed">

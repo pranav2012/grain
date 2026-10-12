@@ -4,4 +4,8 @@ export type DiffRequest = {
 /**
  * Paths (old or new) whose diff sections to return.
  */
-files: Array<string>, };
+files: Array<string>, 
+/**
+ * Diff from this earlier head instead of from the base: what changed since a past review.
+ */
+since: string | null, };

@@ -35,8 +35,11 @@ pub struct Chapter {
 pub struct Block {
     /// Position in reading order; changes when the PR is regrouped.
     pub id: usize,
-    /// Stable content key (files + changed entities); survives regrouping.
+    /// Stable identity (files + changed entities); survives regrouping and renumbering.
     pub key: String,
+    /// Changes whenever the block's actual changes do: a reviewed block whose hash differs after
+    /// a new push needs another look.
+    pub content_hash: String,
     pub lines: usize,
     pub files: Vec<String>,
     pub entities: Vec<String>,

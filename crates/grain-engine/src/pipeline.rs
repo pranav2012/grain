@@ -17,7 +17,7 @@ use crate::diff::hunks::hunk_lines;
 use crate::diff::units::{Unit, Units, build_units};
 use crate::facts::checks::rule_checks;
 use crate::facts::removed::removed_names_still_mentioned;
-use crate::grouping::blocks::{block_dir, block_key};
+use crate::grouping::blocks::{block_dir, block_key, stable_hash};
 use crate::grouping::chapters::build_chapters;
 use crate::grouping::cluster::{CAP, group_v2};
 use crate::model::{Analysis, Block, EntityChange, Review, Risk};
@@ -106,6 +106,7 @@ pub fn analyze_with(repo: &Path, base: &str, head: &str, depth: Depth) -> Result
         changed_ids: changes.iter().map(|c| c.entity_id.as_str()).collect(),
         pattern_files: &pattern_files,
         still_mentioned: &still_mentioned,
+        hunks: &hunks,
     };
     let mut blocks: Vec<Block> =
         member_sets.iter().map(|m| assemble_block(&ctx, m)).filter(|b| b.lines > 0 || !b.entities.is_empty()).collect();
@@ -156,6 +157,7 @@ struct BlockContext<'a> {
     changed_ids: HashSet<&'a str>,
     pattern_files: &'a HashSet<String>,
     still_mentioned: &'a HashMap<String, Vec<String>>,
+    hunks: &'a BTreeMap<String, crate::diff::hunks::FileHunks>,
 }
 
 /// Builds one block: its entities, outside usage, skim reason, layer, checks and estimated risk.
@@ -247,9 +249,32 @@ fn assemble_block(ctx: &BlockContext<'_>, members: &[usize]) -> Block {
             ctx.still_mentioned,
         )
     };
+    // What the reviewer actually read: every entity's before/after text, and the changed-line
+    // shapes of lines outside entities. Any edit to the block changes this hash.
+    let mut content: Vec<String> = Vec::new();
+    for &u in members {
+        match &ctx.units.items[u] {
+            Unit::Entity(i) => {
+                let c = &ctx.changes[*i];
+                content.push(format!(
+                    "{}\0{}\0{}",
+                    c.entity_id,
+                    c.before_content.as_deref().unwrap_or_default(),
+                    c.after_content.as_deref().unwrap_or_default()
+                ));
+            }
+            Unit::Residue(p) => {
+                let mut shapes: Vec<&String> = ctx.hunks.get(p).map(|h| h.shape.iter().collect()).unwrap_or_default();
+                shapes.sort();
+                content.push(format!("{p}\0{}", shapes.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n")));
+            }
+        }
+    }
+    content.sort();
     Block {
         id: 0,
         key: block_key(&files, &entities),
+        content_hash: stable_hash(content.iter().map(String::as_str)),
         lines,
         files,
         entities,

@@ -7,6 +7,7 @@ import { useReviewStatus } from '../hooks/useReviewStatus'
 import { useSummaries } from '../hooks/useSummaries'
 import { agentName as agentNameOf, blockTitle } from '../model/describe'
 import { modeOrder, modes } from '../model/modes'
+import { blockProgress } from '../model/progress'
 import { sectionsFor } from '../model/sections'
 import type { CommentKind, LoadedPr, Mode, ReviewComment } from '../model/types'
 import { usePrefs } from '../state/usePrefs'
@@ -21,6 +22,12 @@ import { Outline } from './Outline'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { TopBar } from './TopBar'
 
+type NewComment = Omit<ReviewComment, 'id' | 'createdAt' | 'blockId' | 'blockKey'>
+
+function newComment(c: NewComment, blockId: number, blockKey: string): ReviewComment {
+  return { ...c, blockId, blockKey, id: crypto.randomUUID(), createdAt: Date.now() }
+}
+
 interface ReviewScreenProps {
   base: LoadedPr
   settingsVersion: number
@@ -30,7 +37,7 @@ interface ReviewScreenProps {
 
 export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: ReviewScreenProps) {
   const viewer = base.pr?.viewer
-  const [state, dispatch] = useReviewState(base.id, viewer && viewer === base.pr?.author.login ? 'self' : 'peer')
+  const [state, dispatch] = useReviewState(base, viewer && viewer === base.pr?.author.login ? 'self' : 'peer')
   const [prefs, setPrefs] = usePrefs()
   const [overlay, setOverlay] = useState<'palette' | 'finish' | 'help' | null>(null)
   const [showContext, setShowContext] = useState(true)
@@ -41,7 +48,8 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
   const live = useLiveReview(base, status)
   const baseSections = useMemo(() => sectionsFor(live, state.mode), [live, state.mode])
   const baseOrder = useMemo(() => baseSections.flatMap((s) => s.blocks), [baseSections])
-  const current = state.current && live.blocks.has(state.current) ? state.current : baseOrder[0]
+  const keyToId = useMemo(() => new Map([...live.blocks.values()].map((b) => [b.key, b.id])), [live])
+  const current = (state.currentKey && keyToId.get(state.currentKey)) || baseOrder[0]
   const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(live, status, baseOrder, current)
 
   const { threadsFor } = useConversation(data)
@@ -50,12 +58,17 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
   const reviewable = useMemo(() => order.filter((id) => !data.blocks.get(id)!.skim), [order, data])
   const block = data.blocks.get(current)!
   const section = sections.find((s) => s.blocks.includes(current))!
-  const blockComments = state.comments.filter((c) => c.blockId === current)
+  const { states, stale } = useMemo(() => blockProgress(data, state.verdicts), [data, state.verdicts])
+  const blockComments = state.comments.filter((c) => c.blockKey === block.key)
 
-  const go = (id: number | undefined) => id !== undefined && dispatch({ type: 'go', id })
+  const go = (id: number | undefined) => {
+    const b = id === undefined ? undefined : data.blocks.get(id)
+    if (b) dispatch({ type: 'go', key: b.key })
+  }
   const step = (d: number) => go(order[Math.min(order.length - 1, Math.max(0, order.indexOf(current) + d))])
   const stepChapter = (d: number) => go(sections[sections.indexOf(section) + d]?.blocks[0])
-  const nextOpen = () => order.slice(order.indexOf(current) + 1).find((id) => !state.states[id]) ?? order.find((id) => !state.states[id])
+  const nextOpen = () => order.slice(order.indexOf(current) + 1).find((id) => !states[id]) ?? order.find((id) => !states[id])
+  const verdict = (state: 'ok' | 'change') => ({ state, hash: block.contentHash, head: data.pr?.headSha ?? '', files: block.files })
   const setMode = (mode: Mode) => dispatch({ type: 'mode', mode })
   const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
   const compose = (kind: CommentKind) => {
@@ -63,16 +76,15 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
     setComposing(kind)
   }
   const primary = () => {
-    const done = state.states[current] === 'ok'
-    dispatch({ type: 'mark', id: current, state: done ? null : 'ok' })
+    const done = states[current] === 'ok'
+    dispatch({ type: 'mark', key: block.key, verdict: done ? null : verdict('ok') })
     if (!done) go(nextOpen())
   }
   const secondary = () => {
-    dispatch({ type: 'mark', id: current, state: 'change' })
+    dispatch({ type: 'mark', key: block.key, verdict: verdict('change') })
     compose(copy.secondaryKind)
   }
-  const addComment = (c: Omit<ReviewComment, 'id' | 'createdAt' | 'blockId'>) =>
-    dispatch({ type: 'comment', comment: { ...c, blockId: current, id: crypto.randomUUID(), createdAt: Date.now() } })
+  const addComment = (c: NewComment) => dispatch({ type: 'comment', comment: newComment(c, current, block.key) })
 
   useHotkeys({
     j: () => step(1),
@@ -101,10 +113,10 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
 
   const lines = (ids: number[]) => ids.reduce((n, id) => n + data.blocks.get(id)!.lines, 0)
   const progress = {
-    done: reviewable.filter((id) => state.states[id]).length,
+    done: reviewable.filter((id) => states[id]).length,
     total: reviewable.length,
-    okLines: lines(reviewable.filter((id) => state.states[id] === 'ok')),
-    changeLines: lines(reviewable.filter((id) => state.states[id] === 'change')),
+    okLines: lines(reviewable.filter((id) => states[id] === 'ok')),
+    changeLines: lines(reviewable.filter((id) => states[id] === 'change')),
     reviewLines: lines(reviewable),
   }
   const agentName = agentNameOf(data)
@@ -137,11 +149,12 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
         onSettings={onSettings}
         onFinish={() => setOverlay('finish')}
       />
-      <GrainMap data={data} sections={sections} states={state.states} current={current} onGo={go} />
+      <GrainMap data={data} sections={sections} states={states} stale={stale} current={current} onGo={go} />
       <Outline
         data={data}
         sections={sections}
-        states={state.states}
+        states={states}
+        stale={stale}
         current={current}
         onGo={go}
         openThreads={(id) => threadsFor(id).filter((t) => !t.resolved).length}
@@ -158,7 +171,8 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
         summaryPending={summaryPending(block.key)}
         onSummarize={summarizeCurrent}
         onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
-        state={state.states[current]}
+        state={states[current]}
+        staleSince={stale[current]}
         comments={blockComments}
         threads={threadsFor(current)}
         onPrimary={primary}
@@ -198,7 +212,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings }: Re
         <FinishDialog
           data={data}
           mode={state.mode}
-          states={state.states}
+          states={states}
           comments={state.comments}
           reviewable={reviewable}
           onPosted={(ids) => dispatch({ type: 'posted', ids })}

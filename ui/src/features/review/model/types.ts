@@ -13,7 +13,10 @@ export type CommentKind = 'comment' | 'question' | 'change' | 'note' | 'fix'
 
 export interface ReviewComment {
   id: string
+  /** Block number when written (display only; numbers change between pushes). */
   blockId: number
+  /** Stable block identity; comments follow their block across pushes. */
+  blockKey: string
   body: string
   kind: CommentKind
   file?: string

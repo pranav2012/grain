@@ -28,8 +28,12 @@ export const reviewApi = {
   conversation: (id: string) => request<Conversation>(`/api/reviews/${id}/conversation`),
   review: (id: string) => request<Review>(`/api/reviews/${id}/files/review.json`),
   /** Unified diff sections for just these files. */
-  diff: (id: string, files: string[]) =>
-    fetch(`/api/reviews/${id}/diff`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ files }) }).then((r) =>
+  diff: (id: string, files: string[], since?: string) =>
+    fetch(`/api/reviews/${id}/diff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ files, since: since ?? null }),
+    }).then((r) =>
       r.ok ? r.text() : Promise.reject(new Error(`Couldn't load the diff (${r.status})`)),
     ),
 }

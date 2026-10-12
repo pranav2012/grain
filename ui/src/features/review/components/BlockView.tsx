@@ -41,12 +41,14 @@ interface BlockViewProps {
   onSummarize(): void
   onDiffStyle(style: DiffStyle): void
   state?: BlockState
+  /** Head commit this block was reviewed at, when it has changed since. */
+  staleSince?: string
   comments: ReviewComment[]
   /** Existing GitHub review threads on this block's files. */
   threads: ReviewThread[]
   onPrimary(): void
   onSecondary(): void
-  onComment(c: Omit<ReviewComment, 'id' | 'createdAt' | 'blockId'>): void
+  onComment(c: Omit<ReviewComment, 'id' | 'createdAt' | 'blockId' | 'blockKey'>): void
   onDeleteComment(id: string): void
 }
 
@@ -67,10 +69,13 @@ export function BlockView(p: BlockViewProps) {
   const copy = modes[mode]
   const summary = summaryOf(data, block)
   const [draft, setDraft] = useState<Draft | null>(null)
-  const options = useMemo(() => ({ ...baseOptions, diffStyle: p.diffStyle }), [p.diffStyle])
   const risk = (summary?.risk as keyof typeof riskColor | undefined) ?? (block.skim ? null : block.estRisk)
 
-  const { diffs, error: diffError } = useBlockDiff(data.id, block.files, p.nextFiles)
+  const [view, setView] = useState<'since' | 'whole'>('since')
+  const sinceReview = p.staleSince && view === 'since' ? p.staleSince : undefined
+  const { diffs, error: diffError } = useBlockDiff(data.id, block.files, p.nextFiles, sinceReview)
+  // Line comments must anchor to the PR's own diff, so they're only offered on the whole block.
+  const options = useMemo(() => ({ ...baseOptions, diffStyle: p.diffStyle, enableLineSelection: !sinceReview }), [p.diffStyle, sinceReview])
   const items = useMemo<CodeViewItem<Note>[]>(() => {
     return (diffs ?? []).map((fileDiff) => {
         const annotations: DiffLineAnnotation<Note>[] = p.comments
@@ -96,6 +101,24 @@ export function BlockView(p: BlockViewProps) {
           <span>{p.position}</span>
         </div>
         <h1 className="mt-1.5 mb-2 max-w-[70ch] text-[19px] leading-tight font-semibold tracking-[-0.015em]">{blockTitle(data, block)}</h1>
+        {p.staleSince && !p.state && (
+          <div className="mb-2.5 flex flex-wrap items-center gap-3 rounded-lg border border-amber/40 bg-amber/10 px-3 py-2 text-[13px]">
+            <span className="text-amber">Changed since you reviewed it.</span>
+            <Segmented<'since' | 'whole'>
+              label="What to show"
+              size="sm"
+              value={view}
+              onChange={setView}
+              options={
+                [
+                  ['since', 'Since your review'],
+                  ['whole', 'Whole block'],
+                ] as ['since' | 'whole', string][]
+              }
+            />
+            {sinceReview && <span className="text-xs text-fog">Switch to the whole block to comment on lines.</span>}
+          </div>
+        )}
         <p className="mb-2.5 max-w-[78ch] text-[13.5px] leading-relaxed text-soft">
           {summary?.intent ? <InlineCode text={summary.intent} /> : factsSentence(block)}
         </p>
@@ -145,7 +168,9 @@ export function BlockView(p: BlockViewProps) {
       {!diffs ? (
         <div className="m-auto text-fog">{diffError ?? 'Loading the diff…'}</div>
       ) : items.length === 0 ? (
-        <div className="m-auto max-w-[44ch] text-center leading-relaxed text-fog">This block only renames or moves files. There are no line changes to show.</div>
+        <div className="m-auto max-w-[44ch] text-center leading-relaxed text-fog">
+          {sinceReview ? 'Nothing in these files changed since your review.' : 'This block only renames or moves files. There are no line changes to show.'}
+        </div>
       ) : (
         <CodeView<Note, undefined>
           key={`${block.id}-${p.diffStyle}`}
@@ -192,7 +217,7 @@ export function BlockView(p: BlockViewProps) {
           }}
         />
       )}
-      {missing > 0 && items.length > 0 && <div className="px-4 pt-0.5 text-[11.5px] text-dim">{missing} binary or unchanged files not shown.</div>}
+      {missing > 0 && items.length > 0 && !sinceReview && <div className="px-4 pt-0.5 text-[11.5px] text-dim">{missing} binary or unchanged files not shown.</div>}
     </main>
   )
 }

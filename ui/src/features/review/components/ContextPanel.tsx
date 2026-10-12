@@ -22,7 +22,7 @@ interface ContextPanelProps {
   composing: CommentKind | null
   agentName: string | null
   onCompose(kind: CommentKind | null): void
-  onComment(c: Omit<ReviewComment, 'id' | 'createdAt' | 'blockId'>): void
+  onComment(c: Omit<ReviewComment, 'id' | 'createdAt' | 'blockId' | 'blockKey'>): void
   onDeleteComment(id: string): void
 }
 

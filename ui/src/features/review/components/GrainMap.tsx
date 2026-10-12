@@ -7,6 +7,7 @@ interface GrainMapProps {
   data: LoadedPr
   sections: Section[]
   states: Record<number, BlockState>
+  stale: Record<number, string>
   current: number | null
   onGo(id: number): void
 }
@@ -15,11 +16,12 @@ const grain: Record<string, string> = {
   ok: 'var(--color-sage)',
   change: 'var(--color-coral)',
   skim: '#343842',
+  stale: 'var(--color-amber)',
   todo: '#3a3f4a',
 }
 
 /** The whole PR as wood grain: one band per block, height by size, filled in as it's reviewed. */
-export function GrainMap({ data, sections, states, current, onGo }: GrainMapProps) {
+export function GrainMap({ data, sections, states, stale, current, onGo }: GrainMapProps) {
   return (
     <nav aria-label="PR map" className="flex min-h-0 flex-col gap-[9px] border-r border-seam px-[7px] py-2.5 [grid-area:map]">
       {sections.map((s) => {
@@ -29,7 +31,7 @@ export function GrainMap({ data, sections, states, current, onGo }: GrainMapProp
             {s.blocks.map((id) => {
               const b = data.blocks.get(id)!
               const title = blockTitle(data, b)
-              const style = { flex: `${Math.max(b.lines, 1)} 1 0`, '--grain': grain[states[id] ?? (b.skim ? 'skim' : 'todo')] } as CSSProperties
+              const style = { flex: `${Math.max(b.lines, 1)} 1 0`, '--grain': grain[states[id] ?? (stale[id] ? 'stale' : b.skim ? 'skim' : 'todo')] } as CSSProperties
               return (
                 <button
                   key={id}

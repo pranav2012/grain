@@ -8,13 +8,14 @@ interface OutlineProps {
   data: LoadedPr
   sections: Section[]
   states: Record<number, BlockState>
+  stale: Record<number, string>
   current: number | null
   onGo(id: number): void
   /** Unresolved GitHub threads per block. */
   openThreads(id: number): number
 }
 
-export function Outline({ data, sections, states, current, onGo, openThreads }: OutlineProps) {
+export function Outline({ data, sections, states, stale, current, onGo, openThreads }: OutlineProps) {
   const currentRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     currentRef.current?.scrollIntoView({ block: 'nearest' })
@@ -41,7 +42,7 @@ export function Outline({ data, sections, states, current, onGo, openThreads }: 
                 onClick={() => onGo(id)}
                 className="grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2 border-l-2 border-transparent py-[5px] pr-3.5 pl-3 text-left text-fog hover:bg-slate hover:text-chalk aria-[current=true]:border-periwinkle aria-[current=true]:bg-slate-2 aria-[current=true]:text-chalk"
               >
-                <StatusIcon state={states[id]} current={isCurrent} />
+                <StatusIcon state={states[id]} current={isCurrent} stale={!!stale[id]} />
                 <span className="truncate">{blockTitle(data, b)}</span>
                 <span className="inline-flex items-center gap-1.5 text-[11.5px] text-dim tabular-nums">
                   {openThreads(id) > 0 && (

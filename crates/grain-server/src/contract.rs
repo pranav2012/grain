@@ -102,6 +102,9 @@ pub(crate) struct SummarizeRequest {
 pub(crate) struct DiffRequest {
     /// Paths (old or new) whose diff sections to return.
     pub files: Vec<String>,
+    /// Diff from this earlier head instead of from the base: what changed since a past review.
+    #[serde(default)]
+    pub since: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS)]

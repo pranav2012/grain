@@ -9,9 +9,14 @@ export type Block = {
  */
 id: number, 
 /**
- * Stable content key (files + changed entities); survives regrouping.
+ * Stable identity (files + changed entities); survives regrouping and renumbering.
  */
-key: string, lines: number, files: Array<string>, entities: Array<string>, residueFiles: Array<string>, mechanicalEntities: number, hasTests: boolean, kind: string, 
+key: string, 
+/**
+ * Changes whenever the block's actual changes do: a reviewed block whose hash differs after
+ * a new push needs another look.
+ */
+contentHash: string, lines: number, files: Array<string>, entities: Array<string>, residueFiles: Array<string>, mechanicalEntities: number, hasTests: boolean, kind: string, 
 /**
  * Why the block only needs skimming, if it does.
  */
