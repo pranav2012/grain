@@ -42,8 +42,9 @@ pub struct Layer {
     pub key: String,
     /// Main files, e.g. `voucherApi, useVoucher and 2 more`.
     pub title: String,
-    /// What kind of code it is: `Data and services`, `Hooks and state`, `Components`, `Screens`, `Code` or `Tests`.
-    pub role: String,
+    /// Stage of the review it belongs to, in reading order: `Foundations`, `Hooks and state`,
+    /// `Components`, `Screens`, `Code`, `Tests`. Layers are sorted by stage.
+    pub stage: String,
     pub dir: String,
     pub lines: usize,
     /// Block ids in reading order.

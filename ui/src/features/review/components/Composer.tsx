@@ -6,6 +6,7 @@ import type { CommentKind } from '../model/types'
 interface ComposerProps {
   kinds: [CommentKind, string][]
   initialKind?: CommentKind
+  initialBody?: string
   placeholder?: string
   /** The selected new-code lines; when set, the comment can carry a suggested replacement. */
   suggestionSeed?: string | null
@@ -13,8 +14,8 @@ interface ComposerProps {
   onCancel(): void
 }
 
-export function Composer({ kinds, initialKind, placeholder, suggestionSeed, onSave, onCancel }: ComposerProps) {
-  const [body, setBody] = useState('')
+export function Composer({ kinds, initialKind, initialBody, placeholder, suggestionSeed, onSave, onCancel }: ComposerProps) {
+  const [body, setBody] = useState(initialBody ?? '')
   const [kind, setKind] = useState<CommentKind>(initialKind ?? kinds[0][0])
   const [suggestion, setSuggestion] = useState<string | null>(null)
   const changed = suggestion !== null && suggestion !== suggestionSeed

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { parsePatchFiles, type FileDiffMetadata } from '@pierre/diffs'
+import type { Block } from '@/types/generated/Block'
 import type { Slice } from '@/types/generated/Slice'
 import { reviewApi } from '../api'
 import { keepSliceLines, sliceKey } from '../model/slice'
@@ -44,25 +45,13 @@ function load(prId: string, head: string, files: string[], since?: string, slice
   return p
 }
 
-/**
- * The current block's parsed file diffs (loaded on demand, cached), and warms the next block.
- * With `since`, only what changed between that earlier head and now.
- */
-export function useBlockDiff(
-  prId: string,
-  head: string,
-  files: string[],
-  nextFiles: string[] | undefined,
-  since?: string,
-  slice?: Slice | null,
-) {
-  const idx = indexFor(prId, head, since, slice)
-  const ready = files.every((f) => idx.has(f))
+/** Parsed diffs for every block of a step, in block order; null until all are loaded. */
+export function useStepDiff(prId: string, head: string, blocks: Block[], since?: string, nextFiles?: string[]) {
   const [, setVersion] = useState(0)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
-    load(prId, head, files, since, slice).then(
+    Promise.all(blocks.map((b) => load(prId, head, b.files, since, b.slice))).then(
       () => alive && setVersion((v) => v + 1),
       (e: Error) => alive && setError(e.message),
     )
@@ -70,7 +59,13 @@ export function useBlockDiff(
     return () => {
       alive = false
     }
-  }, [prId, head, files, nextFiles, since, slice])
-  const diffs = ready ? files.map((f) => idx.get(f)).filter((f): f is FileDiffMetadata => !!f) : null
-  return { diffs: diffs && [...new Set(diffs)], error }
+  }, [prId, head, blocks, since, nextFiles])
+  const parts = blocks.map((b) => {
+    const idx = indexFor(prId, head, since, b.slice)
+    if (!b.files.every((f) => idx.has(f))) return null
+    const diffs = b.files.map((f) => idx.get(f)).filter((f): f is FileDiffMetadata => !!f)
+    return { block: b, diffs: [...new Set(diffs)] }
+  })
+  const ready = parts.every((p) => p !== null)
+  return { parts: ready ? (parts as { block: Block; diffs: FileDiffMetadata[] }[]) : null, error }
 }

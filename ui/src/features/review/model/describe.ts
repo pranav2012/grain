@@ -6,7 +6,7 @@ import type { Risk } from '@/types/generated/Risk'
 import type { Summary } from '@/types/generated/Summary'
 import type { LoadedPr } from './types'
 
-const isTestPath = (p: string) => /\.(test|spec)\.|__tests__\//.test(p)
+export const isTestPath = (p: string) => /\.(test|spec)\.|__tests__\//.test(p)
 
 export function summaryOf(data: LoadedPr, b: Block): Summary | undefined {
   return data.summaries[b.key] as Summary | undefined

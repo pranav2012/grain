@@ -18,9 +18,10 @@ key: string,
  */
 title: string, 
 /**
- * What kind of code it is: `Data and services`, `Hooks and state`, `Components`, `Screens`, `Code` or `Tests`.
+ * Stage of the review it belongs to, in reading order: `Foundations`, `Hooks and state`,
+ * `Components`, `Screens`, `Code`, `Tests`. Layers are sorted by stage.
  */
-role: string, dir: string, lines: number, 
+stage: string, dir: string, lines: number, 
 /**
  * Block ids in reading order.
  */

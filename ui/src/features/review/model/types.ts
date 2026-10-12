@@ -63,11 +63,18 @@ export interface LoadedPr {
   blocks: Map<number, Block>
 }
 
-/** One step of the outline: a layer, the reviewer's own code (CODEOWNERS), or the skim pile. */
-export interface Section {
+/** One page of the review: a layer, or a handful of skim blocks. */
+export interface Step {
   key: string
-  kind: 'layer' | 'mine' | 'skim'
-  title: string
+  stage: string
   layer?: Layer
   blocks: number[]
+}
+
+/** Steps of one kind of code, read in order: foundations first, skim last. */
+export interface Stage {
+  name: string
+  /** What it covers, from the main files: `urlUtils, useVoucherData and 10 more`. */
+  about: string
+  steps: Step[]
 }

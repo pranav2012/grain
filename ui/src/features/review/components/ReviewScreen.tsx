@@ -5,23 +5,21 @@ import { ThreadActionsContext, useConversation } from '../hooks/useConversation'
 import { useLiveReview } from '../hooks/useLiveReview'
 import { useReviewStatus } from '../hooks/useReviewStatus'
 import { useSummaries } from '../hooks/useSummaries'
-import { agentName as agentNameOf, blockTitle, layerSummaryKey, layerSummaryOf, layerTitle } from '../model/describe'
+import { agentName as agentNameOf, layerSummaryKey, layerSummaryOf } from '../model/describe'
 import { modeOrder, modes } from '../model/modes'
 import { blockProgress } from '../model/progress'
-import { ownedBlocks, sectionLabel, sectionsFor } from '../model/sections'
-import type { CommentKind, LoadedPr, Mode, ReviewComment, Section } from '../model/types'
+import { ownedBlocks, stagesFor, stepState, stepTitle } from '../model/steps'
+import type { CommentKind, LoadedPr, Mode, ReviewComment, Stage, Step } from '../model/types'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
-import { BlockView } from './BlockView'
-import { BlockMap } from './BlockMap'
-import { ContextPanel, type PanelTab } from './ContextPanel'
+import { ContextPanel } from './ContextPanel'
 import { FinishDialog } from './FinishDialog'
-import { GrainMap } from './GrainMap'
 import { KeyHints } from './KeyHints'
-import { LayerHeader } from './LayerHeader'
 import { NewCommitsNotice } from './NewCommitsNotice'
-import { Outline } from './Outline'
+import { Overview } from './Overview'
 import { ShortcutsDialog } from './ShortcutsDialog'
+import { StageRail } from './StageRail'
+import { StepView } from './StepView'
 import { TopBar } from './TopBar'
 
 type NewComment = Omit<ReviewComment, 'id' | 'createdAt' | 'blockId' | 'blockKey'>
@@ -45,77 +43,89 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const [prefs, setPrefs] = usePrefs()
   const [overlay, setOverlay] = useState<'palette' | 'finish' | 'help' | null>(null)
   const [showContext, setShowContext] = useState(true)
-  const [panelTab, setPanelTab] = useState<PanelTab>('block')
-  const [composing, setComposing] = useState<CommentKind | null>(null)
+  const [composing, setComposing] = useState<{ kind: CommentKind; body?: string } | null>(null)
+  // A fresh review opens on the overview; one in progress goes straight back to the reader's step.
+  const [view, setView] = useState<'overview' | 'step'>(() => (Object.keys(state.verdicts).length ? 'step' : 'overview'))
   const copy = modes[state.mode]
 
   const status = useReviewStatus(base.id, settingsVersion)
   const live = useLiveReview(base, status)
-  const baseSections = useMemo(() => sectionsFor(live, state.mode, prefs.mineFirst), [live, state.mode, prefs.mineFirst])
-  const baseOrder = useMemo(() => baseSections.flatMap((s) => s.blocks), [baseSections])
+  const baseSteps = useMemo(() => stagesFor(live, state.mode, prefs.mineFirst).flatMap((s) => s.steps), [live, state.mode, prefs.mineFirst])
+  const baseOrder = useMemo(() => baseSteps.flatMap((s) => s.blocks), [baseSteps])
   const keyToId = useMemo(() => new Map([...live.blocks.values()].map((b) => [b.key, b.id])), [live])
-  const current = (state.currentKey && keyToId.get(state.currentKey)) || baseOrder[0]
-  const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(live, status, baseOrder, current)
+  const currentBlock = (state.currentKey && keyToId.get(state.currentKey)) || baseOrder[0]
+  const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(live, status, baseOrder, currentBlock)
 
   const { threadsFor, actions: threadActions } = useConversation(data)
-  const sections = useMemo(() => sectionsFor(data, state.mode, prefs.mineFirst), [data, state.mode, prefs.mineFirst])
+  const stages = useMemo(() => stagesFor(data, state.mode, prefs.mineFirst), [data, state.mode, prefs.mineFirst])
+  const steps = useMemo(() => stages.flatMap((s) => s.steps), [stages])
   const owned = useMemo(() => ownedBlocks(data), [data])
-  const order = useMemo(() => sections.flatMap((s) => s.blocks), [sections])
-  const reviewable = useMemo(() => order.filter((id) => !data.blocks.get(id)!.skim), [order, data])
-  const block = data.blocks.get(current)!
-  const section = sections.find((s) => s.blocks.includes(current))!
   const { states, stale } = useMemo(() => blockProgress(data, state.verdicts), [data, state.verdicts])
-  const blockComments = state.comments.filter((c) => c.blockKey === block.key)
+  const step = steps.find((s) => s.blocks.includes(currentBlock)) ?? steps[0]
+  const stage = stages.find((s) => s.steps.includes(step))!
+  const reviewable = useMemo(() => steps.flatMap((s) => s.blocks).filter((id) => !data.blocks.get(id)!.skim), [steps, data])
+  const stepBlocks = step.blocks.map((id) => data.blocks.get(id)!)
+  const stepKeys = new Set(stepBlocks.map((b) => b.key))
+  const stepComments = state.comments.filter((c) => stepKeys.has(c.blockKey))
+  const st = stepState(step, states)
+  const staleSince = step.blocks.map((id) => stale[id]).find(Boolean)
+  const agentName = agentNameOf(data)
 
-  const go = (id: number | undefined) => {
-    const b = id === undefined ? undefined : data.blocks.get(id)
-    if (b) dispatch({ type: 'go', key: b.key })
+  const goStep = (s: Step | undefined) => {
+    if (!s) return
+    dispatch({ type: 'go', key: data.blocks.get(s.blocks[0])!.key })
+    setView('step')
+    setComposing(null)
   }
-  const step = (d: number) => go(order[Math.min(order.length - 1, Math.max(0, order.indexOf(current) + d))])
-  const openSection = (s: Section | undefined) => s && go(s.blocks.find((id) => !states[id]) ?? s.blocks[0])
-  const stepLayer = (d: number) => openSection(sections[sections.indexOf(section) + d])
-  const openLayer = (id: number) => openSection(sections.find((s) => s.layer?.id === id))
-  const nextOpen = () => order.slice(order.indexOf(current) + 1).find((id) => !states[id]) ?? order.find((id) => !states[id])
-  const verdict = (state: 'ok' | 'change') => ({ state, hash: block.contentHash, head: data.pr?.headSha ?? '', files: block.files })
+  const openStage = (s: Stage) => goStep(s.steps.find((x) => stepState(x, states) !== 'done') ?? s.steps[0])
+  const idx = steps.indexOf(step)
+  const nextOpen = () => steps.slice(idx + 1).find((s) => stepState(s, states) !== 'done') ?? steps.find((s) => stepState(s, states) !== 'done')
+  const firstOpen = () => steps.find((s) => stepState(s, states) !== 'done')
+  const stepBy = (d: number) => goStep(steps[Math.min(steps.length - 1, Math.max(0, idx + d))])
+  const stageBy = (d: number) => {
+    const s = stages[stages.indexOf(stage) + d]
+    if (s) openStage(s)
+  }
+  const verdict = (b: (typeof stepBlocks)[number], v: 'ok' | 'change') => ({ state: v, hash: b.contentHash, head: data.pr?.headSha ?? '', files: b.files })
+  const markStep = (v: 'ok' | 'change' | null) =>
+    stepBlocks.forEach((b) => dispatch({ type: 'mark', key: b.key, verdict: v ? verdict(b, v) : null }))
   const setMode = (mode: Mode) => dispatch({ type: 'mode', mode })
   const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
   const toggleMineFirst = () => setPrefs((p) => ({ ...p, mineFirst: !p.mineFirst }))
-  const toggleMap = () => {
-    setShowContext(true)
-    setPanelTab((t) => (showContext && t === 'map' ? 'block' : 'map'))
-  }
   const compose = (kind: CommentKind) => {
     setShowContext(true)
-    setComposing(kind)
+    setComposing({ kind })
   }
   const primary = () => {
-    const done = states[current] === 'ok'
-    dispatch({ type: 'mark', key: block.key, verdict: done ? null : verdict('ok') })
-    if (!done) go(nextOpen())
+    if (view === 'overview') return goStep(firstOpen() ?? steps[0])
+    if (st === 'done') return markStep(null)
+    markStep('ok')
+    goStep(nextOpen())
   }
   const secondary = () => {
-    dispatch({ type: 'mark', key: block.key, verdict: verdict('change') })
+    if (view === 'overview') return
+    markStep('change')
     compose(copy.secondaryKind)
   }
-  const addComment = (c: NewComment) => dispatch({ type: 'comment', comment: newComment(c, current, block.key) })
+  const addComment = (blockId: number, c: NewComment) => dispatch({ type: 'comment', comment: newComment(c, blockId, data.blocks.get(blockId)!.key) })
+  const explainStep = () => agentName && step.layer && requestSummary([layerSummaryKey(step.layer)])
+  const byLayer = (id: number) => steps.find((s) => s.layer?.id === id)
+  const uses = (step.layer?.uses ?? []).map(byLayer).filter((s): s is Step => !!s)
+  const usedBy = steps.filter((s) => step.layer && s.layer?.uses.includes(step.layer.id))
 
   useHotkeys({
-    j: () => step(1),
-    k: () => step(-1),
-    J: () => stepLayer(1),
-    K: () => stepLayer(-1),
-    A: () => {
-      if (agentName) summarizeLayer()
-      else onSettings()
-    },
+    j: () => stepBy(1),
+    k: () => stepBy(-1),
+    J: () => stageBy(1),
+    K: () => stageBy(-1),
+    h: () => setView('overview'),
     ' ': primary,
     x: secondary,
-    c: () => compose(copy.kinds[0][0]),
+    c: () => view === 'step' && compose(copy.kinds[0][0]),
     s: toggleDiffStyle,
     m: () => owned.size && toggleMineFirst(),
-    g: toggleMap,
     a: () => {
-      if (agentName) summarizeCurrent()
+      if (agentName) explainStep()
       else onSettings()
     },
     '1': () => setMode('self'),
@@ -132,48 +142,35 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
 
   const lines = (ids: number[]) => ids.reduce((n, id) => n + data.blocks.get(id)!.lines, 0)
   const progress = {
-    done: reviewable.filter((id) => states[id]).length,
-    total: reviewable.length,
+    done: steps.filter((s) => stepState(s, states) === 'done').length,
+    total: steps.length,
     okLines: lines(reviewable.filter((id) => states[id] === 'ok')),
     changeLines: lines(reviewable.filter((id) => states[id] === 'change')),
     reviewLines: lines(reviewable),
   }
-  const agentName = agentNameOf(data)
-  const summarizeCurrent = () => agentName && !block.skim && requestSummary([block.key])
-  const summarizeLayer = () => agentName && section.layer && requestSummary([layerSummaryKey(section.layer)])
   const commands: Command[] = [
     { id: 'finish', label: copy.finish, hint: 'Shift Enter', run: () => setOverlay('finish') },
+    { id: 'overview', label: 'Back to the overview', hint: 'h', run: () => setView('overview') },
     { id: 'switch', label: 'Open another pull request', hint: '⌘O', run: onSwitch },
-    { id: 'settings', label: 'Settings: AI summaries', hint: ',', run: onSettings },
+    { id: 'settings', label: 'Settings: AI', hint: ',', run: onSettings },
     ...modeOrder.map((m, i) => ({ id: `mode-${m}`, label: `Switch to ${modes[m].label.toLowerCase()}`, hint: String(i + 1), run: () => setMode(m) })),
-    { id: 'next-open', label: 'Go to next unreviewed block', run: () => go(nextOpen()) },
-    ...(agentName
-      ? [
-          { id: 'summarize', label: `Summarize this block with ${agentName}`, hint: 'a', run: summarizeCurrent },
-          ...(section.layer && !layerSummaryOf(data, section.layer)
-            ? [{ id: 'summarize-layer', label: `Explain this layer with ${agentName}`, hint: '⇧A', run: summarizeLayer }]
-            : []),
-        ]
-      : []),
-    { id: 'next-layer', label: 'Go to the next layer', hint: '⇧J', run: () => stepLayer(1) },
+    { id: 'next-open', label: 'Go to the next unreviewed step', run: () => goStep(nextOpen()) },
+    ...(agentName && step.layer && !layerSummaryOf(data, step.layer) ? [{ id: 'explain', label: `Explain this step with ${agentName}`, hint: 'a', run: explainStep }] : []),
     { id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show side-by-side diff', hint: 's', run: toggleDiffStyle },
     ...(owned.size
-      ? [{ id: 'mine-first', label: prefs.mineFirst ? 'Show blocks in normal order' : 'Show your code first (CODEOWNERS)', hint: 'm', run: toggleMineFirst }]
+      ? [{ id: 'mine-first', label: prefs.mineFirst ? 'Show steps in normal order' : 'Show your code first (CODEOWNERS)', hint: 'm', run: toggleMineFirst }]
       : []),
-    { id: 'map', label: panelTab === 'map' && showContext ? 'Show block details' : 'Show the map of linked blocks', hint: 'g', run: toggleMap },
-    { id: 'context', label: showContext ? 'Hide context panel' : 'Show context panel', hint: ']', run: () => setShowContext((v) => !v) },
-    ...sections.map((s) => ({ id: `s${s.key}`, label: `${sectionLabel(s)}: ${s.layer ? layerTitle(data, s.layer) : s.title}`, hint: s.layer?.role, run: () => openSection(s) })),
-    ...order.map((id) => {
-      const s = sections.find((x) => x.blocks.includes(id))
-      return { id: `b${id}`, label: blockTitle(data, data.blocks.get(id)!), hint: s && sectionLabel(s), run: () => go(id) }
-    }),
+    { id: 'context', label: showContext ? 'Hide the side panel' : 'Show the side panel', hint: ']', run: () => setShowContext((v) => !v) },
+    ...stages.map((s) => ({ id: `stage-${s.name}`, label: `Stage: ${s.name}`, hint: `${s.steps.length} steps`, run: () => openStage(s) })),
+    ...steps.map((s) => ({ id: `step-${s.key}`, label: stepTitle(data, s), hint: s.stage, run: () => goStep(s) })),
   ]
+  const panel = view === 'step' && showContext
 
   return (
     <ThreadActionsContext value={threadActions}>
       <div
-        className={`grid h-screen grid-rows-[48px_auto_minmax(0,1fr)_30px] [grid-template-areas:'top_top_top_top'_'map_outline_layer_context'_'map_outline_main_context'_'keys_keys_keys_keys'] max-[1100px]:grid-cols-[34px_240px_minmax(0,1fr)_0] max-[760px]:grid-cols-[0_0_minmax(0,1fr)_0] ${
-          showContext ? 'grid-cols-[34px_288px_minmax(0,1fr)_320px]' : 'grid-cols-[34px_288px_minmax(0,1fr)_0]'
+        className={`grid h-screen grid-rows-[48px_minmax(0,1fr)_30px] [grid-template-areas:'top_top_top'_'rail_main_context'_'keys_keys_keys'] max-[1100px]:grid-cols-[180px_minmax(0,1fr)_0] max-[760px]:grid-cols-[0_minmax(0,1fr)_0] ${
+          panel ? 'grid-cols-[200px_minmax(0,1fr)_320px]' : 'grid-cols-[200px_minmax(0,1fr)_0]'
         }`}
       >
         <TopBar
@@ -186,82 +183,51 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           onSettings={onSettings}
           onFinish={() => setOverlay('finish')}
         />
-        <GrainMap data={data} sections={sections} section={section} states={states} stale={stale} current={current} onGo={go} />
-        <Outline
-          data={data}
-          sections={sections}
-          section={section}
-          onOpenSection={openSection}
-          states={states}
-          stale={stale}
-          current={current}
-          onGo={go}
-          openThreads={(id) => threadsFor(id).filter((t) => !t.resolved).length}
-          owned={owned}
-        />
-        <LayerHeader
-          data={data}
-          section={section}
-          step={sections.indexOf(section) + 1}
-          steps={sections.length}
-          current={current}
-          states={states}
-          onStep={stepLayer}
-          onGo={go}
-          onOpenLayer={openLayer}
-          agentName={agentName}
-          summaryPending={!!section.layer && summaryPending(layerSummaryKey(section.layer))}
-          onSummarize={summarizeLayer}
-        />
-        <BlockView
-          data={data}
-          block={block}
-          mode={state.mode}
-          sectionLabel={sectionLabel(section)}
-          position={`Block ${section.blocks.indexOf(current) + 1} of ${section.blocks.length}`}
-          diffStyle={prefs.diffStyle}
-          nextFiles={data.blocks.get(order[order.indexOf(current) + 1])?.files}
-          agentName={agentName}
-          summaryPending={summaryPending(block.key)}
-          onSummarize={summarizeCurrent}
-          onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
-          state={states[current]}
-          staleSince={stale[current]}
-          comments={blockComments}
-          threads={threadsFor(current)}
-          owned={owned.has(current)}
-          onPrimary={primary}
-          onSecondary={secondary}
-          onComment={addComment}
-          onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
-        />
-        {showContext ? (
+        <StageRail stages={stages} current={view === 'step' ? stage : null} states={states} onOverview={() => setView('overview')} onOpenStage={openStage} />
+        {view === 'overview' ? (
+          <Overview data={data} stages={stages} states={states} resume={firstOpen()} onOpenStage={openStage} onOpenStep={goStep} />
+        ) : (
+          <StepView
+            data={data}
+            step={step}
+            stage={stage.name}
+            position={stage.steps.indexOf(step) + 1}
+            of={stage.steps.length}
+            next={steps[idx + 1]}
+            mode={state.mode}
+            diffStyle={prefs.diffStyle}
+            state={st}
+            staleSince={staleSince}
+            comments={stepComments}
+            threadsFor={threadsFor}
+            owned={step.blocks.some((id) => owned.has(id))}
+            agentName={agentName}
+            summaryPending={!!step.layer && summaryPending(layerSummaryKey(step.layer))}
+            onSummarize={explainStep}
+            onOverview={() => setView('overview')}
+            onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
+            onPrimary={primary}
+            onSecondary={secondary}
+            onNext={() => stepBy(1)}
+            onComment={addComment}
+            onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
+          />
+        )}
+        {panel ? (
           <ContextPanel
             data={data}
-            block={block}
+            step={step}
             mode={state.mode}
-            comments={blockComments}
-            threads={threadsFor(current)}
+            comments={stepComments}
+            threads={step.blocks.flatMap((id) => threadsFor(id))}
+            uses={uses}
+            usedBy={usedBy}
             composing={composing}
             agentName={agentName}
             onCompose={setComposing}
-            onComment={addComment}
+            onComment={(c) => addComment(step.blocks[0], c)}
             onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
-            tab={panelTab}
-            onTab={setPanelTab}
-            map={
-              <BlockMap
-                data={data}
-                current={current}
-                states={states}
-                stale={stale}
-                sectionOf={(id) => {
-                  const s = sections.find((x) => x.blocks.includes(id))
-                  return s ? sectionLabel(s) : 'Skim'
-                }}
-                onGo={go}
-              />
-            }
+            onOpenStep={goStep}
           />
         ) : (
           <div />
@@ -275,7 +241,9 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             agentName ? (note ?? `AI on request: ${agentName}`) : 'AI off',
             'Progress is saved on this machine',
           ]
-            .filter((x): x is string => !!x).map((s) => s.replace(/\.$/, '')).join('. ') + '.'}
+            .filter((x): x is string => !!x)
+            .map((s) => s.replace(/\.$/, ''))
+            .join('. ') + '.'}
         />
         {overlay === 'palette' && <CommandPalette commands={commands} onClose={() => setOverlay(null)} />}
         {overlay === 'finish' && (

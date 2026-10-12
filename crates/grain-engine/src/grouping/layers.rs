@@ -46,7 +46,8 @@ fn tests_only(b: &Block) -> bool {
 /// Builds ordered layers from the review blocks (skim blocks are left out):
 /// 1. related blocks become units: parts of one split file, tests with the code they test,
 ///    then the strongest links while the unit fits [`MAX_LINES`] and [`MAX_BLOCKS`];
-/// 2. units are ordered so code comes after the code it uses (cycles broken by tier, then id);
+/// 2. units are ordered so code comes after the code it uses (cycles broken by tier, then id),
+///    then grouped into stages by kind of code;
 /// 3. oversized units are cut into consecutive layers, and small neighbours are combined.
 pub(crate) fn build_layers(blocks: &[Block], links: &[BlockLink]) -> Vec<Layer> {
     let review: Vec<&Block> = blocks.iter().filter(|b| b.skim.is_none()).collect();
@@ -161,6 +162,8 @@ pub(crate) fn build_layers(blocks: &[Block], links: &[BlockLink]) -> Vec<Layer> 
         }
         merged.push(g);
     }
+    // Stages read in a fixed order (foundations to screens, then tests); dependency order holds inside each.
+    merged.sort_by_key(|g| stage(&g.iter().map(|&i| review[i]).collect::<Vec<_>>()).0);
 
     let layer_of: HashMap<usize, usize> =
         merged.iter().enumerate().flat_map(|(l, g)| g.iter().map(move |&i| (i, l + 1))).collect();
@@ -181,7 +184,7 @@ pub(crate) fn build_layers(blocks: &[Block], links: &[BlockLink]) -> Vec<Layer> 
                 id: l + 1,
                 key: stable_hash(keys.into_iter()),
                 title: title(&blocks),
-                role: role(&blocks).to_string(),
+                stage: stage(&blocks).1.to_string(),
                 dir: common_dir(&blocks),
                 lines: lines_of(g),
                 blocks: blocks.iter().map(|b| b.id).collect(),
@@ -191,14 +194,15 @@ pub(crate) fn build_layers(blocks: &[Block], links: &[BlockLink]) -> Vec<Layer> 
         .collect()
 }
 
-fn role(blocks: &[&Block]) -> &'static str {
+/// The stage a layer belongs to, with its position in reading order.
+fn stage(blocks: &[&Block]) -> (u8, &'static str) {
     match blocks.iter().filter(|b| !tests_only(b)).map(|b| b.layer).min() {
-        None => "Tests",
-        Some(0) => "Data and services",
-        Some(1) => "Hooks and state",
-        Some(2) => "Components",
-        Some(3) => "Screens",
-        Some(_) => "Code",
+        None => (5, "Tests"),
+        Some(0) => (0, "Foundations"),
+        Some(1) => (1, "Hooks and state"),
+        Some(2) => (2, "Components"),
+        Some(3) => (3, "Screens"),
+        Some(_) => (4, "Code"),
     }
 }
 
@@ -307,7 +311,7 @@ mod tests {
         let layers = build_layers(&blocks, &[link(1, 2), link(3, 2)]);
         assert!(layer_with(&layers, 2) < layer_with(&layers, 1), "the API comes before the screen using it");
         assert_eq!(layer_with(&layers, 2), layer_with(&layers, 3), "tests sit with the code they test");
-        assert_eq!(layers[0].role, "Data and services");
+        assert_eq!(layers[0].stage, "Foundations");
         assert_eq!(layers[0].title, "voucher");
     }
 

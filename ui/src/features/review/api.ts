@@ -65,7 +65,7 @@ export function withReview(base: Omit<LoadedPr, 'review' | 'blocks'>, review: Re
   const legacy = (): Review['layers'] => {
     const blocks = review.blocks.filter((b) => !b.skim).map((b) => b.id)
     const lines = review.blocks.filter((b) => !b.skim).reduce((n, b) => n + b.lines, 0)
-    return blocks.length ? [{ id: 1, key: 'all', title: 'All changes', role: 'Code', dir: '', lines, blocks, uses: [] }] : []
+    return blocks.length ? [{ id: 1, key: 'all', title: 'All changes', stage: 'Code', dir: '', lines, blocks, uses: [] }] : []
   }
   const r: Review = { ...review, links: review.links ?? [], layers: review.layers ?? legacy() }
   return { ...base, review: r, blocks: new Map(r.blocks.map((b) => [b.id, b])) }

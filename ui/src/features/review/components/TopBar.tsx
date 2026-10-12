@@ -53,7 +53,7 @@ export function TopBar({ data, mode, onMode, progress, onSwitch, onPalette, onSe
       />
       <div className="flex min-w-[150px] flex-col gap-1 text-xs text-fg-subtle">
         <span>
-          {progress.done} of {progress.total} blocks, {left > 0 ? `about ${formatMinutes(minutesFor(left))} left` : 'all read'}
+          {progress.done} of {progress.total} steps, {left > 0 ? `about ${formatMinutes(minutesFor(left))} left` : 'all read'}
         </span>
         <Progress ok={frac(progress.okLines)} change={frac(progress.changeLines)} />
       </div>
