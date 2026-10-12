@@ -7,7 +7,7 @@ use grain_store::read_json;
 
 use crate::contract::{
     DiffRequest, Job, LocalCandidate, LocalOpenRequest, OpenRequest, OpenResponse, RecentReview, Stage, Status,
-    SubmitRequest, SubmitResponse, SummarizeRequest,
+    SubmitRequest, SubmitResponse, SummarizeRequest, ThreadReplyRequest, ThreadResolved,
 };
 use crate::error::{ApiError, ApiResult, blocking};
 use crate::state::Shared;
@@ -167,6 +167,26 @@ pub(super) async fn conversation(Path(p): Path<(String, String, u64)>) -> ApiRes
         return Ok(Json(grain_github::Conversation::default()));
     }
     blocking(move || Ok(Json(grain_github::conversation(&pr)?))).await
+}
+
+/// Replies to a GitHub review thread right away.
+pub(super) async fn reply_to_thread(
+    Path((_, _, _, thread)): Path<(String, String, u64, String)>,
+    Json(body): Json<ThreadReplyRequest>,
+) -> ApiResult<Json<grain_github::ThreadComment>> {
+    if body.body.trim().is_empty() {
+        return Err(ApiError::bad_request("Write a reply first."));
+    }
+    blocking(move || Ok(Json(grain_github::reply_to_thread(&thread, body.body.trim())?))).await
+}
+
+/// Resolves or unresolves a GitHub review thread right away.
+pub(super) async fn resolve_thread(
+    Path((_, _, _, thread)): Path<(String, String, u64, String)>,
+    Json(body): Json<ThreadResolved>,
+) -> ApiResult<Json<ThreadResolved>> {
+    blocking(move || Ok(Json(ThreadResolved { resolved: grain_github::set_thread_resolved(&thread, body.resolved)? })))
+        .await
 }
 
 /// Posts one GitHub review. Line comments outside the diff can't be anchored on GitHub, so they

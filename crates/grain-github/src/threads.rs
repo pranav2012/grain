@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::Value;
 use ts_rs::TS;
 
-use crate::gh::gh;
+use crate::gh::{gh, gh_with_input};
 use crate::pr_ref::PrRef;
 
 /// One review thread on a pull request: anchored to a line, or outdated by later pushes.
@@ -21,6 +21,10 @@ pub struct ReviewThread {
     pub resolved: bool,
     pub outdated: bool,
     pub comments: Vec<ThreadComment>,
+    /// What the signed-in user may do here.
+    pub can_reply: bool,
+    pub can_resolve: bool,
+    pub can_unresolve: bool,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -60,6 +64,7 @@ const QUERY: &str = r"query($owner: String!, $repo: String!, $number: Int!, $cur
         pageInfo { hasNextPage endCursor }
         nodes {
           id isResolved isOutdated path line startLine diffSide
+          viewerCanReply viewerCanResolve viewerCanUnresolve
           comments(first: 50) { nodes { author { login } body createdAt url } }
         }
       }
@@ -70,6 +75,41 @@ const QUERY: &str = r"query($owner: String!, $repo: String!, $number: Int!, $cur
 
 fn text(v: &Value) -> String {
     v.as_str().unwrap_or_default().to_string()
+}
+
+fn comment(c: &Value) -> ThreadComment {
+    ThreadComment {
+        author: text(&c["author"]["login"]),
+        body: text(&c["body"]),
+        created_at: text(&c["createdAt"]),
+        url: text(&c["url"]),
+    }
+}
+
+/// Runs a GraphQL mutation as the signed-in user.
+fn mutate(query: &str, variables: &Value) -> Result<Value> {
+    let input = serde_json::json!({ "query": query, "variables": variables });
+    gh_with_input(&["api", "graphql", "--input", "-"], &input.to_string())
+}
+
+/// Replies to a review thread right away (like GitHub's Reply button) and returns the reply.
+pub fn reply_to_thread(thread_id: &str, body: &str) -> Result<ThreadComment> {
+    const MUTATION: &str = r"mutation($id: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $id, body: $body }) {
+    comment { author { login } body createdAt url }
+  }
+}";
+    let v = mutate(MUTATION, &serde_json::json!({ "id": thread_id, "body": body }))?;
+    Ok(comment(&v["data"]["addPullRequestReviewThreadReply"]["comment"]))
+}
+
+/// Resolves or unresolves a review thread; returns whether it is resolved now.
+pub fn set_thread_resolved(thread_id: &str, resolved: bool) -> Result<bool> {
+    let field = if resolved { "resolveReviewThread" } else { "unresolveReviewThread" };
+    let mutation =
+        format!("mutation($id: ID!) {{ {field}(input: {{ threadId: $id }}) {{ thread {{ isResolved }} }} }}");
+    let v = mutate(&mutation, &serde_json::json!({ "id": thread_id }))?;
+    Ok(v["data"][field]["thread"]["isResolved"] == true)
 }
 
 /// Existing review threads and submitted reviews, via the user's `gh` login (all pages).
@@ -96,17 +136,10 @@ pub fn conversation(pr: &PrRef) -> Result<Conversation> {
                 side: text(&t["diffSide"]),
                 resolved: t["isResolved"].as_bool().unwrap_or(false),
                 outdated: t["isOutdated"].as_bool().unwrap_or(false),
-                comments: t["comments"]["nodes"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .map(|c| ThreadComment {
-                        author: text(&c["author"]["login"]),
-                        body: text(&c["body"]),
-                        created_at: text(&c["createdAt"]),
-                        url: text(&c["url"]),
-                    })
-                    .collect(),
+                comments: t["comments"]["nodes"].as_array().into_iter().flatten().map(comment).collect(),
+                can_reply: t["viewerCanReply"] == true,
+                can_resolve: t["viewerCanResolve"] == true,
+                can_unresolve: t["viewerCanUnresolve"] == true,
             });
         }
         if cursor.is_none() {

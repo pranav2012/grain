@@ -152,6 +152,18 @@ pub(crate) struct LocalRepoRequest {
 }
 
 #[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub(crate) struct ThreadReplyRequest {
+    pub body: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub(crate) struct ThreadResolved {
+    pub resolved: bool,
+}
+
+#[derive(Debug, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub(crate) struct SubmitRequest {

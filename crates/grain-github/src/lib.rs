@@ -15,4 +15,6 @@ pub use pulls::{
 };
 pub use repos::{RepoSummary, repos};
 pub use submit::{LineComment, PayloadComment, ReviewEvent, ReviewPayload, submit_review};
-pub use threads::{Conversation, ReviewThread, SubmittedReview, ThreadComment, conversation};
+pub use threads::{
+    Conversation, ReviewThread, SubmittedReview, ThreadComment, conversation, reply_to_thread, set_thread_resolved,
+};

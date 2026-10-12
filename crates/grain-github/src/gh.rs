@@ -43,11 +43,14 @@ pub(crate) fn gh_with_input(args: &[&str], input: &str) -> Result<Value> {
                     .as_array()
                     .into_iter()
                     .flatten()
-                    .filter_map(|e| e.as_str().map(str::to_string))
+                    .filter_map(|e| e.as_str().or_else(|| e["message"].as_str()).map(str::to_string))
                     .collect();
-                v["message"]
-                    .as_str()
-                    .map(|m| if errors.is_empty() { m.to_string() } else { format!("{m}: {}", errors.join("; ")) })
+                // REST errors have a `message`; GraphQL errors only an `errors` list.
+                match v["message"].as_str() {
+                    Some(m) if errors.is_empty() => Some(m.to_string()),
+                    Some(m) => Some(format!("{m}: {}", errors.join("; "))),
+                    None => (!errors.is_empty()).then(|| errors.join("; ")),
+                }
             })
             .unwrap_or_else(|| String::from_utf8_lossy(&out.stderr).trim().to_string());
         bail!("GitHub rejected the request: {message}");

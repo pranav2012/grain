@@ -7,6 +7,8 @@ import type { OpenResponse } from '@/types/generated/OpenResponse'
 import type { Review } from '@/types/generated/Review'
 import type { Status } from '@/types/generated/Status'
 import type { Summary } from '@/types/generated/Summary'
+import type { ThreadComment } from '@/types/generated/ThreadComment'
+import type { ThreadResolved } from '@/types/generated/ThreadResolved'
 import type { LoadedPr, PrMeta } from './model/types'
 
 const file = (id: string, name: string) => fetch(`/api/reviews/${id}/files/${name}`)
@@ -27,6 +29,10 @@ export const reviewApi = {
   setLocalRepo: (fullRepo: string, path: string | null) => put<LocalRepo>(`/api/repos/${fullRepo}/local`, { path }),
   submit: (id: string, req: SubmitRequest) => post<SubmitResponse>(`/api/reviews/${id}/submit`, req),
   conversation: (id: string) => request<Conversation>(`/api/reviews/${id}/conversation`),
+  replyToThread: (id: string, thread: string, body: string) =>
+    post<ThreadComment>(`/api/reviews/${id}/threads/${thread}/replies`, { body }),
+  resolveThread: (id: string, thread: string, resolved: boolean) =>
+    put<ThreadResolved>(`/api/reviews/${id}/threads/${thread}/resolved`, { resolved }),
   saveProgress: (id: string, progress: unknown) => put<null>(`/api/reviews/${id}/progress`, progress),
   review: (id: string) => request<Review>(`/api/reviews/${id}/files/review.json`),
   /** Unified diff sections for just these files. */

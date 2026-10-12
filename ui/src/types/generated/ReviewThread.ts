@@ -12,4 +12,8 @@ line: number | null, startLine: number | null,
 /**
  * `RIGHT` (new code) or `LEFT` (removed code).
  */
-side: string, resolved: boolean, outdated: boolean, comments: Array<ThreadComment>, };
+side: string, resolved: boolean, outdated: boolean, comments: Array<ThreadComment>, 
+/**
+ * What the signed-in user may do here.
+ */
+canReply: boolean, canResolve: boolean, canUnresolve: boolean, };

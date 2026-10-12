@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CommandPalette, type Command } from '@/components/CommandPalette'
 import { useHotkeys } from '@/lib/useHotkeys'
-import { useConversation } from '../hooks/useConversation'
+import { ThreadActionsContext, useConversation } from '../hooks/useConversation'
 import { useLiveReview } from '../hooks/useLiveReview'
 import { useReviewStatus } from '../hooks/useReviewStatus'
 import { useSummaries } from '../hooks/useSummaries'
@@ -54,7 +54,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const current = (state.currentKey && keyToId.get(state.currentKey)) || baseOrder[0]
   const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(live, status, baseOrder, current)
 
-  const { threadsFor } = useConversation(data)
+  const { threadsFor, actions: threadActions } = useConversation(data)
   const sections = useMemo(() => sectionsFor(data, state.mode), [data, state.mode])
   const order = useMemo(() => sections.flatMap((s) => s.blocks), [sections])
   const reviewable = useMemo(() => order.filter((id) => !data.blocks.get(id)!.skim), [order, data])
@@ -136,93 +136,95 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   ]
 
   return (
-    <div
-      className={`grid h-screen grid-rows-[48px_1fr_30px] [grid-template-areas:'top_top_top_top'_'map_outline_main_context'_'keys_keys_keys_keys'] max-[1100px]:grid-cols-[34px_240px_minmax(0,1fr)_0] max-[760px]:grid-cols-[0_0_minmax(0,1fr)_0] ${
-        showContext ? 'grid-cols-[34px_288px_minmax(0,1fr)_320px]' : 'grid-cols-[34px_288px_minmax(0,1fr)_0]'
-      }`}
-    >
-      <TopBar
-        data={data}
-        mode={state.mode}
-        onMode={setMode}
-        progress={progress}
-        onSwitch={onSwitch}
-        onPalette={() => setOverlay('palette')}
-        onSettings={onSettings}
-        onFinish={() => setOverlay('finish')}
-      />
-      <GrainMap data={data} sections={sections} states={states} stale={stale} current={current} onGo={go} />
-      <Outline
-        data={data}
-        sections={sections}
-        states={states}
-        stale={stale}
-        current={current}
-        onGo={go}
-        openThreads={(id) => threadsFor(id).filter((t) => !t.resolved).length}
-      />
-      <BlockView
-        data={data}
-        block={block}
-        mode={state.mode}
-        chapterTitle={section.title}
-        position={`Block ${section.blocks.indexOf(current) + 1} of ${section.blocks.length}`}
-        diffStyle={prefs.diffStyle}
-        nextFiles={data.blocks.get(order[order.indexOf(current) + 1])?.files}
-        agentName={agentName}
-        summaryPending={summaryPending(block.key)}
-        onSummarize={summarizeCurrent}
-        onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
-        state={states[current]}
-        staleSince={stale[current]}
-        comments={blockComments}
-        threads={threadsFor(current)}
-        onPrimary={primary}
-        onSecondary={secondary}
-        onComment={addComment}
-        onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
-      />
-      {showContext ? (
-        <ContextPanel
+    <ThreadActionsContext value={threadActions}>
+      <div
+        className={`grid h-screen grid-rows-[48px_1fr_30px] [grid-template-areas:'top_top_top_top'_'map_outline_main_context'_'keys_keys_keys_keys'] max-[1100px]:grid-cols-[34px_240px_minmax(0,1fr)_0] max-[760px]:grid-cols-[0_0_minmax(0,1fr)_0] ${
+          showContext ? 'grid-cols-[34px_288px_minmax(0,1fr)_320px]' : 'grid-cols-[34px_288px_minmax(0,1fr)_0]'
+        }`}
+      >
+        <TopBar
+          data={data}
+          mode={state.mode}
+          onMode={setMode}
+          progress={progress}
+          onSwitch={onSwitch}
+          onPalette={() => setOverlay('palette')}
+          onSettings={onSettings}
+          onFinish={() => setOverlay('finish')}
+        />
+        <GrainMap data={data} sections={sections} states={states} stale={stale} current={current} onGo={go} />
+        <Outline
+          data={data}
+          sections={sections}
+          states={states}
+          stale={stale}
+          current={current}
+          onGo={go}
+          openThreads={(id) => threadsFor(id).filter((t) => !t.resolved).length}
+        />
+        <BlockView
           data={data}
           block={block}
           mode={state.mode}
+          chapterTitle={section.title}
+          position={`Block ${section.blocks.indexOf(current) + 1} of ${section.blocks.length}`}
+          diffStyle={prefs.diffStyle}
+          nextFiles={data.blocks.get(order[order.indexOf(current) + 1])?.files}
+          agentName={agentName}
+          summaryPending={summaryPending(block.key)}
+          onSummarize={summarizeCurrent}
+          onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
+          state={states[current]}
+          staleSince={stale[current]}
           comments={blockComments}
           threads={threadsFor(current)}
-          composing={composing}
-          agentName={agentName}
-          onCompose={setComposing}
+          onPrimary={primary}
+          onSecondary={secondary}
           onComment={addComment}
           onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
         />
-      ) : (
-        <div />
-      )}
-      <KeyHints
-        copy={copy}
-        diffStyle={prefs.diffStyle}
-        note={[
-          copy.order,
-          data.review.complete ? null : 'Checking how the changes are used across the repo',
-          agentName ? (note ?? `AI on request: ${agentName}`) : 'AI off',
-          'Progress is saved on this machine',
-        ]
-          .filter((x): x is string => !!x).map((s) => s.replace(/\.$/, '')).join('. ') + '.'}
-      />
-      {overlay === 'palette' && <CommandPalette commands={commands} onClose={() => setOverlay(null)} />}
-      {overlay === 'finish' && (
-        <FinishDialog
-          data={data}
-          mode={state.mode}
-          states={states}
-          comments={state.comments}
-          reviewable={reviewable}
-          onPosted={(ids) => dispatch({ type: 'posted', ids })}
-          onClose={() => setOverlay(null)}
+        {showContext ? (
+          <ContextPanel
+            data={data}
+            block={block}
+            mode={state.mode}
+            comments={blockComments}
+            threads={threadsFor(current)}
+            composing={composing}
+            agentName={agentName}
+            onCompose={setComposing}
+            onComment={addComment}
+            onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
+          />
+        ) : (
+          <div />
+        )}
+        <KeyHints
+          copy={copy}
+          diffStyle={prefs.diffStyle}
+          note={[
+            copy.order,
+            data.review.complete ? null : 'Checking how the changes are used across the repo',
+            agentName ? (note ?? `AI on request: ${agentName}`) : 'AI off',
+            'Progress is saved on this machine',
+          ]
+            .filter((x): x is string => !!x).map((s) => s.replace(/\.$/, '')).join('. ') + '.'}
         />
-      )}
-      {overlay === 'help' && <ShortcutsDialog onClose={() => setOverlay(null)} />}
-      {status?.headSha && base.pr && status.headSha !== base.pr.headSha && <NewCommitsNotice local={!!base.pr.local} onReload={onReload} />}
-    </div>
+        {overlay === 'palette' && <CommandPalette commands={commands} onClose={() => setOverlay(null)} />}
+        {overlay === 'finish' && (
+          <FinishDialog
+            data={data}
+            mode={state.mode}
+            states={states}
+            comments={state.comments}
+            reviewable={reviewable}
+            onPosted={(ids) => dispatch({ type: 'posted', ids })}
+            onClose={() => setOverlay(null)}
+          />
+        )}
+        {overlay === 'help' && <ShortcutsDialog onClose={() => setOverlay(null)} />}
+        {status?.headSha && base.pr && status.headSha !== base.pr.headSha && <NewCommitsNotice local={!!base.pr.local} onReload={onReload} />}
+      </div>
+    </ThreadActionsContext>
   )
 }

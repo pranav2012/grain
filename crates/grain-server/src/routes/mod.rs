@@ -5,7 +5,7 @@ mod reviews;
 mod settings;
 
 use axum::Router;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 
 use crate::state::Shared;
 
@@ -25,6 +25,8 @@ pub(crate) fn router(app: Shared) -> Router {
         .route("/api/reviews/{owner}/{repo}/{number}/diff", post(reviews::diff))
         .route("/api/reviews/{owner}/{repo}/{number}/conversation", get(reviews::conversation))
         .route("/api/reviews/{owner}/{repo}/{number}/submit", post(reviews::submit))
+        .route("/api/reviews/{owner}/{repo}/{number}/threads/{thread}/replies", post(reviews::reply_to_thread))
+        .route("/api/reviews/{owner}/{repo}/{number}/threads/{thread}/resolved", put(reviews::resolve_thread))
         .route("/api/reviews/{owner}/{repo}/{number}/progress", get(reviews::get_progress).put(reviews::put_progress))
         .route("/api/settings", get(settings::get).put(settings::put))
         .with_state(app)
