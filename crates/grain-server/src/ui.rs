@@ -1,7 +1,7 @@
 use axum::http::{StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 
-/// The built UI (`ui/dist`). Release builds embed it; debug builds read it from disk.
+/// The built UI (`ui/dist`), embedded at build time in every profile (`GRAIN_UI_DIR` serves from disk).
 #[derive(rust_embed::Embed)]
 #[folder = "../../ui/dist"]
 struct Assets;

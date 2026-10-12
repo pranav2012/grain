@@ -24,7 +24,8 @@ tokio.workspace = true
 tower-http.workspace = true
 ts-rs.workspace = true
 tracing.workspace = true
-rust-embed.workspace = true
+# Embed the UI in debug builds too, so a running server never serves a newer UI than its API.
+rust-embed = { workspace = true, features = ["debug-embed"] }
 mime_guess.workspace = true
 
 [lints]

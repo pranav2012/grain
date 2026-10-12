@@ -60,5 +60,7 @@ export async function loadPr(id: string): Promise<LoadedPr> {
 }
 
 export function withReview(base: Omit<LoadedPr, 'review' | 'blocks'>, review: Review): LoadedPr {
-  return { ...base, review, blocks: new Map(review.blocks.map((b) => [b.id, b])) }
+  // Reviews stored by an older Grain lack newer fields; read them as empty instead of crashing.
+  const r: Review = { ...review, links: review.links ?? [] }
+  return { ...base, review: r, blocks: new Map(r.blocks.map((b) => [b.id, b])) }
 }
