@@ -8,7 +8,35 @@ use super::prepare::block_diff;
 use crate::contract::SummarizerStatus;
 use crate::state::App;
 
-/// Per-review queue: blocks near the reader, summarized one request at a time.
+/// Summary keys for chapter intros are the chapter's key with this prefix; other keys are block keys.
+const CHAPTER_PREFIX: &str = "chapter:";
+/// Chapters can hold thousands of changed lines; the agent gets the first part.
+const MAX_CHAPTER_DIFF: usize = 120_000;
+
+/// Files to diff for a summary key: a block's files, or every file in a chapter's blocks.
+fn files_for(review: &serde_json::Value, key: &str) -> Option<Vec<String>> {
+    let blocks = review["blocks"].as_array()?;
+    let files_of = |b: &serde_json::Value| -> Vec<String> {
+        b["files"].as_array().into_iter().flatten().filter_map(|f| f.as_str().map(str::to_string)).collect()
+    };
+    let Some(chapter_key) = key.strip_prefix(CHAPTER_PREFIX) else {
+        return blocks.iter().find(|b| b["key"] == key).map(files_of);
+    };
+    let chapter = review["story"]["chapters"].as_array()?.iter().find(|c| c["key"] == chapter_key)?;
+    let ids: Vec<u64> = chapter["sections"]
+        .as_array()?
+        .iter()
+        .flat_map(|s| s["blocks"].as_array().into_iter().flatten())
+        .filter_map(serde_json::Value::as_u64)
+        .collect();
+    let mut files: Vec<String> =
+        blocks.iter().filter(|b| b["id"].as_u64().is_some_and(|id| ids.contains(&id))).flat_map(files_of).collect();
+    files.sort();
+    files.dedup();
+    Some(files)
+}
+
+/// Per-review queue: blocks and layers near the reader, summarized one request at a time.
 #[derive(Default)]
 pub(crate) struct Summarizer {
     queue: VecDeque<String>,
@@ -71,13 +99,18 @@ impl App {
         let dir = self.home.review_dir(pr);
         while let Some(key) = self.next_key(pr) {
             let model = self.settings.lock().unwrap_or_else(std::sync::PoisonError::into_inner).model.clone();
-            let files: Option<Vec<String>> = read_json(&dir.join("review.json")).and_then(|r| {
-                let block = r["blocks"].as_array()?.iter().find(|b| b["key"] == key.as_str())?;
-                Some(block["files"].as_array()?.iter().filter_map(|f| f.as_str().map(str::to_string)).collect())
-            });
-            let Some(files) = files else { continue };
-            let Ok(diff) = block_diff(&self.home, pr, &files) else { continue };
-            let outcome = grain_agent::summarize(agent, model.as_deref(), &diff, &self.home.cache_dir());
+            let chapter = key.strip_prefix(CHAPTER_PREFIX);
+            let Some(files) = read_json(&dir.join("review.json")).and_then(|r| files_for(&r, &key)) else { continue };
+            let Ok(mut diff) = block_diff(&self.home, pr, &files) else { continue };
+            let outcome = if chapter.is_some() {
+                if diff.len() > MAX_CHAPTER_DIFF {
+                    diff.truncate(diff.floor_char_boundary(MAX_CHAPTER_DIFF));
+                    diff.push_str("\n[diff truncated]\n");
+                }
+                grain_agent::summarize_layer(agent, model.as_deref(), &diff, &self.home.cache_dir())
+            } else {
+                grain_agent::summarize(agent, model.as_deref(), &diff, &self.home.cache_dir())
+            };
             let mut sums = self.summarizers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let Some(s) = sums.get_mut(pr) else { return };
             match outcome {
@@ -100,5 +133,25 @@ impl App {
                 Outcome::Failed { detail } => tracing::warn!(%key, %detail, "summary failed"),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::files_for;
+
+    #[test]
+    fn finds_files_for_blocks_and_layers() {
+        let review = serde_json::json!({
+            "blocks": [
+                {"id": 1, "key": "a", "files": ["x.ts", "y.ts"]},
+                {"id": 2, "key": "b", "files": ["y.ts", "z.ts"]},
+                {"id": 3, "key": "c", "files": ["w.ts"]},
+            ],
+            "story": {"chapters": [{"key": "L1", "sections": [{"blocks": [1]}, {"blocks": [2]}]}]},
+        });
+        assert_eq!(files_for(&review, "c"), Some(vec!["w.ts".to_string()]));
+        assert_eq!(files_for(&review, "chapter:L1"), Some(vec!["x.ts".into(), "y.ts".into(), "z.ts".into()]));
+        assert_eq!(files_for(&review, "chapter:missing"), None);
     }
 }

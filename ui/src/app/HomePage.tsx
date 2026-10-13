@@ -4,9 +4,9 @@ import { PrPicker } from '@/features/pr-picker'
 
 export function HomePage({ onOpen, onSettings }: { onOpen(id: string): void; onSettings(): void }) {
   return (
-    <div className="flex min-h-screen flex-col items-center gap-[18px] pt-[9vh]">
-      <header className="flex w-[min(760px,94vw)] items-center gap-3.5 text-fog">
-        <div className="flex items-center gap-[7px] text-sm font-semibold tracking-[-0.01em] text-chalk">
+    <div className="flex min-h-screen flex-col items-center gap-4.5 pt-[9vh]">
+      <header className="flex w-[min(760px,94vw)] items-center gap-3.5 text-fg-subtle">
+        <div className="flex items-center gap-1.5 text-md font-semibold tracking-[-0.01em] text-fg">
           <GrainGlyph /> grain
         </div>
         <span>Pick a pull request, paste a GitHub link, or self-review your local changes.</span>

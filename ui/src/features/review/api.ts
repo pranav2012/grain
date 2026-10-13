@@ -1,11 +1,16 @@
 import { post, put, request, serverFetch } from '@/lib/http'
+import type { AskRequest } from '@/types/generated/AskRequest'
+import type { AskResponse } from '@/types/generated/AskResponse'
 import type { Conversation } from '@/types/generated/Conversation'
+import type { NavigateRequest } from '@/types/generated/NavigateRequest'
+import type { NavigateResponse } from '@/types/generated/NavigateResponse'
 import type { LocalRepo } from '@/types/generated/LocalRepo'
 import type { SubmitRequest } from '@/types/generated/SubmitRequest'
 import type { SubmitResponse } from '@/types/generated/SubmitResponse'
 import type { OpenResponse } from '@/types/generated/OpenResponse'
 import type { Review } from '@/types/generated/Review'
 import type { Status } from '@/types/generated/Status'
+import type { LayerSummary } from '@/types/generated/LayerSummary'
 import type { Summary } from '@/types/generated/Summary'
 import type { ThreadComment } from '@/types/generated/ThreadComment'
 import type { ThreadResolved } from '@/types/generated/ThreadResolved'
@@ -22,8 +27,12 @@ export const reviewApi = {
   /** `refresh` waits for new commits or local edits instead of returning the stored review. */
   open: (pr: string, refresh = false) => post<OpenResponse>('/api/open', { pr, refresh }),
   status: (id: string) => request<Status>(`/api/reviews/${id}/status`),
-  summaries: (id: string) => request<Record<string, Summary>>(`/api/reviews/${id}/files/summaries.json`),
+  summaries: (id: string) => request<Record<string, Summary | LayerSummary>>(`/api/reviews/${id}/files/summaries.json`),
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),
+  /** Definition or references of the name at a position in the new version of a file. */
+  navigate: (id: string, req: NavigateRequest) => post<NavigateResponse>(`/api/reviews/${id}/navigate`, req),
+  /** Asks the reviewer's agent about one change; can take a while. */
+  ask: (id: string, req: AskRequest) => post<AskResponse>(`/api/reviews/${id}/ask`, req),
   /** `fullRepo` is `owner/repo`. */
   localRepo: (fullRepo: string) => request<LocalRepo>(`/api/repos/${fullRepo}/local`),
   setLocalRepo: (fullRepo: string, path: string | null) => put<LocalRepo>(`/api/repos/${fullRepo}/local`, { path }),
@@ -50,7 +59,7 @@ export const reviewApi = {
 export async function loadPr(id: string): Promise<LoadedPr> {
   const [review, summaries, pr, progress, owners] = await Promise.all([
     file(id, 'review.json').then((r) => json<Review>(r)),
-    file(id, 'summaries.json').then((r) => json<Record<string, Summary>>(r)),
+    file(id, 'summaries.json').then((r) => json<Record<string, Summary | LayerSummary>>(r)),
     file(id, 'pr.json').then((r) => json<PrMeta>(r)),
     request<unknown>(`/api/reviews/${id}/progress`).catch(() => null),
     file(id, 'owners.json').then((r) => json<Owners>(r)),
@@ -60,7 +69,12 @@ export async function loadPr(id: string): Promise<LoadedPr> {
 }
 
 export function withReview(base: Omit<LoadedPr, 'review' | 'blocks'>, review: Review): LoadedPr {
-  // Reviews stored by an older Grain lack newer fields; read them as empty instead of crashing.
-  const r: Review = { ...review, links: review.links ?? [] }
+  // Reviews stored by an older Grain lack newer fields; read them as empty (or one chapter) instead of crashing.
+  const legacy = (): Review['story'] => {
+    const blocks = review.blocks.filter((b) => !b.skim).map((b) => b.id)
+    const chapter = (id: number, kind: 'area' | 'routine', title: string, ids: number[]) => ({ id, key: title, kind, title, entry: null, about: title, sections: [{ title: '', blocks: ids }] })
+    return { flows: false, chapters: [blocks.length && chapter(1, 'area', 'All changes', blocks), review.skim.length && chapter(2, 'routine', 'Routine', review.skim)].filter((c) => !!c) }
+  }
+  const r: Review = { ...review, links: review.links ?? [], story: review.story ?? legacy() }
   return { ...base, review: r, blocks: new Map(r.blocks.map((b) => [b.id, b])) }
 }

@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Dialog } from './ui/Dialog'
+import { SearchInput } from './ui/Field'
+import { ListMessage, ListOption } from './ui/ListOption'
 
 export interface Command {
   id: string
@@ -23,11 +25,10 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
   }
   return (
     <Dialog label="Commands" onClose={onClose} className="w-[min(620px,92vw)] overflow-hidden">
-      <input
+      <SearchInput
         autoFocus
         value={q}
-        placeholder="Jump to a block or run a command"
-        className="w-full border-b border-seam bg-transparent px-4 py-3.5 text-[15px] outline-none"
+        placeholder="Jump to a block or layer, or run a command"
         onChange={(e) => {
           setQ(e.target.value)
           setSel(0)
@@ -42,19 +43,12 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
       />
       <ul role="listbox" className="max-h-[50vh] overflow-auto p-1.5">
         {shown.map((c, i) => (
-          <li
-            key={c.id}
-            role="option"
-            aria-selected={i === sel}
-            onMouseEnter={() => setSel(i)}
-            onClick={() => run(c)}
-            className="flex cursor-pointer items-center gap-2.5 rounded-[7px] px-2.5 py-2 text-fog aria-selected:bg-slate-2 aria-selected:text-chalk"
-          >
+          <ListOption key={c.id} selected={i === sel} onMouseEnter={() => setSel(i)} onClick={() => run(c)} className="flex items-center gap-2.5">
             {c.label}
-            {c.hint && <span className="ml-auto text-xs text-dim">{c.hint}</span>}
-          </li>
+            {c.hint && <span className="ml-auto text-xs text-fg-faint">{c.hint}</span>}
+          </ListOption>
         ))}
-        {shown.length === 0 && <li className="px-2.5 py-2 text-fog">No matches. Try a file, symbol or chapter name.</li>}
+        {shown.length === 0 && <ListMessage>No matches. Try a file, symbol or layer name.</ListMessage>}
       </ul>
     </Dialog>
   )

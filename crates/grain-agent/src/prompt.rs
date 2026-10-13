@@ -24,6 +24,37 @@ pub struct Summary {
     pub reviewer_questions: Vec<String>,
 }
 
+pub(crate) const LAYER_PROMPT: &str = "You are helping a human review one chapter of a pull request: the changed \
+code that one user flow (a page or screen) runs, or one area of the codebase.\n\
+Answer only from the diff below; do not use tools. The diff may be cut short.\n\
+title: <= 8 words, what this chapter changes for the user or the code. intent: 1-2 plain sentences on \
+what changes and how the pieces fit together.\n\
+walkthrough: 2-4 short steps, which file to read first and why. reviewer_questions: 2-3 sharp questions \
+about how the pieces interact.\n\nDIFF:\n";
+
+pub(crate) const LAYER_SCHEMA: &str = r#"{"type":"object","additionalProperties":false,
+"required":["title","intent","walkthrough","reviewer_questions"],
+"properties":{"title":{"type":"string"},"intent":{"type":"string"},
+"walkthrough":{"type":"array","items":{"type":"string"}},
+"reviewer_questions":{"type":"array","items":{"type":"string"}}}}"#;
+
+/// What the agent returns for one chapter; shape enforced by [`LAYER_SCHEMA`].
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct LayerSummary {
+    pub title: String,
+    pub intent: String,
+    pub walkthrough: Vec<String>,
+    pub reviewer_questions: Vec<String>,
+}
+
+pub(crate) const ASK_PROMPT: &str = "You are helping a human review a pull request. They stay the reviewer: \
+explain, don't judge or approve. Answer their question in 2-5 plain sentences, only from the code \
+below; do not use tools. Say so if the code doesn't show the answer.\n\n";
+
+pub(crate) const ASK_SCHEMA: &str = r#"{"type":"object","additionalProperties":false,"required":["answer"],
+"properties":{"answer":{"type":"string"}}}"#;
+
 /// Extracts the first top-level JSON object from free text (tolerates stray prose or fences).
 pub(crate) fn extract_json(text: &str) -> Option<serde_json::Value> {
     let (start, end) = (text.find('{')?, text.rfind('}')?);

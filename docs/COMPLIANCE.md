@@ -1,6 +1,6 @@
 # Using AI subscriptions within provider terms
 
-Grain uses the coding agent each reviewer already has (Claude Code, Codex, OpenCode) to name chapters and summarize blocks.
+Grain uses the coding agent each reviewer already has (Claude Code, Codex, OpenCode) to summarize blocks and explain layers, only when the reviewer asks.
 This page records what the providers allow, what Grain does about it, and when it was last checked.
 Providers changed these rules several times in 2026: **re-check before every release.**
 This is our reading of public terms, not legal advice.

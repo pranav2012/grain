@@ -1,5 +1,6 @@
 import type { Agent } from '@/types/generated/Agent'
 import type { Block } from '@/types/generated/Block'
+import type { LayerSummary } from '@/types/generated/LayerSummary'
 import type { PrDetails } from '@/types/generated/PrDetails'
 import type { Review } from '@/types/generated/Review'
 import type { Summary } from '@/types/generated/Summary'
@@ -52,8 +53,8 @@ export interface LoadedPr {
   /** `owner/repo/123` */
   id: string
   review: Review
-  /** Agent summaries keyed by block content key. */
-  summaries: Record<string, Summary>
+  /** Agent summaries keyed by block content key, and layer summaries by `layer:` + layer key. */
+  summaries: Record<string, Summary | LayerSummary>
   pr: PrMeta | null
   /** Review progress saved on the server (shape owned by `useReviewState`), if any. */
   progress: unknown
@@ -61,9 +62,28 @@ export interface LoadedPr {
   blocks: Map<number, Block>
 }
 
-export interface Section {
-  key: string
-  title: string
-  chapterId?: number
-  blocks: number[]
+/** A question to the agent about one change, and its answer once it arrives. */
+export interface Ask {
+  id: string
+  question: string
+  /** Which lines it was about, when asked from a selection. */
+  about?: string
+  answer?: string
+  error?: string
+}
+
+/** A conversation with the agent anchored at one line of the diff. */
+export interface LineThread {
+  id: string
+  blockId: number
+  file: string
+  side: Side
+  /** 1-based line the thread sits under. */
+  line: number
+  /** What was asked about: `fetchVoucher` or `VoucherBody.tsx:12–18`. */
+  about: string
+  /** The code the questions are about, sent with each question. */
+  code?: string
+  messages: Ask[]
+  open: boolean
 }

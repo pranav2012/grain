@@ -8,7 +8,8 @@ use crate::classify::{is_test_path, kind_of, stem};
 use crate::diff::hunks::FileHunks;
 use crate::diff::units::Unit;
 
-pub(crate) const CAP: usize = 600;
+/// Largest block in changed lines, so any block fits in one review layer (`layers::MAX_LINES`).
+pub(crate) const CAP: usize = super::layers::MAX_LINES;
 
 pub(crate) const SMALL: usize = 60;
 
@@ -156,7 +157,7 @@ pub(crate) fn group_v2(
             }
             let mut cands: Vec<(usize, f64)> = best.into_iter().collect();
             cands.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
-            if cands.iter().any(|&(c, _)| merge(&mut uf, r, c, CAP * 3 / 2, &mut csize)) {
+            if cands.iter().any(|&(c, _)| merge(&mut uf, r, c, CAP, &mut csize)) {
                 continue;
             }
             let dir = |p: &str| p.rsplit_once('/').map(|x| x.0.to_string()).unwrap_or_default();
@@ -166,7 +167,7 @@ pub(crate) fn group_v2(
                 (0..n).filter(|&g| roots[g] != r && dir(&files[g]) == my_dir).map(|g| roots[g]).collect();
             sib.sort_by_key(|&g| (csize[g], g));
             sib.dedup();
-            if sib.into_iter().any(|g| merge(&mut uf, r, g, CAP * 3 / 2, &mut csize)) {
+            if sib.into_iter().any(|g| merge(&mut uf, r, g, CAP, &mut csize)) {
                 continue;
             }
             // Last resort: the cluster sharing the longest path prefix (at least one directory).
@@ -180,7 +181,7 @@ pub(crate) fn group_v2(
                 .filter(|&(common, _, _)| common >= 1)
                 .collect();
             near.sort_by(|a, b| b.0.cmp(&a.0).then(a.2.cmp(&b.2)).then(a.1.cmp(&b.1)));
-            let _ = near.into_iter().any(|(_, g, _)| merge(&mut uf, r, g, CAP * 3 / 2, &mut csize));
+            let _ = near.into_iter().any(|(_, g, _)| merge(&mut uf, r, g, CAP, &mut csize));
         }
     }
 

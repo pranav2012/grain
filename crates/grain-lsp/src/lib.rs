@@ -5,4 +5,4 @@ mod client;
 pub mod typescript;
 mod usage;
 
-pub use usage::TsUsage;
+pub use usage::{Location, Lookup, TsUsage};

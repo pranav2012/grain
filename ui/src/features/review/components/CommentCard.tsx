@@ -1,12 +1,14 @@
+import { LinkButton } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/cn'
 import { kindLabel } from '../model/modes'
 import type { ReviewComment } from '../model/types'
 
 export function CommentCard({ c, onDelete }: { c: ReviewComment; onDelete(): void }) {
   return (
-    <div className="rounded-lg border border-seam bg-slate px-[11px] py-[9px] leading-normal">
-      <div className="mb-1 flex items-center gap-2 text-[11.5px] text-fog">
-        <span className={cn('font-medium', (c.kind === 'change' || c.kind === 'fix') && 'text-coral', c.kind === 'question' && 'text-amber')}>
+    <Card className="px-3 py-2 leading-normal">
+      <div className="mb-1 flex items-center gap-2 text-xs text-fg-subtle">
+        <span className={cn('font-medium', (c.kind === 'change' || c.kind === 'fix') && 'text-danger', c.kind === 'question' && 'text-warning')}>
           {kindLabel[c.kind]}
         </span>
         {c.file && (
@@ -16,19 +18,19 @@ export function CommentCard({ c, onDelete }: { c: ReviewComment; onDelete(): voi
           </span>
         )}
         {c.postedAt ? (
-          <span className="ml-auto text-sage">Posted</span>
+          <span className="ml-auto text-success">Posted</span>
         ) : (
-          <button onClick={onDelete} className="ml-auto underline decoration-seam underline-offset-[3px] hover:text-chalk">
+          <LinkButton onClick={onDelete} className="ml-auto">
             Delete
-          </button>
+          </LinkButton>
         )}
       </div>
       {c.body}
       {c.suggestion !== undefined && (
-        <pre className={cn('overflow-x-auto rounded-md border border-seam bg-graphite p-2 font-mono text-[12px]', c.body && 'mt-1.5')}>
+        <pre className={cn('overflow-x-auto rounded-md border border-line bg-canvas p-2 font-mono text-sm', c.body && 'mt-1.5')}>
           {c.suggestion || '(delete these lines)'}
         </pre>
       )}
-    </div>
+    </Card>
   )
 }

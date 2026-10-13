@@ -1,11 +1,12 @@
 import { type KeyboardEvent, useState } from 'react'
-import { Button } from '@/components/ui/Button'
+import { Button, LinkButton } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Kbd'
 import type { CommentKind } from '../model/types'
 
 interface ComposerProps {
   kinds: [CommentKind, string][]
   initialKind?: CommentKind
+  initialBody?: string
   placeholder?: string
   /** The selected new-code lines; when set, the comment can carry a suggested replacement. */
   suggestionSeed?: string | null
@@ -13,8 +14,8 @@ interface ComposerProps {
   onCancel(): void
 }
 
-export function Composer({ kinds, initialKind, placeholder, suggestionSeed, onSave, onCancel }: ComposerProps) {
-  const [body, setBody] = useState('')
+export function Composer({ kinds, initialKind, initialBody, placeholder, suggestionSeed, onSave, onCancel }: ComposerProps) {
+  const [body, setBody] = useState(initialBody ?? '')
   const [kind, setKind] = useState<CommentKind>(initialKind ?? kinds[0][0])
   const [suggestion, setSuggestion] = useState<string | null>(null)
   const changed = suggestion !== null && suggestion !== suggestionSeed
@@ -26,7 +27,7 @@ export function Composer({ kinds, initialKind, placeholder, suggestionSeed, onSa
     if (e.key === 'Escape') onCancel()
   }
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-periwinkle bg-slate p-2">
+    <div className="flex flex-col gap-2 rounded-lg border border-accent bg-surface p-2 shadow-float">
       <textarea
         autoFocus
         value={body}
@@ -36,12 +37,12 @@ export function Composer({ kinds, initialKind, placeholder, suggestionSeed, onSa
         className="min-h-16 resize-y bg-transparent leading-normal outline-none"
       />
       {suggestion !== null && (
-        <div className="rounded-md border border-seam bg-graphite">
-          <div className="flex items-center border-b border-seam px-2 py-1 text-[11.5px] text-fog">
+        <div className="rounded-md border border-line bg-canvas">
+          <div className="flex items-center border-b border-line px-2 py-1 text-xs text-fg-subtle">
             Suggested code
-            <button onClick={() => setSuggestion(null)} className="ml-auto underline decoration-seam underline-offset-[3px] hover:text-chalk">
+            <LinkButton onClick={() => setSuggestion(null)} className="ml-auto">
               Remove
-            </button>
+            </LinkButton>
           </div>
           <textarea
             autoFocus
@@ -50,7 +51,7 @@ export function Composer({ kinds, initialKind, placeholder, suggestionSeed, onSa
             onChange={(e) => setSuggestion(e.target.value)}
             onKeyDown={keys}
             rows={Math.min(14, suggestion.split('\n').length + 1)}
-            className="w-full resize-y bg-transparent p-2 font-mono text-[12px] leading-normal whitespace-pre outline-none"
+            className="w-full resize-y bg-transparent p-2 font-mono text-sm leading-normal whitespace-pre outline-none"
           />
         </div>
       )}
@@ -60,7 +61,7 @@ export function Composer({ kinds, initialKind, placeholder, suggestionSeed, onSa
             key={k}
             aria-pressed={kind === k}
             onClick={() => setKind(k)}
-            className="rounded-full border border-seam px-[9px] py-[3px] text-xs text-fog aria-pressed:border-fog aria-pressed:text-chalk"
+            className="rounded-full border border-line px-2 py-0.5 text-xs text-fg-subtle hover:text-fg aria-pressed:border-fg-subtle aria-pressed:bg-raised aria-pressed:text-fg"
           >
             {label}
           </button>
@@ -69,7 +70,7 @@ export function Composer({ kinds, initialKind, placeholder, suggestionSeed, onSa
           <button
             onClick={() => setSuggestion(suggestionSeed)}
             title="Propose replacement code the author can apply in one click"
-            className="rounded-full border border-dashed border-seam px-[9px] py-[3px] text-xs text-fog hover:text-chalk"
+            className="rounded-full border border-dashed border-line px-2 py-0.5 text-xs text-fg-subtle hover:text-fg"
           >
             ± Suggest change
           </button>

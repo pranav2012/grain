@@ -1,26 +1,25 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CommandPalette, type Command } from '@/components/CommandPalette'
 import { useHotkeys } from '@/lib/useHotkeys'
+import type { Chapter } from '@/types/generated/Chapter'
 import { ThreadActionsContext, useConversation } from '../hooks/useConversation'
 import { useLiveReview } from '../hooks/useLiveReview'
 import { useReviewStatus } from '../hooks/useReviewStatus'
 import { useSummaries } from '../hooks/useSummaries'
-import { agentName as agentNameOf, blockTitle } from '../model/describe'
+import { agentName as agentNameOf, blockTitle, chapterSummaryKey, chapterSummaryOf } from '../model/describe'
 import { modeOrder, modes } from '../model/modes'
 import { blockProgress } from '../model/progress'
-import { ownedBlocks, sectionsFor } from '../model/sections'
-import type { CommentKind, LoadedPr, Mode, ReviewComment } from '../model/types'
+import { chapterBlocks, chaptersFor, linesOf, ownedBlocks } from '../model/story'
+import { reviewApi } from '../api'
+import type { Ask, BlockState, LineThread, LoadedPr, Mode, ReviewComment } from '../model/types'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
-import { BlockView } from './BlockView'
-import { BlockMap } from './BlockMap'
-import { ContextPanel, type PanelTab } from './ContextPanel'
+import { ChangeView, type ThreadAnchor } from './ChangeView'
 import { FinishDialog } from './FinishDialog'
-import { GrainMap } from './GrainMap'
 import { KeyHints } from './KeyHints'
 import { NewCommitsNotice } from './NewCommitsNotice'
-import { Outline } from './Outline'
 import { ShortcutsDialog } from './ShortcutsDialog'
+import { StoryToc } from './StoryToc'
 import { TopBar } from './TopBar'
 
 type NewComment = Omit<ReviewComment, 'id' | 'createdAt' | 'blockId' | 'blockKey'>
@@ -43,58 +42,104 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const [state, dispatch] = useReviewState(base, viewer && viewer === base.pr?.author.login ? 'self' : 'peer')
   const [prefs, setPrefs] = usePrefs()
   const [overlay, setOverlay] = useState<'palette' | 'finish' | 'help' | null>(null)
-  const [showContext, setShowContext] = useState(true)
-  const [panelTab, setPanelTab] = useState<PanelTab>('block')
-  const [composing, setComposing] = useState<CommentKind | null>(null)
+  const [composeTick, setComposeTick] = useState(0)
+  const [asks, setAsks] = useState<Record<string, Ask[]>>({})
+  const [lineThreads, setLineThreads] = useState<LineThread[]>([])
   const copy = modes[state.mode]
 
   const status = useReviewStatus(base.id, settingsVersion)
   const live = useLiveReview(base, status)
-  const baseSections = useMemo(() => sectionsFor(live, state.mode, prefs.mineFirst), [live, state.mode, prefs.mineFirst])
-  const baseOrder = useMemo(() => baseSections.flatMap((s) => s.blocks), [baseSections])
+  const baseOrder = useMemo(() => chaptersFor(live, prefs.mineFirst).flatMap(chapterBlocks), [live, prefs.mineFirst])
   const keyToId = useMemo(() => new Map([...live.blocks.values()].map((b) => [b.key, b.id])), [live])
   const current = (state.currentKey && keyToId.get(state.currentKey)) || baseOrder[0]
   const { data, note, request: requestSummary, pending: summaryPending } = useSummaries(live, status, baseOrder, current)
 
   const { threadsFor, actions: threadActions } = useConversation(data)
-  const sections = useMemo(() => sectionsFor(data, state.mode, prefs.mineFirst), [data, state.mode, prefs.mineFirst])
+  const chapters = useMemo(() => chaptersFor(data, prefs.mineFirst), [data, prefs.mineFirst])
+  const order = useMemo(() => chapters.flatMap(chapterBlocks), [chapters])
   const owned = useMemo(() => ownedBlocks(data), [data])
-  const order = useMemo(() => sections.flatMap((s) => s.blocks), [sections])
-  const reviewable = useMemo(() => order.filter((id) => !data.blocks.get(id)!.skim), [order, data])
-  const block = data.blocks.get(current)!
-  const section = sections.find((s) => s.blocks.includes(current))!
   const { states, stale } = useMemo(() => blockProgress(data, state.verdicts), [data, state.verdicts])
-  const blockComments = state.comments.filter((c) => c.blockKey === block.key)
+  const chapter = chapters.find((c) => chapterBlocks(c).includes(current)) ?? chapters[0]
+  const chapterIds = chapterBlocks(chapter)
+  const section = chapter.sections.length > 1 ? chapter.sections.find((x) => x.blocks.includes(current)) : undefined
+  const block = data.blocks.get(current)!
+  const reviewable = useMemo(() => order.filter((id) => !data.blocks.get(id)!.skim), [order, data])
+  const agentName = agentNameOf(data)
 
-  const go = (id: number | undefined) => {
+  // With AI on, each chapter's short intro is written in the background when the chapter opens (cached).
+  useEffect(() => {
+    if (agentName && chapter && !chapterSummaryOf(data, chapter)) requestSummary([chapterSummaryKey(chapter)])
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentName, chapter?.key])
+
+  const focus = (id: number | undefined) => {
     const b = id === undefined ? undefined : data.blocks.get(id)
     if (b) dispatch({ type: 'go', key: b.key })
   }
-  const step = (d: number) => go(order[Math.min(order.length - 1, Math.max(0, order.indexOf(current) + d))])
-  const stepChapter = (d: number) => go(sections[sections.indexOf(section) + d]?.blocks[0])
+  const openChapter = (c: Chapter | undefined) => c && focus(chapterBlocks(c).find((id) => !states[id]) ?? chapterBlocks(c)[0])
+  const step = (d: number) => focus(order[Math.min(order.length - 1, Math.max(0, order.indexOf(current) + d))])
+  const stepChapter = (d: number) => openChapter(chapters[chapters.indexOf(chapter) + d])
   const nextOpen = () => order.slice(order.indexOf(current) + 1).find((id) => !states[id]) ?? order.find((id) => !states[id])
-  const verdict = (state: 'ok' | 'change') => ({ state, hash: block.contentHash, head: data.pr?.headSha ?? '', files: block.files })
+  const mark = (id: number, v: BlockState | null) => {
+    const b = data.blocks.get(id)!
+    dispatch({ type: 'mark', key: b.key, verdict: v ? { state: v, hash: b.contentHash, head: data.pr?.headSha ?? '', files: b.files } : null })
+  }
   const setMode = (mode: Mode) => dispatch({ type: 'mode', mode })
   const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
   const toggleMineFirst = () => setPrefs((p) => ({ ...p, mineFirst: !p.mineFirst }))
-  const toggleMap = () => {
-    setShowContext(true)
-    setPanelTab((t) => (showContext && t === 'map' ? 'block' : 'map'))
-  }
-  const compose = (kind: CommentKind) => {
-    setShowContext(true)
-    setComposing(kind)
-  }
   const primary = () => {
-    const done = states[current] === 'ok'
-    dispatch({ type: 'mark', key: block.key, verdict: done ? null : verdict('ok') })
-    if (!done) go(nextOpen())
+    if (states[current] === 'ok') return mark(current, null)
+    mark(current, 'ok')
+    focus(nextOpen())
   }
   const secondary = () => {
-    dispatch({ type: 'mark', key: block.key, verdict: verdict('change') })
-    compose(copy.secondaryKind)
+    mark(current, 'change')
+    setComposeTick((t) => t + 1)
   }
-  const addComment = (c: NewComment) => dispatch({ type: 'comment', comment: newComment(c, current, block.key) })
+  const explain = (id: number) => {
+    const b = data.blocks.get(id)!
+    if (!agentName) return onSettings()
+    if (!b.skim) requestSummary([b.key])
+  }
+  /** Sends a question to the agent; `history` (earlier questions and answers) keeps follow-ups in context. */
+  const askAgent = (blockId: number, question: string, code: string | undefined, history: Ask[], done: (patch: Partial<Ask>) => void) => {
+    const earlier = history.filter((m) => m.answer).map((m) => `Q: ${m.question}\nA: ${m.answer}`).join('\n\n')
+    const full = earlier ? `Earlier in this conversation:\n${earlier}\n\nFollow-up: ${question}` : question
+    reviewApi.ask(data.id, { key: data.blocks.get(blockId)!.key, question: full, code: code ?? null }).then(
+      (r) => done({ answer: r.answer }),
+      (e: Error) => done({ error: e.message }),
+    )
+  }
+  const ask = (blockId: number, question: string) => {
+    const key = data.blocks.get(blockId)!.key
+    const id = crypto.randomUUID()
+    setAsks((all) => ({ ...all, [key]: [...(all[key] ?? []), { id, question }] }))
+    askAgent(blockId, question, undefined, [], (patch) =>
+      setAsks((all) => ({ ...all, [key]: (all[key] ?? []).map((q) => (q.id === id ? { ...q, ...patch } : q)) })),
+    )
+  }
+  const patchMessage = (threadId: string, messageId: string, patch: Partial<Ask>) =>
+    setLineThreads((ts) => ts.map((t) => (t.id === threadId ? { ...t, messages: t.messages.map((m) => (m.id === messageId ? { ...m, ...patch } : m)) } : t)))
+  const askAt = (anchor: ThreadAnchor, question: string) => {
+    const thread: LineThread = { ...anchor, id: crypto.randomUUID(), blockId: current, messages: [{ id: crypto.randomUUID(), question }], open: true }
+    setLineThreads((ts) => [...ts, thread])
+    askAgent(current, question, anchor.code, [], (patch) => patchMessage(thread.id, thread.messages[0].id, patch))
+  }
+  const followUp = (threadId: string, question: string) => {
+    const thread = lineThreads.find((t) => t.id === threadId)
+    if (!thread) return
+    const message = { id: crypto.randomUUID(), question }
+    setLineThreads((ts) => ts.map((t) => (t.id === threadId ? { ...t, messages: [...t.messages, message] } : t)))
+    askAgent(thread.blockId, question, thread.code, thread.messages, (patch) => patchMessage(threadId, message.id, patch))
+  }
+  const retry = (threadId: string, messageId: string) => {
+    const thread = lineThreads.find((t) => t.id === threadId)
+    const at = thread?.messages.findIndex((m) => m.id === messageId) ?? -1
+    if (!thread || at < 0) return
+    patchMessage(threadId, messageId, { error: undefined })
+    askAgent(thread.blockId, thread.messages[at].question, thread.code, thread.messages.slice(0, at), (patch) => patchMessage(threadId, messageId, patch))
+  }
+  const addComment = (blockId: number, c: NewComment) => dispatch({ type: 'comment', comment: newComment(c, blockId, data.blocks.get(blockId)!.key) })
 
   useHotkeys({
     j: () => step(1),
@@ -103,18 +148,13 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     K: () => stepChapter(-1),
     ' ': primary,
     x: secondary,
-    c: () => compose(copy.kinds[0][0]),
+    c: () => setComposeTick((t) => t + 1),
+    a: () => explain(current),
     s: toggleDiffStyle,
     m: () => owned.size && toggleMineFirst(),
-    g: toggleMap,
-    a: () => {
-      if (agentName) summarizeCurrent()
-      else onSettings()
-    },
     '1': () => setMode('self'),
     '2': () => setMode('peer'),
     '3': () => setMode('maintainer'),
-    ']': () => setShowContext((v) => !v),
     '?': () => setOverlay((o) => (o === 'help' ? null : 'help')),
     ',': onSettings,
     o: onSwitch,
@@ -123,7 +163,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     'Shift+Enter': () => setOverlay('finish'),
   })
 
-  const lines = (ids: number[]) => ids.reduce((n, id) => n + data.blocks.get(id)!.lines, 0)
+  const lines = (ids: number[]) => linesOf(data, ids)
   const progress = {
     done: reviewable.filter((id) => states[id]).length,
     total: reviewable.length,
@@ -131,31 +171,21 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     changeLines: lines(reviewable.filter((id) => states[id] === 'change')),
     reviewLines: lines(reviewable),
   }
-  const agentName = agentNameOf(data)
-  const summarizeCurrent = () => agentName && !block.skim && requestSummary([block.key])
   const commands: Command[] = [
     { id: 'finish', label: copy.finish, hint: 'Shift Enter', run: () => setOverlay('finish') },
     { id: 'switch', label: 'Open another pull request', hint: '⌘O', run: onSwitch },
-    { id: 'settings', label: 'Settings: AI summaries', hint: ',', run: onSettings },
+    { id: 'settings', label: 'Settings: AI', hint: ',', run: onSettings },
     ...modeOrder.map((m, i) => ({ id: `mode-${m}`, label: `Switch to ${modes[m].label.toLowerCase()}`, hint: String(i + 1), run: () => setMode(m) })),
-    { id: 'next-open', label: 'Go to next unreviewed block', run: () => go(nextOpen()) },
-    ...(agentName ? [{ id: 'summarize', label: `Summarize this block with ${agentName}`, hint: 'a', run: summarizeCurrent }] : []),
+    { id: 'next-open', label: 'Go to the next unreviewed change', run: () => focus(nextOpen()) },
     { id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show side-by-side diff', hint: 's', run: toggleDiffStyle },
-    ...(owned.size
-      ? [{ id: 'mine-first', label: prefs.mineFirst ? 'Show blocks in normal order' : 'Show your code first (CODEOWNERS)', hint: 'm', run: toggleMineFirst }]
-      : []),
-    { id: 'map', label: panelTab === 'map' && showContext ? 'Show block details' : 'Show the map of linked blocks', hint: 'g', run: toggleMap },
-    { id: 'context', label: showContext ? 'Hide context panel' : 'Show context panel', hint: ']', run: () => setShowContext((v) => !v) },
-    ...order.map((id) => ({ id: `b${id}`, label: blockTitle(data, data.blocks.get(id)!), hint: sections.find((s) => s.blocks.includes(id))?.title, run: () => go(id) })),
+    ...(owned.size ? [{ id: 'mine-first', label: prefs.mineFirst ? 'Show your code in its flows' : 'Show your code first (CODEOWNERS)', hint: 'm', run: toggleMineFirst }] : []),
+    ...chapters.map((c) => ({ id: `ch-${c.key}`, label: c.title, hint: `${chapterBlocks(c).length} changes`, run: () => openChapter(c) })),
+    ...order.map((id) => ({ id: `b${id}`, label: blockTitle(data, data.blocks.get(id)!), hint: chapters.find((c) => chapterBlocks(c).includes(id))?.title, run: () => focus(id) })),
   ]
 
   return (
     <ThreadActionsContext value={threadActions}>
-      <div
-        className={`grid h-screen grid-rows-[48px_1fr_30px] [grid-template-areas:'top_top_top_top'_'map_outline_main_context'_'keys_keys_keys_keys'] max-[1100px]:grid-cols-[34px_240px_minmax(0,1fr)_0] max-[760px]:grid-cols-[0_0_minmax(0,1fr)_0] ${
-          showContext ? 'grid-cols-[34px_288px_minmax(0,1fr)_320px]' : 'grid-cols-[34px_288px_minmax(0,1fr)_0]'
-        }`}
-      >
+      <div className="grid h-screen grid-cols-[260px_minmax(0,1fr)] grid-rows-[48px_minmax(0,1fr)_30px] [grid-template-areas:'top_top'_'toc_main'_'keys_keys'] max-[900px]:grid-cols-[0_minmax(0,1fr)]">
         <TopBar
           data={data}
           mode={state.mode}
@@ -166,77 +196,64 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           onSettings={onSettings}
           onFinish={() => setOverlay('finish')}
         />
-        <GrainMap data={data} sections={sections} states={states} stale={stale} current={current} onGo={go} />
-        <Outline
+        <StoryToc
           data={data}
-          sections={sections}
+          chapters={chapters}
+          current={chapter}
+          currentBlock={current}
           states={states}
           stale={stale}
-          current={current}
-          onGo={go}
-          openThreads={(id) => threadsFor(id).filter((t) => !t.resolved).length}
-          owned={owned}
+          onChapter={openChapter}
+          onBlock={(id) => focus(id)}
         />
-        <BlockView
+        <ChangeView
           data={data}
+          chapter={chapter}
+          section={section?.title ?? ''}
+          index={chapterIds.indexOf(current) + 1}
+          count={chapterIds.length}
           block={block}
+          prev={data.blocks.get(order[order.indexOf(current) - 1])}
+          next={chapterIds.includes(order[order.indexOf(current) + 1]) ? data.blocks.get(order[order.indexOf(current) + 1]) : undefined}
+          nextChapter={chapters[chapters.indexOf(chapter) + 1]}
           mode={state.mode}
-          chapterTitle={section.title}
-          position={`Block ${section.blocks.indexOf(current) + 1} of ${section.blocks.length}`}
           diffStyle={prefs.diffStyle}
-          nextFiles={data.blocks.get(order[order.indexOf(current) + 1])?.files}
+          state={states[current]}
+          stale={!!stale[current]}
+          owned={owned.has(current)}
+          comments={state.comments.filter((c) => c.blockKey === block.key)}
+          threads={threadsFor(current)}
           agentName={agentName}
           summaryPending={summaryPending(block.key)}
-          onSummarize={summarizeCurrent}
-          onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
-          state={states[current]}
-          staleSince={stale[current]}
-          comments={blockComments}
-          threads={threadsFor(current)}
-          owned={owned.has(current)}
+          composeTick={composeTick}
+          asks={asks[block.key] ?? []}
+          aiThreads={lineThreads.filter((t) => t.blockId === current)}
+          onAsk={(q) => ask(current, q)}
+          onAskAt={askAt}
+          onFollowUp={followUp}
+          onRetry={retry}
+          onToggleThread={(id, open) => setLineThreads((ts) => ts.map((t) => (t.id === id ? { ...t, open } : t)))}
+          onMark={(v) => mark(current, v)}
           onPrimary={primary}
-          onSecondary={secondary}
-          onComment={addComment}
+          onExplain={() => explain(current)}
+          onApproveAll={() => chapterBlocks(chapter).forEach((id) => mark(id, 'ok'))}
+          onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
+          onStep={step}
+          onGo={(id) => focus(id)}
+          onComment={(c) => addComment(current, c)}
           onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
         />
-        {showContext ? (
-          <ContextPanel
-            data={data}
-            block={block}
-            mode={state.mode}
-            comments={blockComments}
-            threads={threadsFor(current)}
-            composing={composing}
-            agentName={agentName}
-            onCompose={setComposing}
-            onComment={addComment}
-            onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
-            tab={panelTab}
-            onTab={setPanelTab}
-            map={
-              <BlockMap
-                data={data}
-                current={current}
-                states={states}
-                stale={stale}
-                chapterOf={(id) => sections.find((s) => s.chapterId !== undefined && s.blocks.includes(id))?.title}
-                onGo={go}
-              />
-            }
-          />
-        ) : (
-          <div />
-        )}
         <KeyHints
           copy={copy}
           diffStyle={prefs.diffStyle}
           note={[
-            copy.order,
-            data.review.complete ? null : 'Checking how the changes are used across the repo',
-            agentName ? (note ?? `AI on request: ${agentName}`) : 'AI off',
+            data.review.complete ? null : 'Reading the whole repository for user flows',
+            agentName ? (note ?? `AI: ${agentName}`) : 'AI off',
             'Progress is saved on this machine',
           ]
-            .filter((x): x is string => !!x).map((s) => s.replace(/\.$/, '')).join('. ') + '.'}
+            .filter((x): x is string => !!x)
+            .join('. ')
+            .concat('.')}
         />
         {overlay === 'palette' && <CommandPalette commands={commands} onClose={() => setOverlay(null)} />}
         {overlay === 'finish' && (

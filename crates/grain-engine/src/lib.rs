@@ -1,7 +1,7 @@
-//! Grain's review engine: turns a git range into chapters, blocks and a skim bucket,
+//! Grain's review engine: turns a git range into ordered layers of blocks and a skim bucket,
 //! with facts, rule checks and estimated risk that need no AI.
 //!
-//! Pipeline: `diff` (hunks, units) → `grouping` (blocks, chapters) → `facts` (checks, risk).
+//! Pipeline: `diff` (hunks, units) → `grouping` (blocks, layers) → `facts` (checks, risk).
 
 mod classify;
 mod diff;
@@ -11,9 +11,12 @@ mod model;
 mod pipeline;
 
 pub use facts::usage::UsageProvider;
-pub use model::{Analysis, Block, BlockLink, Chapter, Check, CheckLevel, EntityChange, Review, Risk, Slice};
+pub use model::{
+    Analysis, Block, BlockLink, Chapter, ChapterKind, Check, CheckLevel, EntityChange, Layer, Review, Risk, Section,
+    Slice, Story,
+};
 pub use pipeline::{Depth, analyze, analyze_with, analyze_with_usage};
 
 /// Version of the [`Review`] format. Bump when the engine's output changes (fields or grouping),
 /// so stored reviews are recomputed instead of being shown in an outdated shape.
-pub const REVIEW_FORMAT: u32 = 7;
+pub const REVIEW_FORMAT: u32 = 10;

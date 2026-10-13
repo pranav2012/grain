@@ -3,7 +3,7 @@ export function GrainGlyph({ size = 16 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
       <path
         d="M2 4c3-2 5 2 8 0s4-1 4-1M2 8c3-2 5 2 8 0s4-1 4-1M2 12c3-2 5 2 8 0s4-1 4-1"
-        stroke="var(--color-sage)"
+        stroke="var(--color-success)"
         strokeWidth="1.4"
         strokeLinecap="round"
       />

@@ -2,6 +2,6 @@
 
 export type SummarizeRequest = { 
 /**
- * Block content keys to summarize, nearest first.
+ * Block content keys, or `chapter:` + a chapter key, to summarize, nearest first.
  */
 keys: Array<string>, };

@@ -127,7 +127,7 @@ pub(crate) fn prepare(
             base_ref.as_deref().unwrap_or("its base")
         );
     }
-    report("Grouping your changes into chapters and blocks");
+    report("Grouping your changes into layers and blocks");
     let analysis = grain_engine::analyze_with(&repo, &merge_base, &head, Depth::Fast)?;
     write_atomic(&out_dir.join("diff.patch"), patch.as_bytes())?;
     write_atomic(&out_dir.join("review.json"), serde_json::to_string(&analysis.review)?.as_bytes())?;

@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Badge } from '@/components/ui/Badge'
+import { Scrim } from '@/components/ui/Dialog'
+import { SearchInput } from '@/components/ui/Field'
 import { Kbd } from '@/components/ui/Kbd'
+import { ListMessage, ListOption } from '@/components/ui/ListOption'
 import { cn } from '@/lib/cn'
 import { ago } from '@/lib/format'
 import { formatPrRef, looksLikePath, parsePrRef } from '@/lib/pr-ref'
@@ -145,11 +149,11 @@ export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: 
       aria-label="Open a pull request"
       onMouseDown={(e) => e.stopPropagation()}
       className={cn(
-        'flex w-[min(760px,94vw)] flex-col overflow-hidden rounded-xl border border-seam bg-slate',
-        variant === 'page' ? 'max-h-[80vh]' : 'shadow-[0_24px_80px_rgba(0,0,0,0.55)] motion-safe:animate-rise',
+        'flex w-[min(760px,94vw)] flex-col overflow-hidden rounded-xl border border-line bg-surface',
+        variant === 'page' ? 'max-h-[80vh]' : 'shadow-overlay motion-safe:animate-rise',
       )}
     >
-      <input
+      <SearchInput
         autoFocus
         value={q}
         placeholder={
@@ -159,7 +163,6 @@ export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: 
               ? 'Filter, or type a folder path like ~/code/my-app'
               : 'Filter, or paste a pull request link'
         }
-        className="w-full border-b border-seam bg-transparent px-4 py-3.5 text-[15px] outline-none"
         onChange={(e) => {
           setQ(e.target.value)
           setSel(0)
@@ -180,59 +183,46 @@ export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: 
           }
         }}
       />
-      <div role="tablist" className="flex items-center gap-0.5 border-b border-seam px-2 py-1.5">
+      <div role="tablist" className="flex items-center gap-0.5 border-b border-line px-2 py-1.5">
         {tabs.map(([t, label]) => (
           <button
             key={t}
             role="tab"
             aria-selected={tab === t}
             onClick={() => switchTab(t)}
-            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-[5px] text-fog aria-selected:bg-slate-2 aria-selected:text-chalk"
+            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-fg-subtle hover:text-fg aria-selected:bg-raised aria-selected:text-fg"
           >
             {label}
-            {t === 'requests' && inbox && <span className="text-[11px] text-dim tabular-nums">{inbox.reviewRequests.length}</span>}
+            {t === 'requests' && inbox && <span className="text-2xs text-fg-faint tabular-nums">{inbox.reviewRequests.length}</span>}
           </button>
         ))}
-        <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-dim">
+        <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-fg-faint">
           <Kbd>Tab</Kbd> next list
         </span>
       </div>
       {repo && (
-        <button onClick={() => setRepo(null)} className="border-b border-seam px-4 py-2 text-left text-fog">
-          ← All repositories <span className="ml-2 text-chalk">{repo}</span>
+        <button onClick={() => setRepo(null)} className="border-b border-line px-4 py-2 text-left text-fg-subtle hover:text-fg">
+          ← All repositories <span className="ml-2 text-fg">{repo}</span>
         </button>
       )}
       <ul role="listbox" className="max-h-[56vh] overflow-auto p-1.5">
-        {error && rows.length > 0 && <li className="px-2.5 py-2 text-coral">{error}</li>}
+        {error && rows.length > 0 && <ListMessage className="text-danger">{error}</ListMessage>}
         {rows.map((r, i) => (
-          <li
-            key={r.key}
-            role="option"
-            aria-selected={i === sel}
-            onMouseEnter={() => setSel(i)}
-            onClick={r.run}
-            className="flex min-w-0 cursor-pointer flex-col gap-0.5 rounded-[7px] px-2.5 py-2 aria-selected:bg-slate-2"
-          >
-            <span className="truncate text-chalk">
+          <ListOption key={r.key} selected={i === sel} onMouseEnter={() => setSel(i)} onClick={r.run} className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate text-fg">
               {r.title}
-              {r.draft && <span className="ml-1.5 rounded border border-seam px-1.5 text-[11px] text-fog">Draft</span>}
+              {r.draft && <Badge className="ml-1.5">Draft</Badge>}
             </span>
-            <span className="text-xs text-fog">{r.meta}</span>
-          </li>
+            <span className="text-xs text-fg-subtle">{r.meta}</span>
+          </ListOption>
         ))}
-        {loading && <li className="px-2.5 py-2 text-fog">{tab === 'local' ? 'Looking for repositories…' : 'Loading from GitHub…'}</li>}
+        {loading && <ListMessage>{tab === 'local' ? 'Looking for repositories…' : 'Loading from GitHub…'}</ListMessage>}
         {!loading && rows.length === 0 && (
-          <li className="px-2.5 py-2 text-fog">
-            {error ?? (q ? 'Nothing matches. Paste a full pull request link to open any PR.' : 'Nothing here right now.')}
-          </li>
+          <ListMessage>{error ?? (q ? 'Nothing matches. Paste a full pull request link to open any PR.' : 'Nothing here right now.')}</ListMessage>
         )}
       </ul>
     </div>
   )
   if (variant === 'page') return panel
-  return (
-    <div className="fixed inset-0 z-10 flex items-start justify-center bg-[rgba(8,9,12,0.6)] pt-[12vh]" onMouseDown={onClose}>
-      {panel}
-    </div>
-  )
+  return <Scrim onClose={onClose}>{panel}</Scrim>
 }

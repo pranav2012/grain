@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { Button } from '@/components/ui/Button'
+import { Button, LinkButton } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { Kbd } from '@/components/ui/Kbd'
 import { ago } from '@/lib/format'
 import type { ReviewThread } from '@/types/generated/ReviewThread'
 import { useThreadActions } from '../hooks/useConversation'
-
-const linkButton = 'text-[11.5px] text-fog underline decoration-seam underline-offset-[3px] hover:text-chalk disabled:opacity-50'
 
 /** An existing GitHub review thread; resolved threads start collapsed. Replies and resolving go to GitHub right away. */
 export function ThreadCard({ thread, compact }: { thread: ReviewThread; compact?: boolean }) {
@@ -51,22 +50,22 @@ export function ThreadCard({ thread, compact }: { thread: ReviewThread; compact?
     return (
       <button
         onClick={() => setOpen(true)}
-        className="w-full truncate rounded-lg border border-seam px-3 py-1.5 text-left text-[11.5px] text-fog hover:text-chalk"
+        className="w-full truncate rounded-lg border border-line px-3 py-1.5 text-left text-xs text-fg-subtle hover:bg-surface hover:text-fg"
       >
         {tags} thread by {first.author}
         {replies > 0 && `, ${replies} ${replies === 1 ? 'reply' : 'replies'}`}: {first.body.split('\n')[0]}
       </button>
     )
   return (
-    <div className="rounded-lg border border-seam bg-slate">
+    <Card>
       {thread.comments.map((c, i) => (
-        <div key={c.url} className={i ? 'border-t border-seam px-[11px] py-2' : 'px-[11px] py-2'}>
-          <div className="mb-1 flex items-center gap-2 text-[11.5px] text-fog">
-            <span className="font-medium text-chalk">{c.author}</span>
+        <div key={c.url} className={i ? 'border-t border-line px-3 py-2' : 'px-3 py-2'}>
+          <div className="mb-1 flex items-center gap-2 text-xs text-fg-subtle">
+            <span className="font-medium text-fg">{c.author}</span>
             <span>{ago(c.createdAt)}</span>
-            {i === 0 && tags && <span className="text-dim">{tags}</span>}
+            {i === 0 && tags && <span className="text-fg-faint">{tags}</span>}
             {i === 0 && (
-              <a href={c.url} target="_blank" rel="noreferrer" className="ml-auto underline decoration-seam underline-offset-[3px] hover:text-chalk">
+              <a href={c.url} target="_blank" rel="noreferrer" className="ml-auto text-xs underline decoration-line underline-offset-[3px] hover:text-fg">
                 Open on GitHub
               </a>
             )}
@@ -75,7 +74,7 @@ export function ThreadCard({ thread, compact }: { thread: ReviewThread; compact?
         </div>
       ))}
       {replying ? (
-        <div className="flex flex-col gap-2 border-t border-seam p-2">
+        <div className="flex flex-col gap-2 border-t border-line p-2">
           <textarea
             autoFocus
             value={body}
@@ -96,25 +95,23 @@ export function ThreadCard({ thread, compact }: { thread: ReviewThread; compact?
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-3 border-t border-seam px-[11px] py-1.5">
+        <div className="flex items-center gap-3 border-t border-line px-3 py-1.5">
           {actions && thread.canReply && (
-            <button className={linkButton} onClick={() => setReplying(true)}>
-              Reply
-            </button>
+            <LinkButton onClick={() => setReplying(true)}>Reply</LinkButton>
           )}
           {canToggle && (
-            <button className={linkButton} onClick={toggle} disabled={busy}>
+            <LinkButton onClick={toggle} disabled={busy}>
               {busy ? 'Saving…' : thread.resolved ? 'Unresolve' : 'Resolve'}
-            </button>
+            </LinkButton>
           )}
           {thread.resolved && (
-            <button className={`${linkButton} ml-auto`} onClick={() => setOpen(false)}>
+            <LinkButton className="ml-auto" onClick={() => setOpen(false)}>
               Collapse
-            </button>
+            </LinkButton>
           )}
         </div>
       )}
-      {error && <p className="border-t border-seam px-[11px] py-1.5 text-[11.5px] text-coral">{error}</p>}
-    </div>
+      {error && <p className="border-t border-line px-3 py-1.5 text-xs text-danger">{error}</p>}
+    </Card>
   )
 }

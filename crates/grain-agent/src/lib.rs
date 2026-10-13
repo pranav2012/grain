@@ -1,4 +1,4 @@
-//! Block summaries from the reviewer's own agent CLI (Claude Code, Codex, OpenCode).
+//! Block and layer summaries from the reviewer's own agent CLI (Claude Code, Codex, OpenCode).
 //! Policy and rationale: docs/COMPLIANCE.md.
 
 mod agent;
@@ -18,8 +18,8 @@ pub fn resolve_program(name: &str) -> std::path::PathBuf {
     which::which(name).unwrap_or_else(|_| std::path::PathBuf::from(name))
 }
 pub use policy::policy_check;
-pub use prompt::Summary;
-use prompt::{PROMPT, SCHEMA};
+use prompt::{ASK_PROMPT, ASK_SCHEMA, LAYER_PROMPT, LAYER_SCHEMA, PROMPT, SCHEMA};
+pub use prompt::{LayerSummary, Summary};
 use transport::cli;
 
 #[derive(Debug, Serialize)]
@@ -51,11 +51,30 @@ fn looks_limited(s: &str) -> bool {
 
 /// Summarizes one block diff. Identical requests are answered from `cache_dir` and never re-sent.
 pub fn summarize(agent: Agent, model: Option<&str>, diff: &str, cache_dir: &Path) -> Outcome {
+    ask(agent, model, PROMPT, SCHEMA, diff, cache_dir)
+}
+
+/// Writes a chapter intro from the chapter's combined diff; cached like [`summarize`].
+pub fn summarize_layer(agent: Agent, model: Option<&str>, diff: &str, cache_dir: &Path) -> Outcome {
+    ask(agent, model, LAYER_PROMPT, LAYER_SCHEMA, diff, cache_dir)
+}
+
+/// Answers a reviewer's question about a change (`context`: the diff, and any selected lines).
+/// The summary value is `{ "answer": "…" }`; identical questions are answered from the cache.
+pub fn answer(agent: Agent, model: Option<&str>, context: &str, question: &str, cache_dir: &Path) -> Outcome {
+    let body = format!("QUESTION: {question}\n\nCODE:\n{context}");
+    match ask(agent, model, ASK_PROMPT, ASK_SCHEMA, &body, cache_dir) {
+        Outcome::Failed { .. } => ask(agent, model, ASK_PROMPT, ASK_SCHEMA, &body, cache_dir),
+        other => other,
+    }
+}
+
+fn ask(agent: Agent, model: Option<&str>, head: &str, schema: &str, diff: &str, cache_dir: &Path) -> Outcome {
     if let Some(reason) = policy_check(agent, model) {
         return Outcome::Refused { reason };
     }
-    let prompt = format!("{PROMPT}{diff}");
-    let key = format!("{:x}", Sha256::digest(format!("{}|cli|{model:?}|{SCHEMA}|{prompt}", agent.id())));
+    let prompt = format!("{head}{diff}");
+    let key = format!("{:x}", Sha256::digest(format!("{}|cli|{model:?}|{schema}|{prompt}", agent.id())));
     let cache_file = cache_dir.join(format!("{key}.json"));
     if let Ok(hit) = std::fs::read_to_string(&cache_file)
         && let Ok(summary) = serde_json::from_str(&hit)
@@ -63,9 +82,9 @@ pub fn summarize(agent: Agent, model: Option<&str>, diff: &str, cache_dir: &Path
         return Outcome::Done { summary, cached: true };
     }
     let res = match agent {
-        Agent::Claude => cli::claude(&prompt, SCHEMA, model),
-        Agent::Codex => cli::codex(&prompt, SCHEMA, model),
-        Agent::Opencode => cli::opencode(&format!("{prompt}\n\nReply with ONLY JSON matching: {SCHEMA}"), model),
+        Agent::Claude => cli::claude(&prompt, schema, model),
+        Agent::Codex => cli::codex(&prompt, schema, model),
+        Agent::Opencode => cli::opencode(&format!("{prompt}\n\nReply with ONLY JSON matching: {schema}"), model),
     };
     match res {
         Ok((Some(summary), _)) => {
@@ -75,8 +94,10 @@ pub fn summarize(agent: Agent, model: Option<&str>, diff: &str, cache_dir: &Path
         }
         Ok((None, out)) => {
             let raw = format!("{}\n{}", out.stdout, out.stderr);
-            let detail: String = raw.chars().take(500).collect();
-            if looks_limited(&raw) { Outcome::Limited { detail } } else { Outcome::Failed { detail } }
+            // CLIs print their banner first and the error last, so keep the end.
+            let raw = raw.trim();
+            let detail = raw[raw.floor_char_boundary(raw.len().saturating_sub(1500))..].to_string();
+            if looks_limited(raw) { Outcome::Limited { detail } } else { Outcome::Failed { detail } }
         }
         Err(e) => Outcome::Failed { detail: e.to_string() },
     }

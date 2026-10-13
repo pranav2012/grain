@@ -6,11 +6,11 @@ Grain runs locally. The `grain` binary serves a React UI and an HTTP API on `loc
 
 ```
 GitHub (via gh) ──► prepare job ──► grain-engine ──► review.json ──► UI
-                    clone, fetch,    diff → grouping     chapters,      outline, grain map,
-                    worktree, diff   → facts             blocks, skim   block view, context
+                    clone, fetch,    diff → grouping     story,         chapters, cards,
+                    worktree, diff   → facts             blocks, skim   inline peek, ask
                                                             │
                                      summarize job ◄────────┘ (optional: user's own agent CLI,
-                                                               only blocks near the reader)
+                                                               blocks or layers on request)
 ```
 
 Local self-reviews (`grain .`) skip GitHub: `jobs/local.rs` snapshots the working tree into an
@@ -26,8 +26,8 @@ Each crate has one job. Dependencies only point down this list; nothing depends 
 |---|---|---|
 | `grain` | CLI (clap): start the server or run `grain analyze` | server, engine, github, lsp |
 | `grain-server` | axum routes, shared state, background jobs, typed API contract | engine, lsp, git, github, agent, store |
-| `grain-lsp` | Precise TS/JS outside usage from TypeScript 7's language server (downloaded once, checksum-verified) | engine |
-| `grain-engine` | Git range → chapters, blocks, skim, facts, checks, estimated risk; optional `UsageProvider` hook | sem-core |
+| `grain-lsp` | TypeScript 7 language server (downloaded once, checksum-verified): precise outside usage, go to definition, find references | engine |
+| `grain-engine` | Git range → blocks, a story of user-flow chapters, skim, facts, checks, estimated risk; optional `UsageProvider` hook | sem-core |
 | `grain-git` | git CLI operations (fetch, merge-base, worktrees, diffs) | — |
 | `grain-github` | PR and repo lookups, clones, via the user's `gh` login | — |
 | `grain-agent` | Optional block summaries from the user's own agent CLI, with provider-terms guards | — |
@@ -39,10 +39,10 @@ Each crate has one job. Dependencies only point down this list; nothing depends 
 lib.rs        public API: analyze(), model types, REVIEW_FORMAT
 pipeline.rs   orchestration of the steps below; cuts huge single-file groups into parts (Block.slice)
 diff/         hunks.rs (git -U0 parsing, edit shapes), units.rs (lines → entity/residue units)
-grouping/     cluster.rs (units → blocks), chapters.rs (blocks → chapters), blocks.rs, union_find.rs
+grouping/     cluster.rs (units → blocks, ≤ 400 lines), story.rs (blocks → user-flow chapters: entry points, calls + JSX, sections), layers.rs, blocks.rs, union_find.rs
 facts/        checks.rs (rule checks, estimated risk), removed.rs (removed code still referenced)
 classify.rs   path conventions: file kinds, tests, layers, language families
-model.rs      Review, Chapter, Block, Check (serialized as review.json, exported to TypeScript)
+model.rs      Review, Story, Chapter, Section, Layer, Block, Check (serialized as review.json, exported to TypeScript)
 ```
 
 ### Rules
@@ -65,7 +65,7 @@ features/
   settings/   AI agent and limits
 components/   shared, feature-agnostic UI: ui/ primitives, CommandPalette, Icons
 lib/          framework-free helpers: http, formatting, PR refs, hotkeys
-styles/       Tailwind entry and design tokens (@theme)
+styles/       Tailwind entry and design tokens (@theme); see docs/DESIGN.md
 types/generated/   TypeScript types generated from Rust (do not edit)
 ```
 
@@ -74,5 +74,5 @@ types/generated/   TypeScript types generated from Rust (do not edit)
 - A feature exposes itself only through its `index.ts`; nothing imports `features/<name>/<file>` from outside.
 - Features never import each other or `app/`; `app/` composes them.
 - `components/` and `lib/` never import features or `app/`.
-- Styling uses Tailwind utilities with the tokens in `styles/index.css` (`bg-graphite`, `text-fog`, `text-coral`…). Colour carries meaning only: sage reviewed, coral risk or change, amber warning, periwinkle focus.
+- Styling follows [docs/DESIGN.md](docs/DESIGN.md): semantic tokens from `styles/index.css` (`bg-surface`, `text-fg-subtle`, `text-danger`…) and primitives from `components/ui/`. Colour carries meaning only: success reviewed, danger risk or change, warning changed or caution, accent focus. `pnpm lint` rejects raw colours, pixel font sizes and one-off radii.
 - Server types come from `types/generated`. Change the Rust type, run `cargo test`, and commit the regenerated files.

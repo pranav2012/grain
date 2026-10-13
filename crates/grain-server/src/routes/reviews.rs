@@ -6,8 +6,8 @@ use grain_github::PrRef;
 use grain_store::read_json;
 
 use crate::contract::{
-    DiffRequest, Job, LocalCandidate, LocalOpenRequest, OpenRequest, OpenResponse, RecentReview, Stage, Status,
-    SubmitRequest, SubmitResponse, SummarizeRequest, ThreadReplyRequest, ThreadResolved,
+    AskRequest, AskResponse, DiffRequest, Job, LocalCandidate, LocalOpenRequest, OpenRequest, OpenResponse,
+    RecentReview, Stage, Status, SubmitRequest, SubmitResponse, SummarizeRequest, ThreadReplyRequest, ThreadResolved,
 };
 use crate::error::{ApiError, ApiResult, blocking};
 use crate::state::Shared;
@@ -140,6 +140,67 @@ pub(super) async fn summarize(
     StatusCode::ACCEPTED
 }
 
+/// Asks the reviewer's agent about one change. Runs the agent's CLI, so it can take a while.
+pub(super) async fn ask(
+    State(app): State<Shared>,
+    Path(p): Path<(String, String, u64)>,
+    Json(body): Json<AskRequest>,
+) -> ApiResult<Json<AskResponse>> {
+    if body.question.trim().is_empty() {
+        return Err(ApiError::bad_request("Write a question first."));
+    }
+    let pr = pr_of(p);
+    let settings = app.settings();
+    let agent = settings.agent.ok_or_else(|| ApiError::bad_request("Choose an AI agent in settings first."))?;
+    blocking(move || {
+        let review = read_json(&app.home.review_dir(&pr).join("review.json"))
+            .ok_or_else(|| anyhow::anyhow!("PR not prepared"))?;
+        let files: Vec<String> = review["blocks"]
+            .as_array()
+            .and_then(|bs| bs.iter().find(|b| b["key"] == body.key.as_str()))
+            .and_then(|b| b["files"].as_array())
+            .map(|fs| fs.iter().filter_map(|f| f.as_str().map(str::to_string)).collect())
+            .ok_or_else(|| anyhow::anyhow!("That change is no longer in this review."))?;
+        let mut context = crate::jobs::prepare::block_diff(&app.home, &pr, &files)?;
+        context.truncate(context.floor_char_boundary(60_000));
+        if let Some(code) = body.code.filter(|c| !c.trim().is_empty()) {
+            context = format!("SELECTED LINES:\n{code}\n\nFULL CHANGE:\n{context}");
+        }
+        match grain_agent::answer(
+            agent,
+            settings.model.as_deref(),
+            &context,
+            body.question.trim(),
+            &app.home.cache_dir(),
+        ) {
+            grain_agent::Outcome::Done { summary, .. } => {
+                Ok(Json(AskResponse { answer: summary["answer"].as_str().unwrap_or_default().to_string() }))
+            }
+            grain_agent::Outcome::Refused { reason } => Err(anyhow::anyhow!(reason)),
+            grain_agent::Outcome::Limited { .. } => {
+                Err(anyhow::anyhow!("Your agent reported a usage limit. Try again later."))
+            }
+            grain_agent::Outcome::Failed { detail } => {
+                tracing::warn!(%detail, "ask failed");
+                Err(anyhow::anyhow!("The agent didn't answer: {}", failure_reason(&detail)))
+            }
+        }
+    })
+    .await
+}
+
+/// The line of an agent's output that best says why it failed: the last error, else the last line.
+fn failure_reason(detail: &str) -> &str {
+    let lines: Vec<&str> = detail.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    lines
+        .iter()
+        .rev()
+        .find(|l| l.to_lowercase().contains("error"))
+        .or(lines.last())
+        .copied()
+        .unwrap_or("it ended without a reply. Try again.")
+}
+
 /// The diff sections for a block's files, so the UI never loads a whole huge patch.
 pub(super) async fn diff(
     State(app): State<Shared>,
@@ -260,4 +321,19 @@ pub(super) async fn put_progress(
         Ok(StatusCode::NO_CONTENT)
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::failure_reason;
+
+    #[test]
+    fn failure_reason_prefers_the_error_line() {
+        assert_eq!(
+            failure_reason("\nReading prompt\nERROR: stream disconnected\ntokens used\n"),
+            "ERROR: stream disconnected"
+        );
+        assert_eq!(failure_reason("banner\nsomething odd\n"), "something odd");
+        assert_eq!(failure_reason("\n  \n"), "it ended without a reply. Try again.");
+    }
 }

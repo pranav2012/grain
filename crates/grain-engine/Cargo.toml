@@ -1,6 +1,6 @@
 [package]
 name = "grain-engine"
-description = "Groups a code change into reviewable chapters and blocks"
+description = "Groups a code change into ordered review layers and blocks"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
