@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/Button'
+import { Button, LinkButton } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { DialogActions, DialogTitle } from '@/components/ui/Dialog'
 import { Input } from '@/components/ui/Field'
+import { pickFolder } from '@/lib/pick-folder'
 import { reviewApi } from '../api'
 
 /**
- * Asked once per repository: borrow from the reviewer's existing clone (their repo is never
- * modified) or download a read-only copy.
+ * Asked once per repository, only when Grain can't find exactly one clone by itself: borrow from
+ * the reviewer's existing clone (their repo is never modified) or download a read-only copy.
  */
 export function RepoSetup({ fullRepo, onDone }: { fullRepo: string; onDone(): void }) {
   const [candidates, setCandidates] = useState<string[] | null>(null)
   const [path, setPath] = useState('')
+  const [typing, setTyping] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
+  const [busy, setBusy] = useState<'picking' | 'saving' | null>(null)
   useEffect(() => {
     reviewApi.localRepo(fullRepo).then(
       (r) => {
@@ -24,12 +26,24 @@ export function RepoSetup({ fullRepo, onDone }: { fullRepo: string; onDone(): vo
     )
   }, [fullRepo])
   const save = (p: string | null) => {
-    setSaving(true)
+    setBusy('saving')
     setError(null)
     reviewApi.setLocalRepo(fullRepo, p).then(onDone, (e: Error) => {
       setError(e.message)
-      setSaving(false)
+      setBusy(null)
     })
+  }
+  const choose = () => {
+    setBusy('picking')
+    setError(null)
+    pickFolder(`Choose your clone of ${fullRepo}`).then(
+      (p) => (p ? save(p) : setBusy(null)),
+      (e: Error) => {
+        setError(e.message)
+        setTyping(true)
+        setBusy(null)
+      },
+    )
   }
 
   return (
@@ -40,10 +54,11 @@ export function RepoSetup({ fullRepo, onDone }: { fullRepo: string; onDone(): vo
         only read, never changed. You'll only be asked once.
       </p>
       {candidates === null ? (
-        <p className="text-fg-subtle">Looking for it in your usual code folders…</p>
+        <p className="text-fg-subtle">Looking for it in your work folders…</p>
       ) : (
         candidates.length > 0 && (
           <div className="mb-2.5 flex flex-col gap-1.5">
+            <p className="text-sm text-fg-subtle">Found {candidates.length} copies. Pick the one to use:</p>
             {candidates.map((c) => (
               <button
                 key={c}
@@ -57,21 +72,33 @@ export function RepoSetup({ fullRepo, onDone }: { fullRepo: string; onDone(): vo
           </div>
         )
       )}
-      <Input
-        value={path}
-        onChange={(e) => setPath(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && path.trim() && save(path)}
-        placeholder={`Path to your clone, e.g. ~/code/${fullRepo.split('/')[1]}`}
-        className="w-full font-mono text-xs"
-      />
+      <div className="flex items-center gap-3">
+        <Button onClick={choose} disabled={busy !== null}>
+          {busy === 'picking' ? 'Waiting for you to pick a folder…' : 'Choose folder…'}
+        </Button>
+        {!typing && <LinkButton onClick={() => setTyping(true)}>Type a path instead</LinkButton>}
+      </div>
+      {typing && (
+        <Input
+          autoFocus
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && path.trim() && save(path)}
+          placeholder={`Path to your clone, e.g. ~/code/${fullRepo.split('/')[1]}`}
+          className="mt-2.5 w-full font-mono text-xs"
+        />
+      )}
       {error && <p className="mt-2 text-danger">{error}</p>}
+      <p className="mt-3 text-sm text-fg-faint">Tip: add the folder you keep your code in under Settings → Work folders, and Grain will find clones there without asking.</p>
       <DialogActions>
-        <Button onClick={() => save(null)} disabled={saving}>
+        <Button onClick={() => save(null)} disabled={busy !== null}>
           No, download a copy
         </Button>
-        <Button variant="primary" onClick={() => save(path)} disabled={saving || !path.trim()}>
-          Use this folder
-        </Button>
+        {(typing || (candidates?.length ?? 0) > 0) && (
+          <Button variant="primary" onClick={() => save(path)} disabled={busy !== null || !path.trim()}>
+            Use this folder
+          </Button>
+        )}
       </DialogActions>
     </Card>
   )

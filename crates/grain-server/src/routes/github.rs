@@ -47,7 +47,7 @@ pub(super) async fn local_repo(
         Ok(Json(LocalRepo {
             asked: choice.is_some(),
             path: choice.flatten().map(|p| p.display().to_string()),
-            candidates: crate::local_repos::candidates(&owner, &repo),
+            candidates: crate::local_repos::candidates(&app.settings().work_folders, &owner, &repo),
         }))
     })
     .await
@@ -63,10 +63,7 @@ pub(super) async fn set_local_repo(
     let path = match body.path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
         None => None,
         Some(p) => {
-            let expanded = p
-                .strip_prefix("~/")
-                .and_then(|rest| dirs::home_dir().map(|h| h.join(rest)))
-                .unwrap_or_else(|| p.into());
+            let expanded = crate::local_repos::expand_home(p);
             if !grain_git::has_github_remote(&expanded, &owner, &repo) {
                 return Err(ApiError::bad_request(format!(
                     "{} isn't a clone of {full}. Pick the folder whose git remote points at github.com/{full}.",

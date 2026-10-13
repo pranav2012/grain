@@ -40,6 +40,7 @@ pub(crate) fn router(app: Shared) -> Router {
         .route("/api/repos/{owner}/{repo}/local", get(github::local_repo).put(github::set_local_repo))
         .route("/api/open", post(reviews::open))
         .route("/api/local", get(reviews::local_candidates).post(reviews::open_local))
+        .route("/api/pick-folder", post(reviews::pick_folder))
         .route("/api/reviews", get(reviews::recent))
         .route("/api/reviews/{owner}/{repo}/{number}/status", get(reviews::status))
         .route("/api/reviews/{owner}/{repo}/{number}/files/{file}", get(reviews::file))

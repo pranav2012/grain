@@ -6,6 +6,7 @@ import { Kbd } from '@/components/ui/Kbd'
 import { ListMessage, ListOption } from '@/components/ui/ListOption'
 import { cn } from '@/lib/cn'
 import { ago } from '@/lib/format'
+import { pickFolder } from '@/lib/pick-folder'
 import { formatPrRef, looksLikePath, parsePrRef } from '@/lib/pr-ref'
 import type { LocalCandidate } from '@/types/generated/LocalCandidate'
 import type { Inbox } from '@/types/generated/Inbox'
@@ -85,6 +86,10 @@ export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: 
     (path: string) => pickerApi.openLocal(path).then((r) => onOpen(r.id), (e: Error) => setError(e.message)),
     [onOpen],
   )
+  const chooseLocal = useCallback(
+    () => pickFolder('Choose a folder to review its local changes').then((p) => (p ? openLocal(p) : undefined), (e: Error) => setError(e.message)),
+    [openLocal],
+  )
   const { rows, loading } = useMemo((): { rows: Row[]; loading: boolean } => {
     if (pasted) return { rows: [{ key: 'pasted', title: `Open ${formatPrRef(pasted)}`, meta: 'Pasted link', run: () => onOpen(pasted) }], loading: false }
     if (looksLikePath(q))
@@ -107,10 +112,10 @@ export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: 
     if (tab === 'requests') return prRows(inbox?.reviewRequests)
     if (tab === 'mine') return prRows(inbox?.mine)
     if (tab === 'recent') return prRows(recent)
-    if (tab === 'local')
-      return {
-        rows: (local ?? [])
-          .map(
+    if (tab === 'local') {
+      const choose: Row = { key: 'choose', title: 'Choose a folder…', meta: 'Pick any folder on this computer', run: chooseLocal }
+      const found = (local ?? [])
+        .map(
             (r): Row => ({
               key: r.path,
               title: r.branch ? `${r.name} · ${r.branch}` : r.name,
@@ -118,9 +123,9 @@ export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: 
               run: () => openLocal(r.path),
             }),
           )
-          .filter((r) => matches(`${r.title} ${r.meta}`)),
-        loading: !local,
-      }
+          .filter((r) => matches(`${r.title} ${r.meta}`))
+      return { rows: q ? found : [choose, ...found], loading: !local }
+    }
     if (repo) return prRows(repoPulls)
     return {
       rows: (repos ?? []).map((r) => ({
@@ -135,7 +140,7 @@ export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: 
       })),
       loading: !repos,
     }
-  }, [pasted, tab, inbox, recent, local, repos, repo, repoPulls, q, onOpen, openLocal])
+  }, [pasted, tab, inbox, recent, local, repos, repo, repoPulls, q, onOpen, openLocal, chooseLocal])
 
   const switchTab = (t: Tab) => {
     setTab(t)

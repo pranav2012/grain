@@ -49,7 +49,7 @@ pub(crate) fn prepare(
 
     let clone = home.clone_dir(pr);
     if !grain_git::is_repo(&clone) {
-        let reference = match home.repo_choice(&pr.full_repo()) {
+        let reference = match crate::local_repos::resolve(home, settings, &pr.owner, &pr.repo) {
             None => return Ok(Next::NeedsRepo),
             Some(local) => local.filter(|p| grain_git::has_github_remote(p, &pr.owner, &pr.repo)),
         };

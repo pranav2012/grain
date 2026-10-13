@@ -2,6 +2,7 @@
 
 mod contract;
 mod error;
+mod folder_picker;
 mod jobs;
 mod local_repos;
 mod patch_index;

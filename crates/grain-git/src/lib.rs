@@ -186,13 +186,23 @@ pub fn remove_worktree(clone: &Path, worktree: &Path) -> Result<()> {
 /// True when `dir` is a git repository with a remote pointing at `github.com/<owner>/<repo>`.
 pub fn has_github_remote(dir: &Path, owner: &str, repo: &str) -> bool {
     let Ok(remotes) = run(dir, &["remote", "-v"]) else { return false };
-    let want = format!("{owner}/{repo}").to_lowercase();
-    remotes.lines().any(|l| {
-        let url = l.split_whitespace().nth(1).unwrap_or_default().to_lowercase();
-        let path =
-            url.split_once("github.com").map(|(_, rest)| rest.trim_start_matches([':', '/'])).unwrap_or_default();
-        path.trim_end_matches('/').trim_end_matches(".git") == want
-    })
+    remotes.lines().any(|l| is_github_url(l.split_whitespace().nth(1).unwrap_or_default(), owner, repo))
+}
+
+/// Like [`has_github_remote`] but only reads `dir/.git/config` (no git process), so it stays
+/// fast across hundreds of folders. Linked worktrees (a `.git` file) never match.
+pub fn config_has_github_remote(dir: &Path, owner: &str, repo: &str) -> bool {
+    let Ok(config) = std::fs::read_to_string(dir.join(".git").join("config")) else { return false };
+    config
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("url"))
+        .any(|rest| rest.trim_start().strip_prefix('=').is_some_and(|url| is_github_url(url.trim(), owner, repo)))
+}
+
+fn is_github_url(url: &str, owner: &str, repo: &str) -> bool {
+    let url = url.to_lowercase();
+    let path = url.split_once("github.com").map(|(_, rest)| rest.trim_start_matches([':', '/'])).unwrap_or_default();
+    path.trim_end_matches('/').trim_end_matches(".git") == format!("{owner}/{repo}").to_lowercase()
 }
 
 /// Deletes a ref if it exists.
@@ -217,7 +227,7 @@ pub fn diff(clone: &Path, base: &str, head: &str, paths: &[String]) -> Result<St
 
 #[cfg(test)]
 mod tests {
-    use super::{run, snapshot_worktree, sparse_pattern};
+    use super::{config_has_github_remote, run, snapshot_worktree, sparse_pattern};
 
     #[test]
     fn sparse_patterns_match_exact_paths() {
@@ -249,6 +259,21 @@ mod tests {
         assert_eq!(files.lines().collect::<Vec<_>>(), ["a.txt", "new.txt"]);
         assert_eq!(git(&["status", "--porcelain"])?, status_before);
         assert_eq!(snapshot_worktree(&repo, &index)?, snap, "same files give the same snapshot");
+        Ok(())
+    }
+
+    #[test]
+    fn config_remote_matches_ssh_and_https_urls() -> anyhow::Result<()> {
+        let tmp = tempfile::tempdir()?;
+        let repo = tmp.path().join("renamed-clone");
+        std::fs::create_dir(&repo)?;
+        run(&repo, &["init", "-q"])?;
+        assert!(!config_has_github_remote(&repo, "acme", "widgets"));
+        run(&repo, &["remote", "add", "origin", "git@github.com:Acme/widgets.git"])?;
+        assert!(config_has_github_remote(&repo, "acme", "widgets"));
+        assert!(!config_has_github_remote(&repo, "acme", "widget"));
+        run(&repo, &["remote", "set-url", "origin", "https://github.com/acme/widgets"])?;
+        assert!(config_has_github_remote(&repo, "acme", "widgets"));
         Ok(())
     }
 }

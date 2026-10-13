@@ -210,6 +210,20 @@ pub(crate) struct LocalRepoRequest {
 
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
+pub(crate) struct PickFolderRequest {
+    /// Shown in the picker window, e.g. "Choose your clone of acme/widgets".
+    pub prompt: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub(crate) struct PickFolderResponse {
+    /// The chosen folder, or `null` when the reviewer cancelled.
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
 pub(crate) struct ThreadReplyRequest {
     pub body: String,
 }

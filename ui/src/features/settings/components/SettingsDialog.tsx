@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/Button'
+import { Button, LinkButton } from '@/components/ui/Button'
 import { Choice, ChoiceGroup } from '@/components/ui/Choice'
 import { Dialog, DialogActions, DialogTitle } from '@/components/ui/Dialog'
 import { Input } from '@/components/ui/Field'
+import { SectionLabel } from '@/components/ui/SectionLabel'
+import { pickFolder } from '@/lib/pick-folder'
 import type { Agent } from '@/types/generated/Agent'
 import type { Settings } from '@/types/generated/Settings'
 import { settingsApi } from '../api'
@@ -22,6 +24,11 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
     settingsApi.get().then(setS, (e: Error) => setError(e.message))
     settingsApi.me().then((m) => setInstalled(m.agentsInstalled), () => {})
   }, [])
+  const addWorkFolder = () =>
+    pickFolder('Choose a folder where you keep your code').then(
+      (p) => p && setS((cur) => cur && (cur.workFolders.includes(p) ? cur : { ...cur, workFolders: [...cur.workFolders, p] })),
+      (e: Error) => setError(e.message),
+    )
   const save = () =>
     s &&
     settingsApi.save(s).then(
@@ -33,7 +40,7 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
     )
 
   return (
-    <Dialog label="Settings" onClose={onClose} className="p-5">
+    <Dialog label="Settings" onClose={onClose} className="max-h-[90vh] overflow-auto p-5">
       <DialogTitle>Settings</DialogTitle>
       <p className="mb-3.5 leading-relaxed text-fg-subtle">
         AI is off unless you turn it on. With an agent chosen, Grain only summarizes a block when you ask (press a), runs your own agent read-only, and caches every answer.
@@ -86,6 +93,22 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
               className="w-20"
             />
           </label>
+          <SectionLabel className="mt-5">Work folders</SectionLabel>
+          <p className="mt-1 text-sm text-fg-faint">
+            Where you keep your code, e.g. ~/work. When a repository opens for the first time, Grain looks here (and in common folders like ~/code) and
+            uses your clone without asking.
+          </p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {s.workFolders.map((w) => (
+              <li key={w} className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-1.5">
+                <span className="truncate font-mono text-xs text-fg">{w}</span>
+                <LinkButton onClick={() => setS({ ...s, workFolders: s.workFolders.filter((x) => x !== w) })}>Remove</LinkButton>
+              </li>
+            ))}
+          </ul>
+          <Button size="sm" className="mt-2" onClick={addWorkFolder}>
+            Add folder…
+          </Button>
         </>
       )}
       {error && <p className="mt-3 text-danger">{error}</p>}

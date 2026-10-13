@@ -7,7 +7,8 @@ use grain_store::read_json;
 
 use crate::contract::{
     AskRequest, AskResponse, DiffRequest, Job, LocalCandidate, LocalOpenRequest, OpenRequest, OpenResponse,
-    RecentReview, Stage, Status, SubmitRequest, SubmitResponse, SummarizeRequest, ThreadReplyRequest, ThreadResolved,
+    PickFolderRequest, PickFolderResponse, RecentReview, Stage, Status, SubmitRequest, SubmitResponse,
+    SummarizeRequest, ThreadReplyRequest, ThreadResolved,
 };
 use crate::error::{ApiError, ApiResult, blocking};
 use crate::state::Shared;
@@ -29,10 +30,7 @@ pub(super) async fn open_local(
     State(app): State<Shared>,
     Json(body): Json<LocalOpenRequest>,
 ) -> ApiResult<Json<OpenResponse>> {
-    let path = match body.path.trim().strip_prefix("~/") {
-        Some(rest) => dirs::home_dir().unwrap_or_default().join(rest),
-        None => std::path::PathBuf::from(body.path.trim()),
-    };
+    let path = crate::local_repos::expand_home(body.path.trim());
     if !path.is_dir() {
         return Err(ApiError::bad_request(format!("{} is not a folder on this computer.", path.display())));
     }
@@ -42,9 +40,15 @@ pub(super) async fn open_local(
     Ok(Json(OpenResponse { id: format!("{}/{}", pr.full_repo(), pr.number) }))
 }
 
-/// Git repositories in the usual code folders, most recently active first.
-pub(super) async fn local_candidates() -> ApiResult<Json<Vec<LocalCandidate>>> {
-    blocking(|| Ok(Json(crate::local_repos::all_repos()))).await
+/// Git repositories in the work folders and usual code folders, most recently active first.
+pub(super) async fn local_candidates(State(app): State<Shared>) -> ApiResult<Json<Vec<LocalCandidate>>> {
+    let work_folders = app.settings().work_folders;
+    blocking(move || Ok(Json(crate::local_repos::all_repos(&work_folders)))).await
+}
+
+/// Opens the system's folder picker on this computer and returns what the reviewer chose.
+pub(super) async fn pick_folder(Json(body): Json<PickFolderRequest>) -> ApiResult<Json<PickFolderResponse>> {
+    blocking(move || Ok(Json(PickFolderResponse { path: crate::folder_picker::pick(&body.prompt)? }))).await
 }
 
 /// PRs already prepared on this machine, most recent first.

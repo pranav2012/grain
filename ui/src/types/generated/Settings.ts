@@ -18,4 +18,9 @@ autoSummarize: boolean,
 /**
  * Prepare the newest review requests in the background (git and grouping only, never AI).
  */
-prefetch: boolean, };
+prefetch: boolean, 
+/**
+ * Folders the reviewer keeps their clones in; searched (two levels deep) along with the
+ * usual code folders when a repository opens for the first time.
+ */
+workFolders: Array<string>, };

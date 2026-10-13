@@ -117,11 +117,21 @@ pub struct Settings {
     pub auto_summarize: bool,
     /// Prepare the newest review requests in the background (git and grouping only, never AI).
     pub prefetch: bool,
+    /// Folders the reviewer keeps their clones in; searched (two levels deep) along with the
+    /// usual code folders when a repository opens for the first time.
+    pub work_folders: Vec<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { agent: None, model: None, max_summaries_per_review: 30, auto_summarize: false, prefetch: true }
+        Settings {
+            agent: None,
+            model: None,
+            max_summaries_per_review: 30,
+            auto_summarize: false,
+            prefetch: true,
+            work_folders: Vec::new(),
+        }
     }
 }
 
