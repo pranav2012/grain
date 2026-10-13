@@ -63,7 +63,10 @@ pub fn summarize_layer(agent: Agent, model: Option<&str>, diff: &str, cache_dir:
 /// The summary value is `{ "answer": "…" }`; identical questions are answered from the cache.
 pub fn answer(agent: Agent, model: Option<&str>, context: &str, question: &str, cache_dir: &Path) -> Outcome {
     let body = format!("QUESTION: {question}\n\nCODE:\n{context}");
-    ask(agent, model, ASK_PROMPT, ASK_SCHEMA, &body, cache_dir)
+    match ask(agent, model, ASK_PROMPT, ASK_SCHEMA, &body, cache_dir) {
+        Outcome::Failed { .. } => ask(agent, model, ASK_PROMPT, ASK_SCHEMA, &body, cache_dir),
+        other => other,
+    }
 }
 
 fn ask(agent: Agent, model: Option<&str>, head: &str, schema: &str, diff: &str, cache_dir: &Path) -> Outcome {
@@ -91,8 +94,10 @@ fn ask(agent: Agent, model: Option<&str>, head: &str, schema: &str, diff: &str, 
         }
         Ok((None, out)) => {
             let raw = format!("{}\n{}", out.stdout, out.stderr);
-            let detail: String = raw.chars().take(500).collect();
-            if looks_limited(&raw) { Outcome::Limited { detail } } else { Outcome::Failed { detail } }
+            // CLIs print their banner first and the error last, so keep the end.
+            let raw = raw.trim();
+            let detail = raw[raw.floor_char_boundary(raw.len().saturating_sub(1500))..].to_string();
+            if looks_limited(raw) { Outcome::Limited { detail } } else { Outcome::Failed { detail } }
         }
         Err(e) => Outcome::Failed { detail: e.to_string() },
     }

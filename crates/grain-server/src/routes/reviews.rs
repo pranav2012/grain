@@ -181,11 +181,24 @@ pub(super) async fn ask(
                 Err(anyhow::anyhow!("Your agent reported a usage limit. Try again later."))
             }
             grain_agent::Outcome::Failed { detail } => {
-                Err(anyhow::anyhow!("The agent didn't answer: {}", detail.lines().next().unwrap_or("")))
+                tracing::warn!(%detail, "ask failed");
+                Err(anyhow::anyhow!("The agent didn't answer: {}", failure_reason(&detail)))
             }
         }
     })
     .await
+}
+
+/// The line of an agent's output that best says why it failed: the last error, else the last line.
+fn failure_reason(detail: &str) -> &str {
+    let lines: Vec<&str> = detail.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    lines
+        .iter()
+        .rev()
+        .find(|l| l.to_lowercase().contains("error"))
+        .or(lines.last())
+        .copied()
+        .unwrap_or("it ended without a reply. Try again.")
 }
 
 /// The diff sections for a block's files, so the UI never loads a whole huge patch.
@@ -308,4 +321,19 @@ pub(super) async fn put_progress(
         Ok(StatusCode::NO_CONTENT)
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::failure_reason;
+
+    #[test]
+    fn failure_reason_prefers_the_error_line() {
+        assert_eq!(
+            failure_reason("\nReading prompt\nERROR: stream disconnected\ntokens used\n"),
+            "ERROR: stream disconnected"
+        );
+        assert_eq!(failure_reason("banner\nsomething odd\n"), "something odd");
+        assert_eq!(failure_reason("\n  \n"), "it ended without a reply. Try again.");
+    }
 }

@@ -132,6 +132,13 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     setLineThreads((ts) => ts.map((t) => (t.id === threadId ? { ...t, messages: [...t.messages, message] } : t)))
     askAgent(thread.blockId, question, thread.code, thread.messages, (patch) => patchMessage(threadId, message.id, patch))
   }
+  const retry = (threadId: string, messageId: string) => {
+    const thread = lineThreads.find((t) => t.id === threadId)
+    const at = thread?.messages.findIndex((m) => m.id === messageId) ?? -1
+    if (!thread || at < 0) return
+    patchMessage(threadId, messageId, { error: undefined })
+    askAgent(thread.blockId, thread.messages[at].question, thread.code, thread.messages.slice(0, at), (patch) => patchMessage(threadId, messageId, patch))
+  }
   const addComment = (blockId: number, c: NewComment) => dispatch({ type: 'comment', comment: newComment(c, blockId, data.blocks.get(blockId)!.key) })
 
   useHotkeys({
@@ -224,6 +231,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           onAsk={(q) => ask(current, q)}
           onAskAt={askAt}
           onFollowUp={followUp}
+          onRetry={retry}
           onToggleThread={(id, open) => setLineThreads((ts) => ts.map((t) => (t.id === id ? { ...t, open } : t)))}
           onMark={(v) => mark(current, v)}
           onPrimary={primary}

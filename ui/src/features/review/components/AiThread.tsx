@@ -9,6 +9,7 @@ interface AiThreadProps {
   thread: LineThread
   agentName: string
   onFollowUp(question: string): void
+  onRetry(messageId: string): void
   onToggle(open: boolean): void
   onComment(body: string): void
   /** Reports where the collapsed marker is, so the page can show the conversation on hover. */
@@ -18,7 +19,7 @@ interface AiThreadProps {
 const tag = <span className="rounded-sm border border-accent/40 px-1 text-2xs font-semibold text-accent">AI</span>
 
 /** The agent's answers at one line: an open conversation, or a small marker that shows it on hover. */
-export function AiThread({ thread, agentName, onFollowUp, onToggle, onComment, onHover }: AiThreadProps) {
+export function AiThread({ thread, agentName, onFollowUp, onRetry, onToggle, onComment, onHover }: AiThreadProps) {
   const [question, setQuestion] = useState('')
   const last = thread.messages[thread.messages.length - 1]
   const thinking = !!last && !last.answer && !last.error
@@ -47,7 +48,7 @@ export function AiThread({ thread, agentName, onFollowUp, onToggle, onComment, o
           Collapse
         </LinkButton>
       </div>
-      <ThreadMessages thread={thread} agentName={agentName} onComment={onComment} />
+      <ThreadMessages thread={thread} agentName={agentName} onComment={onComment} onRetry={onRetry} />
       <form
         className="flex gap-2 border-t border-line px-3 py-2"
         onSubmit={(e) => {
@@ -77,7 +78,17 @@ export function AiThread({ thread, agentName, onFollowUp, onToggle, onComment, o
 }
 
 /** Questions and answers, oldest first. */
-export function ThreadMessages({ thread, agentName, onComment }: { thread: LineThread; agentName: string; onComment?(body: string): void }) {
+export function ThreadMessages({
+  thread,
+  agentName,
+  onComment,
+  onRetry,
+}: {
+  thread: LineThread
+  agentName: string
+  onComment?(body: string): void
+  onRetry?(messageId: string): void
+}) {
   return (
     <ol className="flex flex-col gap-2 px-3 py-2 text-sm">
       {thread.messages.map((m) => (
@@ -89,6 +100,11 @@ export function ThreadMessages({ thread, agentName, onComment }: { thread: LineT
           {m.answer && onComment && (
             <LinkButton className="mt-0.5" onClick={() => onComment(m.answer!)}>
               turn into comment
+            </LinkButton>
+          )}
+          {m.error && onRetry && (
+            <LinkButton className="mt-0.5" onClick={() => onRetry(m.id)}>
+              Try again
             </LinkButton>
           )}
         </li>

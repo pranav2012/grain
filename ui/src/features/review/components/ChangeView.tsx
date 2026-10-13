@@ -75,6 +75,7 @@ interface ChangeViewProps {
   onAsk(question: string): void
   onAskAt(anchor: ThreadAnchor, question: string): void
   onFollowUp(threadId: string, question: string): void
+  onRetry(threadId: string, messageId: string): void
   onToggleThread(threadId: string, open: boolean): void
   onMark(state: BlockState | null): void
   onExplain(): void
@@ -376,6 +377,7 @@ export function ChangeView(p: ChangeViewProps) {
                       thread={t}
                       agentName={p.agentName}
                       onFollowUp={(q) => p.onFollowUp(t.id, q)}
+                      onRetry={(m) => p.onRetry(t.id, m)}
                       onToggle={(open) => {
                         setHover(null)
                         p.onToggleThread(t.id, open)
