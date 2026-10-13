@@ -3,6 +3,13 @@
 All notable changes to Grain. Versions follow [Semantic Versioning](https://semver.org); entries are generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.3.0] - 2026-10-13
+
+### Features
+- Pick folders with the system picker and find clones in your work folders
+
+
+
 ## [0.2.0] - 2026-10-13
 
 ### Features
