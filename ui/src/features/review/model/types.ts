@@ -71,3 +71,19 @@ export interface Ask {
   answer?: string
   error?: string
 }
+
+/** A conversation with the agent anchored at one line of the diff. */
+export interface LineThread {
+  id: string
+  blockId: number
+  file: string
+  side: Side
+  /** 1-based line the thread sits under. */
+  line: number
+  /** What was asked about: `fetchVoucher` or `VoucherBody.tsx:12–18`. */
+  about: string
+  /** The code the questions are about, sent with each question. */
+  code?: string
+  messages: Ask[]
+  open: boolean
+}

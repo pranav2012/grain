@@ -11,10 +11,10 @@ import { modeOrder, modes } from '../model/modes'
 import { blockProgress } from '../model/progress'
 import { chapterBlocks, chaptersFor, linesOf, ownedBlocks } from '../model/story'
 import { reviewApi } from '../api'
-import type { Ask, BlockState, LoadedPr, Mode, ReviewComment } from '../model/types'
+import type { Ask, BlockState, LineThread, LoadedPr, Mode, ReviewComment } from '../model/types'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
-import { ChapterView } from './ChapterView'
+import { ChangeView, type ThreadAnchor } from './ChangeView'
 import { FinishDialog } from './FinishDialog'
 import { KeyHints } from './KeyHints'
 import { NewCommitsNotice } from './NewCommitsNotice'
@@ -44,7 +44,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const [overlay, setOverlay] = useState<'palette' | 'finish' | 'help' | null>(null)
   const [composeTick, setComposeTick] = useState(0)
   const [asks, setAsks] = useState<Record<string, Ask[]>>({})
-  const [focusRequest, setFocusRequest] = useState<{ blockId: number; n: number } | null>(null)
+  const [lineThreads, setLineThreads] = useState<LineThread[]>([])
   const copy = modes[state.mode]
 
   const status = useReviewStatus(base.id, settingsVersion)
@@ -60,6 +60,9 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const owned = useMemo(() => ownedBlocks(data), [data])
   const { states, stale } = useMemo(() => blockProgress(data, state.verdicts), [data, state.verdicts])
   const chapter = chapters.find((c) => chapterBlocks(c).includes(current)) ?? chapters[0]
+  const chapterIds = chapterBlocks(chapter)
+  const section = chapter.sections.length > 1 ? chapter.sections.find((x) => x.blocks.includes(current)) : undefined
+  const block = data.blocks.get(current)!
   const reviewable = useMemo(() => order.filter((id) => !data.blocks.get(id)!.skim), [order, data])
   const agentName = agentNameOf(data)
 
@@ -69,11 +72,9 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [agentName, chapter?.key])
 
-  const focus = (id: number | undefined, scroll = true) => {
+  const focus = (id: number | undefined) => {
     const b = id === undefined ? undefined : data.blocks.get(id)
-    if (!b) return
-    dispatch({ type: 'go', key: b.key })
-    if (scroll) setFocusRequest((r) => ({ blockId: id!, n: (r?.n ?? 0) + 1 }))
+    if (b) dispatch({ type: 'go', key: b.key })
   }
   const openChapter = (c: Chapter | undefined) => c && focus(chapterBlocks(c).find((id) => !states[id]) ?? chapterBlocks(c)[0])
   const step = (d: number) => focus(order[Math.min(order.length - 1, Math.max(0, order.indexOf(current) + d))])
@@ -100,16 +101,36 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     if (!agentName) return onSettings()
     if (!b.skim) requestSummary([b.key])
   }
-  const ask = (blockId: number, question: string, code?: string, about?: string) => {
+  /** Sends a question to the agent; `history` (earlier questions and answers) keeps follow-ups in context. */
+  const askAgent = (blockId: number, question: string, code: string | undefined, history: Ask[], done: (patch: Partial<Ask>) => void) => {
+    const earlier = history.filter((m) => m.answer).map((m) => `Q: ${m.question}\nA: ${m.answer}`).join('\n\n')
+    const full = earlier ? `Earlier in this conversation:\n${earlier}\n\nFollow-up: ${question}` : question
+    reviewApi.ask(data.id, { key: data.blocks.get(blockId)!.key, question: full, code: code ?? null }).then(
+      (r) => done({ answer: r.answer }),
+      (e: Error) => done({ error: e.message }),
+    )
+  }
+  const ask = (blockId: number, question: string) => {
     const key = data.blocks.get(blockId)!.key
     const id = crypto.randomUUID()
-    const update = (patch: Partial<Ask>) => setAsks((all) => ({ ...all, [key]: (all[key] ?? []).map((q) => (q.id === id ? { ...q, ...patch } : q)) }))
-    setAsks((all) => ({ ...all, [key]: [...(all[key] ?? []), { id, question, about }] }))
-    focus(blockId)
-    reviewApi.ask(data.id, { key, question, code: code ?? null }).then(
-      (r) => update({ answer: r.answer }),
-      (e: Error) => update({ error: e.message }),
+    setAsks((all) => ({ ...all, [key]: [...(all[key] ?? []), { id, question }] }))
+    askAgent(blockId, question, undefined, [], (patch) =>
+      setAsks((all) => ({ ...all, [key]: (all[key] ?? []).map((q) => (q.id === id ? { ...q, ...patch } : q)) })),
     )
+  }
+  const patchMessage = (threadId: string, messageId: string, patch: Partial<Ask>) =>
+    setLineThreads((ts) => ts.map((t) => (t.id === threadId ? { ...t, messages: t.messages.map((m) => (m.id === messageId ? { ...m, ...patch } : m)) } : t)))
+  const askAt = (anchor: ThreadAnchor, question: string) => {
+    const thread: LineThread = { ...anchor, id: crypto.randomUUID(), blockId: current, messages: [{ id: crypto.randomUUID(), question }], open: true }
+    setLineThreads((ts) => [...ts, thread])
+    askAgent(current, question, anchor.code, [], (patch) => patchMessage(thread.id, thread.messages[0].id, patch))
+  }
+  const followUp = (threadId: string, question: string) => {
+    const thread = lineThreads.find((t) => t.id === threadId)
+    if (!thread) return
+    const message = { id: crypto.randomUUID(), question }
+    setLineThreads((ts) => ts.map((t) => (t.id === threadId ? { ...t, messages: [...t.messages, message] } : t)))
+    askAgent(thread.blockId, question, thread.code, thread.messages, (patch) => patchMessage(threadId, message.id, patch))
   }
   const addComment = (blockId: number, c: NewComment) => dispatch({ type: 'comment', comment: newComment(c, blockId, data.blocks.get(blockId)!.key) })
 
@@ -178,32 +199,40 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           onChapter={openChapter}
           onBlock={(id) => focus(id)}
         />
-        <ChapterView
+        <ChangeView
           data={data}
           chapter={chapter}
-          next={chapters[chapters.indexOf(chapter) + 1]}
+          section={section?.title ?? ''}
+          index={chapterIds.indexOf(current) + 1}
+          count={chapterIds.length}
+          block={block}
+          prev={data.blocks.get(order[order.indexOf(current) - 1])}
+          next={chapterIds.includes(order[order.indexOf(current) + 1]) ? data.blocks.get(order[order.indexOf(current) + 1]) : undefined}
+          nextChapter={chapters[chapters.indexOf(chapter) + 1]}
           mode={state.mode}
           diffStyle={prefs.diffStyle}
-          states={states}
-          stale={stale}
-          currentBlock={current}
-          comments={state.comments}
-          threadsFor={threadsFor}
-          owned={owned}
+          state={states[current]}
+          stale={!!stale[current]}
+          owned={owned.has(current)}
+          comments={state.comments.filter((c) => c.blockKey === block.key)}
+          threads={threadsFor(current)}
           agentName={agentName}
-          summaryPending={summaryPending}
+          summaryPending={summaryPending(block.key)}
           composeTick={composeTick}
-          asksFor={(key) => asks[key] ?? []}
-          onAsk={ask}
-          focusRequest={focusRequest}
-          onFocus={(id) => focus(id, false)}
-          onGo={(id) => focus(id)}
-          onMark={mark}
-          onExplain={explain}
+          asks={asks[block.key] ?? []}
+          aiThreads={lineThreads.filter((t) => t.blockId === current)}
+          onAsk={(q) => ask(current, q)}
+          onAskAt={askAt}
+          onFollowUp={followUp}
+          onToggleThread={(id, open) => setLineThreads((ts) => ts.map((t) => (t.id === id ? { ...t, open } : t)))}
+          onMark={(v) => mark(current, v)}
+          onPrimary={primary}
+          onExplain={() => explain(current)}
           onApproveAll={() => chapterBlocks(chapter).forEach((id) => mark(id, 'ok'))}
           onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
-          onNextChapter={() => stepChapter(1)}
-          onComment={addComment}
+          onStep={step}
+          onGo={(id) => focus(id)}
+          onComment={(c) => addComment(current, c)}
           onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
         />
         <KeyHints
