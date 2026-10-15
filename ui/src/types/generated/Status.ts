@@ -11,4 +11,8 @@ enriching: boolean,
 /**
  * Head commit of the stored review; differs from the open one when new commits arrived.
  */
-headSha: string | null, };
+headSha: string | null, 
+/**
+ * Type errors and lint findings are being computed.
+ */
+diagnosing: boolean, };

@@ -2,6 +2,8 @@ import { post, put, request, serverFetch } from '@/lib/http'
 import type { AskRequest } from '@/types/generated/AskRequest'
 import type { AskResponse } from '@/types/generated/AskResponse'
 import type { Conversation } from '@/types/generated/Conversation'
+import type { Diagnostics } from '@/types/generated/Diagnostics'
+import type { PrStatus } from '@/types/generated/PrStatus'
 import type { NavigateRequest } from '@/types/generated/NavigateRequest'
 import type { NavigateResponse } from '@/types/generated/NavigateResponse'
 import type { LocalRepo } from '@/types/generated/LocalRepo'
@@ -38,6 +40,10 @@ export const reviewApi = {
   setLocalRepo: (fullRepo: string, path: string | null) => put<LocalRepo>(`/api/repos/${fullRepo}/local`, { path }),
   submit: (id: string, req: SubmitRequest) => post<SubmitResponse>(`/api/reviews/${id}/submit`, req),
   conversation: (id: string) => request<Conversation>(`/api/reviews/${id}/conversation`),
+  /** Type errors and lint findings for the stored head; null until computed. */
+  diagnostics: (id: string) => file(id, 'diagnostics.json').then((r) => json<Diagnostics>(r)),
+  rediagnose: (id: string) => post<null>(`/api/reviews/${id}/diagnostics`, {}),
+  prStatus: (id: string) => request<PrStatus>(`/api/reviews/${id}/pr-status`),
   replyToThread: (id: string, thread: string, body: string) =>
     post<ThreadComment>(`/api/reviews/${id}/threads/${thread}/replies`, { body }),
   resolveThread: (id: string, thread: string, resolved: boolean) =>

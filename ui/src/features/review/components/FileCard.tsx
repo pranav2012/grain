@@ -8,15 +8,18 @@ import type { Check } from '@/types/generated/Check'
 import type { ReviewThread } from '@/types/generated/ReviewThread'
 import type { FilePatch } from '../hooks/usePrDiff'
 import type { UsedBy } from '../model/files'
+import type { FileProblems } from '../model/problems'
+import { markProblems, squiggleCSS } from '../model/squiggles'
 import { newLines } from '../model/suggestion'
 import type { CommentKind, DiffStyle, LineThread, ReviewComment, Side } from '../model/types'
 import { AiThread, ThreadMessages } from './AiThread'
 import { CodePeek, type Peek } from './CodePeek'
 import { CommentCard } from './CommentCard'
 import { Composer } from './Composer'
+import { ProblemRow } from './ProblemRow'
 import { ThreadCard } from './ThreadCard'
 
-type Note = { kind: 'draft' } | { kind: 'peek' } | { kind: 'ai'; id: string } | { kind: 'note'; id: string } | { kind: 'thread'; id: string }
+type Note = { kind: 'draft' } | { kind: 'peek' } | { kind: 'ai'; id: string } | { kind: 'note'; id: string } | { kind: 'thread'; id: string } | { kind: 'problem'; id: string }
 export type NewComment = Omit<ReviewComment, 'id' | 'createdAt' | 'blockId' | 'blockKey'>
 export type ThreadAnchor = Pick<LineThread, 'file' | 'side' | 'line' | 'about' | 'code'>
 
@@ -43,6 +46,7 @@ export interface FileCardProps {
   comments: ReviewComment[]
   threads: ReviewThread[]
   aiThreads: LineThread[]
+  problems: FileProblems
   agentName: string | null
   kinds: [CommentKind, string][]
   onCollapse(collapsed: boolean): void
@@ -65,7 +69,7 @@ const baseOptions: FileDiffOptions<Note, undefined> = {
   lineHoverHighlight: 'number',
   hunkSeparators: 'line-info',
   lineDiffType: 'word-alt',
-  unsafeCSS: '* { --diffs-dark-bg: var(--color-canvas) !important; }',
+  unsafeCSS: `* { --diffs-dark-bg: var(--color-canvas) !important; }\n${squiggleCSS}`,
 }
 
 const fileName = (p: string) => p.split('/').pop()!
@@ -89,8 +93,10 @@ export function FileCard(p: FileCardProps) {
     )
   }
   const lookupRef = useRef(lookup)
+  const problemsRef = useRef(p.problems.shown)
   useLayoutEffect(() => {
     lookupRef.current = lookup
+    problemsRef.current = p.problems.shown
   })
 
   const options = useMemo<FileDiffOptions<Note, undefined>>(
@@ -102,6 +108,7 @@ export function FileCard(p: FileCardProps) {
         const side = (range.endSide ?? range.side ?? 'additions') as Side
         setDraft({ side, line: Math.min(range.start, range.end), endLine: Math.max(range.start, range.end) })
       },
+      onPostRender: (node) => markProblems(node.shadowRoot ?? node, problemsRef.current),
       // ⌘/Ctrl-click a name jumps to its definition, like in an editor.
       onTokenClick: (t, e) => {
         if (!(e.metaKey || e.ctrlKey) || t.side === 'deletions' || !/^[A-Za-z_$][\w$]*$/.test(t.tokenText)) return
@@ -113,20 +120,23 @@ export function FileCard(p: FileCardProps) {
   )
 
   const annotations = useMemo(() => {
-    const out: DiffLineAnnotation<Note>[] = p.comments
+    const out: DiffLineAnnotation<Note>[] = p.problems.shown.map((x) => ({ side: 'additions', lineNumber: x.line, metadata: { kind: 'problem', id: x.id } }))
+    out.push(...p.comments
       .filter((c) => c.line)
-      .map((c) => ({ side: c.side ?? 'additions', lineNumber: c.endLine ?? c.line!, metadata: { kind: 'note', id: c.id } }))
+      .map((c): DiffLineAnnotation<Note> => ({ side: c.side ?? 'additions', lineNumber: c.endLine ?? c.line!, metadata: { kind: 'note', id: c.id } })))
     for (const t of p.threads) if (t.line && !t.outdated) out.push({ side: t.side === 'LEFT' ? 'deletions' : 'additions', lineNumber: t.line, metadata: { kind: 'thread', id: t.id } })
     for (const t of p.aiThreads) out.push({ side: t.side, lineNumber: t.line, metadata: { kind: 'ai', id: t.id } })
     if (draft) out.push({ side: draft.side, lineNumber: draft.endLine, metadata: { kind: 'draft' } })
     if (peek) out.push({ side: peek.side, lineNumber: peek.line, metadata: { kind: 'peek' } })
     return out
-  }, [p.comments, p.threads, p.aiThreads, draft, peek])
+  }, [p.problems, p.comments, p.threads, p.aiThreads, draft, peek])
 
   const suggestionSeed = draft && draft.side === 'additions' && p.patch ? newLines(p.patch.diff, draft.line, draft.endLine) : null
   const notes = p.comments.filter((c) => !c.line)
   const outdated = p.threads.filter((t) => !t.line || t.outdated)
   const warnings = p.checks.filter((c) => c.level === 'warn')
+  const errors = p.problems.shown.filter((x) => x.severity === 'error').length
+  const warningCount = p.problems.shown.length - errors
   const showBody = !p.collapsed && p.patch !== undefined
   const hovered = hover && p.aiThreads.find((t) => t.id === hover.id)
   const range = draft && `${draft.line}${draft.endLine !== draft.line ? `–${draft.endLine}` : ''}`
@@ -135,6 +145,10 @@ export function FileCard(p: FileCardProps) {
     const meta = a.metadata
     if (!meta) return null
     const wrap = (node: React.ReactNode) => <div className="flex max-w-[860px] flex-col gap-1.5 py-2 pr-3 pl-16 font-sans">{node}</div>
+    if (meta.kind === 'problem') {
+      const x = p.problems.shown.find((y) => y.id === meta.id)
+      return x ? <ProblemRow problem={x} className="my-0.5 ml-12 max-w-[900px]" /> : null
+    }
     if (meta.kind === 'peek' && peek)
       return wrap(<CodePeek peek={peek} onJump={(f) => (setPeek(null), p.onJump(f))} onClose={() => setPeek(null)} />)
     if (meta.kind === 'ai') {
@@ -222,6 +236,16 @@ export function FileCard(p: FileCardProps) {
         {p.patch?.diff.type === 'new' && <Badge tone="success">new</Badge>}
         {p.patch?.diff.type === 'deleted' && <Badge tone="danger">deleted</Badge>}
         {p.owned && <Badge tone="accent">yours</Badge>}
+        {errors > 0 && (
+          <Badge tone="danger" title="Errors on lines this PR changed">
+            ✕ {errors} {errors === 1 ? 'error' : 'errors'}
+          </Badge>
+        )}
+        {warningCount > 0 && (
+          <Badge tone="warning" title="Warnings on lines this PR changed">
+            ⚠ {warningCount}
+          </Badge>
+        )}
         {p.changedSinceViewed && <Badge tone="warning">changed since you viewed</Badge>}
         <span className="ml-auto shrink-0 pl-2 text-xs tabular-nums">
           {p.patch && (
@@ -239,7 +263,7 @@ export function FileCard(p: FileCardProps) {
         </label>
       </header>
 
-      {!p.collapsed && (p.usedBy.inside.length > 0 || p.usedBy.outsideCount > 0 || warnings.length > 0) && (
+      {!p.collapsed && (p.usedBy.inside.length > 0 || p.usedBy.outsideCount > 0 || warnings.length > 0 || p.problems.other.length > 0) && (
         <div className="flex flex-col gap-1 border-b border-line bg-surface/40 px-3 py-1.5 text-xs">
           {p.usedBy.inside.slice(0, 4).map((u) => (
             <div key={u.name} className="flex flex-wrap items-center gap-1.5">
@@ -259,6 +283,14 @@ export function FileCard(p: FileCardProps) {
             <p title={p.usedBy.outside.join('\n')} className="cursor-help text-fg-subtle">
               Used outside this PR in {p.usedBy.outsideCount} {p.usedBy.outsideCount === 1 ? 'file' : 'files'}
               {p.usedBy.outside.length > 0 && <span className="text-fg-faint">: {p.usedBy.outside.slice(0, 4).join(', ')}</span>}
+            </p>
+          )}
+          {p.problems.other.length > 0 && (
+            <p
+              title={p.problems.other.map((x) => `${x.line}: ${x.message.split('\n')[0]}`).join('\n')}
+              className="cursor-help text-fg-faint"
+            >
+              {p.problems.other.length} more {p.problems.other.length === 1 ? 'problem' : 'problems'} in lines this PR didn't change
             </p>
           )}
           {warnings.map((w) => (

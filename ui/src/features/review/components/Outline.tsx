@@ -10,6 +10,8 @@ interface OutlineProps {
   patches: Map<string, FilePatch> | null
   current: string | null
   isViewed(file: string): boolean
+  /** Files with errors or warnings on changed lines. */
+  marks: Map<string, 'error' | 'warning'>
   onJump(file: string): void
   onOverview(): void
 }
@@ -17,7 +19,7 @@ interface OutlineProps {
 const fileName = (p: string) => p.split('/').pop()!
 
 /** Left column: the whole PR in reading order, always expanded, following the scroll. */
-export function Outline({ chapters, patches, current, isViewed, onJump, onOverview }: OutlineProps) {
+export function Outline({ chapters, patches, current, isViewed, marks, onJump, onOverview }: OutlineProps) {
   const currentRef = useRef<HTMLButtonElement>(null)
   const [openTests, setOpenTests] = useState<Set<string>>(new Set())
   useEffect(() => {
@@ -42,6 +44,7 @@ export function Outline({ chapters, patches, current, isViewed, onJump, onOvervi
       >
         <span className={cn('size-3 shrink-0 rounded-full border-[1.5px]', isViewed(f) ? 'border-success bg-success' : 'border-line-strong')} />
         <span className={cn('min-w-0 flex-1 truncate', test && 'italic', isViewed(f) && 'text-fg-faint')}>{fileName(f)}</span>
+        {marks.has(f) && <span title={marks.get(f) === 'error' ? 'Has errors' : 'Has warnings'} className={cn('size-1.5 shrink-0 rounded-full', marks.get(f) === 'error' ? 'bg-danger' : 'bg-warning')} />}
         {p && <span className="shrink-0 text-2xs text-fg-faint tabular-nums">{p.added + p.removed}</span>}
       </button>
     )

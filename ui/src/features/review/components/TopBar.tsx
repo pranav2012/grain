@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { GrainGlyph, SlidersIcon } from '@/components/Icons'
 import { Button } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Kbd'
@@ -14,24 +15,25 @@ interface TopBarProps {
   total: number
   diffStyle: DiffStyle
   onDiffStyle(style: DiffStyle): void
+  problems: ReactNode
   onSwitch(): void
   onPalette(): void
   onSettings(): void
   onFinish(): void
 }
 
-export function TopBar({ data, mode, onMode, viewed, total, diffStyle, onDiffStyle, onSwitch, onPalette, onSettings, onFinish }: TopBarProps) {
+export function TopBar({ data, mode, onMode, viewed, total, diffStyle, onDiffStyle, problems, onSwitch, onPalette, onSettings, onFinish }: TopBarProps) {
   return (
     <header className="flex items-center gap-4 border-b border-line bg-canvas px-3.5 [grid-area:top]">
       <div className="flex items-center gap-1.5 text-md font-semibold tracking-[-0.01em]">
         <GrainGlyph /> grain
       </div>
       <button onClick={onSwitch} title="Open another pull request (⌘O)" className="group -ml-1.5 flex min-w-0 items-baseline gap-2 rounded-md px-1.5 py-1 text-left text-fg-subtle hover:bg-surface">
-        <strong title={data.pr?.title} className="max-w-[46ch] truncate font-medium text-fg">
+        <strong title={data.pr?.title} className="max-w-[46ch] shrink-0 truncate font-medium text-fg">
           {data.pr?.title ?? data.id}
         </strong>
         {data.pr?.local ? (
-          <span title={data.pr.local.path} className="whitespace-nowrap">
+          <span title={data.pr.local.path} className="min-w-0 truncate">
             {data.pr.local.path.split('/').pop()}
             {data.pr.local.base && ` vs ${data.pr.local.base}`}, including uncommitted files
           </span>
@@ -46,13 +48,16 @@ export function TopBar({ data, mode, onMode, viewed, total, diffStyle, onDiffSty
       </button>
       <Segmented
         label="Review mode"
+        size="sm"
         className="ml-auto"
         value={mode}
         onChange={onMode}
         options={modeOrder.map((m) => [m, modes[m].label])}
       />
+      {problems}
       <Segmented
         label="Diff layout (s)"
+        size="sm"
         value={diffStyle}
         onChange={onDiffStyle}
         options={[

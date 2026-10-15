@@ -32,6 +32,8 @@ Self-review reads your repository without changing it: Grain records your workin
 
 For TypeScript and JavaScript, "used by" facts come from TypeScript 7's language server, which Grain downloads once from npm (about 27 MB, checksum-verified) the first time it's needed; other languages use Grain's own code graph.
 
+Errors show up like in an editor: type errors (TypeScript 7) and your linter's findings (ESLint or oxlint) are underlined on the lines the PR changed, next to failing CI annotations. Grain needs your own clone of the repository with its packages installed for this; it borrows those packages and your clone's lint config, so nothing from the PR's branch runs on your machine.
+
 AI summaries are optional. Press `,` in the app to pick Claude Code, Codex or OpenCode if you have one installed.
 
 ## Run from source

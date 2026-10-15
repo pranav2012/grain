@@ -550,6 +550,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "grain-diagnostics"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
 name = "grain-engine"
 version = "0.3.0"
 dependencies = [
@@ -601,6 +613,7 @@ dependencies = [
  "axum",
  "dirs",
  "grain-agent",
+ "grain-diagnostics",
  "grain-engine",
  "grain-git",
  "grain-github",

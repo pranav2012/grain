@@ -113,6 +113,8 @@ pub(crate) struct Status {
     pub enriching: bool,
     /// Head commit of the stored review; differs from the open one when new commits arrived.
     pub head_sha: Option<String>,
+    /// Type errors and lint findings are being computed.
+    pub diagnosing: bool,
 }
 
 /// Go to definition or find references for the name at a position in the new version of a file.

@@ -113,14 +113,41 @@ pub(super) async fn status(State(app): State<Shared>, Path(p): Path<(String, Str
         auto_summarize: settings.auto_summarize,
         enriching,
         head_sha,
+        diagnosing: app.diagnosing.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&pr),
     })
+}
+
+/// Checks the PR for errors again, e.g. after the reviewer picked their clone.
+pub(super) async fn rediagnose(State(app): State<Shared>, Path(p): Path<(String, String, u64)>) -> StatusCode {
+    let pr = pr_of(p);
+    let _ = std::fs::remove_file(app.home.review_dir(&pr).join("diagnostics.json"));
+    app.diagnose(&pr);
+    StatusCode::ACCEPTED
+}
+
+/// Reviews, comments, CI checks and merge state from GitHub, for the PR's current head.
+pub(super) async fn pr_status(
+    State(app): State<Shared>,
+    Path(p): Path<(String, String, u64)>,
+) -> ApiResult<Json<grain_github::PrStatus>> {
+    let pr = pr_of(p);
+    if pr.is_local() {
+        return Err(ApiError::bad_request("Local changes have no pull request on GitHub."));
+    }
+    let head = read_json(&app.home.review_dir(&pr).join("pr.json"))
+        .and_then(|v| v["headSha"].as_str().map(str::to_string))
+        .ok_or_else(|| ApiError::bad_request("PR not prepared"))?;
+    blocking(move || Ok(Json(grain_github::pr_status(&pr, &head)?))).await
 }
 
 pub(super) async fn file(
     State(app): State<Shared>,
     Path((owner, repo, number, name)): Path<(String, String, u64, String)>,
 ) -> ApiResult<impl IntoResponse> {
-    if !matches!(name.as_str(), "review.json" | "pr.json" | "summaries.json" | "diff.patch" | "owners.json") {
+    if !matches!(
+        name.as_str(),
+        "review.json" | "pr.json" | "summaries.json" | "diff.patch" | "owners.json" | "diagnostics.json"
+    ) {
         return Err(ApiError::not_found("unknown file"));
     }
     let path = app.home.review_dir(&pr_of((owner, repo, number))).join(&name);

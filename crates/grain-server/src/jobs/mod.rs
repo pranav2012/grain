@@ -1,6 +1,7 @@
 //! Background work: preparing PRs and local changes, and summarizing blocks.
 
 pub(crate) mod cleanup;
+pub(crate) mod diagnostics;
 pub(crate) mod local;
 pub(crate) mod owners;
 pub(crate) mod prefetch;

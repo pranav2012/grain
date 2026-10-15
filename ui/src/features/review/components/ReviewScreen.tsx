@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CommandPalette, type Command } from '@/components/CommandPalette'
 import { Button } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Kbd'
+import { pickFolder } from '@/lib/pick-folder'
 import { useHotkeys } from '@/lib/useHotkeys'
 import { reviewApi } from '../api'
 import { ThreadActionsContext, useConversation } from '../hooks/useConversation'
+import { useChecks } from '../hooks/useChecks'
 import { useLiveReview } from '../hooks/useLiveReview'
 import { usePrDiff } from '../hooks/usePrDiff'
 import { useReviewStatus } from '../hooks/useReviewStatus'
@@ -12,6 +14,7 @@ import { useSummaries } from '../hooks/useSummaries'
 import { agentName as agentNameOf, chapterSummaryKey, chapterSummaryOf, isTestPath } from '../model/describe'
 import { blocksByFile, fileChapters, filesInOrder, usedBy } from '../model/files'
 import { modeOrder, modes } from '../model/modes'
+import { allProblems, changedLines, problemsByFile, type FileProblems } from '../model/problems'
 import { chaptersFor, ownedBlocks } from '../model/story'
 import type { Ask, LineThread, LoadedPr, Mode, ReviewComment } from '../model/types'
 import { usePrefs } from '../state/usePrefs'
@@ -23,11 +26,13 @@ import { NewCommitsNotice } from './NewCommitsNotice'
 import { Outline } from './Outline'
 import { Overview } from './Overview'
 import { PrPage, type PrPageHandle } from './PrPage'
+import { ProblemsPill } from './ProblemsPill'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { TopBar } from './TopBar'
 
 /** Diffs bigger than this start collapsed so the page stays quick to scan. */
 const LARGE_FILE = 1500
+const noProblems: FileProblems = { shown: [], other: [] }
 
 interface ReviewScreenProps {
   base: LoadedPr
@@ -58,10 +63,21 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const { conversation, actions: threadActions } = useConversation(data)
   const { patches, error: diffError } = usePrDiff(data.id, head)
   const agentName = agentNameOf(data)
+  const { report, prStatus, diagnosing, rerun } = useChecks(data.id, !!base.pr?.local, status)
 
   const allFiles = useMemo(() => (patches ? [...patches.keys()] : [...byFile.keys()]), [patches, byFile])
   const chapters = useMemo(() => fileChapters(data, chaptersFor(data, prefs.mineFirst), allFiles), [data, prefs.mineFirst, allFiles])
   const order = useMemo(() => filesInOrder(chapters), [chapters])
+  const problems = useMemo(() => allProblems(report, prStatus, new Set(allFiles)), [report, prStatus, allFiles])
+  const fileProblems = useMemo(
+    () => problemsByFile(problems, (f) => (patches?.get(f) ? changedLines(patches.get(f)!.diff) : null)),
+    [problems, patches],
+  )
+  const shownProblems = useMemo(() => order.flatMap((f) => fileProblems.get(f)?.shown ?? []), [order, fileProblems])
+  const problemMarks = useMemo(
+    () => new Map([...fileProblems].filter(([, p]) => p.shown.length).map(([f, p]) => [f, p.shown.some((x) => x.severity === 'error') ? 'error' : 'warning'] as const)),
+    [fileProblems],
+  )
   const routine = useMemo(() => new Set(chapters.filter((c) => c.chapter.kind === 'routine').flatMap((c) => c.sections.flatMap((s) => s.files))), [chapters])
   const ownedFiles = useMemo(() => {
     const owned = ownedBlocks(data)
@@ -139,6 +155,25 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     }
   }
 
+  const problemAt = useRef(-1)
+  const revealProblem = (id: string) => {
+    const x = shownProblems.find((p) => p.id === id)
+    if (!x) return
+    problemAt.current = shownProblems.indexOf(x)
+    setCollapsed((c) => ({ ...c, [x.file]: false }))
+    requestAnimationFrame(() => page.current?.reveal(x.file, `problem-${x.id}`))
+  }
+  const nextProblem = () => shownProblems.length && revealProblem(shownProblems[(problemAt.current + 1) % shownProblems.length].id)
+  const chooseClone = () => {
+    const repo = data.id.split('/').slice(0, 2).join('/')
+    pickFolder(`Choose your clone of ${repo}`).then(
+      (path) => {
+        if (path) reviewApi.setLocalRepo(repo, path).then(rerun, () => {})
+      },
+      () => {},
+    )
+  }
+
   const setMode = (mode: Mode) => dispatch({ type: 'mode', mode })
   const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
   const toggleMineFirst = () => setPrefs((p) => ({ ...p, mineFirst: !p.mineFirst }))
@@ -187,6 +222,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     K: () => stepChapter(-1),
     v: toggleViewedAndNext,
     b: back,
+    e: nextProblem,
     s: toggleDiffStyle,
     m: () => ownedFiles.size && toggleMineFirst(),
     '1': () => setMode('self'),
@@ -235,6 +271,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
         comments={state.comments.filter((c) => c.file === f)}
         threads={conversation?.threads.filter((t) => t.path === f) ?? []}
         aiThreads={lineThreads.filter((t) => t.file === f)}
+        problems={fileProblems.get(f) ?? noProblems}
         agentName={agentName}
         kinds={copy.kinds}
         onCollapse={(c) => setCollapsed((all) => ({ ...all, [f]: c }))}
@@ -262,12 +299,13 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           total={order.length}
           diffStyle={prefs.diffStyle}
           onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
+          problems={<ProblemsPill problems={shownProblems} report={report} diagnosing={diagnosing} onNext={nextProblem} onChooseClone={chooseClone} />}
           onSwitch={onSwitch}
           onPalette={() => setOverlay('palette')}
           onSettings={onSettings}
           onFinish={() => setOverlay('finish')}
         />
-        <Outline chapters={chapters} patches={patches} current={state.currentFile} isViewed={isViewed} onJump={(f) => jump(f)} onOverview={() => page.current?.top()} />
+        <Outline chapters={chapters} patches={patches} current={state.currentFile} isViewed={isViewed} marks={problemMarks} onJump={(f) => jump(f)} onOverview={() => page.current?.top()} />
         {diffError ? (
           <p className="m-auto text-danger [grid-area:main]">{diffError}</p>
         ) : (
@@ -275,7 +313,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             ref={page}
             data={data}
             chapters={chapters}
-            overview={<Overview data={data} chapters={chapters} patches={patches} onJump={(f) => jump(f)} />}
+            overview={<Overview data={data} chapters={chapters} patches={patches} problems={shownProblems} onJump={(f) => jump(f)} onProblem={revealProblem} />}
             renderFile={renderFile}
             onCurrent={onCurrent}
             onBackChange={setCanGoBack}

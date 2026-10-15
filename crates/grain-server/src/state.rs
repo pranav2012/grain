@@ -32,6 +32,8 @@ pub(crate) struct App {
     busy: Mutex<HashSet<PrRef>>,
     /// PRs whose review is open but whose whole-repo facts are still being computed.
     pub(crate) enriching: Mutex<HashSet<PrRef>>,
+    /// PRs whose type errors and lint findings are being computed.
+    pub(crate) diagnosing: Mutex<HashSet<PrRef>>,
     pub(crate) patches: crate::patch_index::PatchCache,
     /// Identifies the running binary, so a newer `grain` can tell it's outdated.
     pub(crate) build: String,
@@ -70,6 +72,7 @@ impl App {
             summarizers: Mutex::new(HashMap::new()),
             busy: Mutex::new(HashSet::new()),
             enriching: Mutex::new(HashSet::new()),
+            diagnosing: Mutex::new(HashSet::new()),
             patches: crate::patch_index::PatchCache::default(),
             local_heads: Mutex::new(HashMap::new()),
             navigators: Mutex::new(HashMap::new()),
@@ -182,6 +185,32 @@ impl App {
                 app.enriching.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
             }
             app.busy.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
+            if app
+                .jobs
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .get(&pr)
+                .is_some_and(|j| matches!(j.stage, Stage::Ready))
+            {
+                app.diagnose(&pr);
+            }
+        });
+    }
+
+    /// Computes type errors and lint findings for the PR's current head unless already done or running.
+    pub(crate) fn diagnose(self: &Shared, pr: &PrRef) {
+        if !self.diagnosing.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone()) {
+            return;
+        }
+        let app = self.clone();
+        let pr = pr.clone();
+        std::thread::spawn(move || {
+            let t = std::time::Instant::now();
+            match guarded("checking for errors", || crate::jobs::diagnostics::run(&app.home, &pr)) {
+                Ok(()) => tracing::info!(pr = %pr.number, ms = t.elapsed().as_millis(), "diagnostics done"),
+                Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "diagnostics failed"),
+            }
+            app.diagnosing.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
         });
     }
 }
