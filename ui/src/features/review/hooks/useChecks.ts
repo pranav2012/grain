@@ -8,13 +8,21 @@ import { reviewApi } from '../api'
 
 const pending = (s: PrStatus | null) => s?.state === 'OPEN' && s.checks.some((c) => c.status !== 'completed')
 
+/** When the shown PR status was fetched (Unix seconds), and whether a fresh one is on its way. */
+export interface Freshness {
+  at: number | null
+  checking: boolean
+}
+
 /**
  * Errors from the reviewer's own tools and the agent's second opinion (each refetched when its run
- * finishes), and the PR's GitHub status, refreshed every minute while CI is still running.
+ * finishes), and the PR's GitHub status: the saved copy at once, then a fresh one, refreshed every
+ * minute while CI is still running.
  */
 export function useChecks(id: string, local: boolean, status: Status | null) {
   const [report, setReport] = useState<Diagnostics | null>(null)
   const [prStatus, setPrStatus] = useState<PrStatus | null>(null)
+  const [freshness, setFreshness] = useState<Freshness>({ at: null, checking: false })
   const diagnosing = status?.diagnosing ?? true
   const head = status?.headSha
   const [version, setVersion] = useState(0)
@@ -51,18 +59,32 @@ export function useChecks(id: string, local: boolean, status: Status | null) {
   }, [id, diagnosing, head, version])
 
   useEffect(() => {
-    if (local) return
+    if (local || !head) return
     let alive = true
+    let live = false
     let timer: ReturnType<typeof setTimeout>
-    const load = () =>
+    const show = (s: PrStatus) => setPrStatus((prev) => (JSON.stringify(prev) === JSON.stringify(s) ? prev : s))
+    reviewApi.savedPrStatus(id).then(
+      (saved) => {
+        if (!alive || live || saved?.head !== head) return
+        show(saved.status)
+        setFreshness((f) => ({ ...f, at: saved.fetchedAt }))
+      },
+      () => {},
+    )
+    const load = () => {
+      setFreshness((f) => ({ ...f, checking: true }))
       reviewApi.prStatus(id).then(
         (s) => {
           if (!alive) return
-          setPrStatus(s)
+          live = true
+          show(s)
+          setFreshness({ at: Math.floor(Date.now() / 1000), checking: false })
           if (pending(s)) timer = setTimeout(load, 60_000)
         },
-        () => {},
+        () => alive && setFreshness((f) => ({ ...f, checking: false })),
       )
+    }
     load()
     return () => {
       alive = false
@@ -78,5 +100,5 @@ export function useChecks(id: string, local: boolean, status: Status | null) {
     setAi(null)
     reviewApi.rereview(id).then(() => setTimeout(() => setVersion((v) => v + 1), 1500), () => {})
   }
-  return { report, prStatus, diagnosing: !!status?.diagnosing, rerun, ai, reviewing: !!status?.reviewing, rereview, uses }
+  return { report, prStatus, freshness, diagnosing: !!status?.diagnosing, rerun, ai, reviewing: !!status?.reviewing, rereview, uses }
 }

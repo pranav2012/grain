@@ -13,13 +13,22 @@ export interface ThreadActions {
 export const ThreadActionsContext = createContext<ThreadActions | null>(null)
 export const useThreadActions = () => useContext(ThreadActionsContext)
 
-/** Existing GitHub review threads, fetched once per open review and grouped by block. */
+/** Existing GitHub review threads, grouped by block: the saved copy at once, then a fresh one. */
 export function useConversation(data: LoadedPr) {
   const [conversation, setConversation] = useState<Conversation | null>(null)
   useEffect(() => {
     let alive = true
+    let live = false
+    reviewApi.savedConversation(data.id).then(
+      (saved) => alive && !live && saved && setConversation(saved.conversation),
+      () => {},
+    )
     reviewApi.conversation(data.id).then(
-      (c) => alive && setConversation(c),
+      (c) => {
+        if (!alive) return
+        live = true
+        setConversation((prev) => (JSON.stringify(prev) === JSON.stringify(c) ? prev : c))
+      },
       () => {},
     )
     return () => {

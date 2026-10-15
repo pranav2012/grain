@@ -341,3 +341,26 @@ pub(crate) struct OutsideUsesFile {
     pub head: String,
     pub files: std::collections::BTreeMap<String, OutsideUsesResponse>,
 }
+
+/// The PR's GitHub status as last fetched (`pr-status.json`), shown at once while a fresh copy loads.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct SavedPrStatus {
+    pub head: String,
+    /// Unix seconds.
+    #[ts(type = "number")]
+    pub fetched_at: u64,
+    pub status: grain_github::PrStatus,
+}
+
+/// The PR's GitHub review threads as last fetched (`conversation.json`).
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct SavedConversation {
+    /// Unix seconds.
+    #[ts(type = "number")]
+    pub fetched_at: u64,
+    pub conversation: grain_github::Conversation,
+}

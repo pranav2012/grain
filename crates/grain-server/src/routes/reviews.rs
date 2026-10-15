@@ -3,18 +3,31 @@ use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
 use grain_github::PrRef;
-use grain_store::read_json;
+use grain_store::{read_json, write_atomic};
 
 use crate::contract::{
     AskRequest, AskResponse, DiffRequest, Job, LocalCandidate, LocalOpenRequest, OpenRequest, OpenResponse,
-    PickFolderRequest, PickFolderResponse, RecentReview, Stage, Status, SubmitRequest, SubmitResponse,
-    SummarizeRequest, ThreadReplyRequest, ThreadResolved,
+    PickFolderRequest, PickFolderResponse, RecentReview, SavedConversation, SavedPrStatus, Stage, Status,
+    SubmitRequest, SubmitResponse, SummarizeRequest, ThreadReplyRequest, ThreadResolved,
 };
 use crate::error::{ApiError, ApiResult, blocking};
 use crate::state::Shared;
 
 fn pr_of((owner, repo, number): (String, String, u64)) -> PrRef {
     PrRef { owner, repo, number }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// Keeps the latest GitHub answer so the next page load can show it before asking again.
+fn save(path: &std::path::Path, value: &impl serde::Serialize) {
+    if let Ok(bytes) = serde_json::to_vec(value)
+        && let Err(e) = write_atomic(path, &bytes)
+    {
+        tracing::warn!("couldn't save {}: {e}", path.display());
+    }
 }
 
 pub(super) async fn open(State(app): State<Shared>, Json(body): Json<OpenRequest>) -> ApiResult<Json<OpenResponse>> {
@@ -146,7 +159,13 @@ pub(super) async fn pr_status(
     let head = read_json(&app.home.review_dir(&pr).join("pr.json"))
         .and_then(|v| v["headSha"].as_str().map(str::to_string))
         .ok_or_else(|| ApiError::bad_request("PR not prepared"))?;
-    blocking(move || Ok(Json(grain_github::pr_status(&pr, &head)?))).await
+    let path = app.home.review_dir(&pr).join("pr-status.json");
+    blocking(move || {
+        let status = grain_github::pr_status(&pr, &head)?;
+        save(&path, &SavedPrStatus { head, fetched_at: now_secs(), status: status.clone() });
+        Ok(Json(status))
+    })
+    .await
 }
 
 pub(super) async fn file(
@@ -163,6 +182,8 @@ pub(super) async fn file(
             | "diagnostics.json"
             | "ai-review.json"
             | "outside-uses.json"
+            | "pr-status.json"
+            | "conversation.json"
     ) {
         return Err(ApiError::not_found("unknown file"));
     }
@@ -276,12 +297,21 @@ pub(super) async fn diff(
 }
 
 /// Existing GitHub review threads and submitted reviews for this PR.
-pub(super) async fn conversation(Path(p): Path<(String, String, u64)>) -> ApiResult<Json<grain_github::Conversation>> {
+pub(super) async fn conversation(
+    State(app): State<Shared>,
+    Path(p): Path<(String, String, u64)>,
+) -> ApiResult<Json<grain_github::Conversation>> {
     let pr = pr_of(p);
     if pr.is_local() {
         return Ok(Json(grain_github::Conversation::default()));
     }
-    blocking(move || Ok(Json(grain_github::conversation(&pr)?))).await
+    let path = app.home.review_dir(&pr).join("conversation.json");
+    blocking(move || {
+        let conversation = grain_github::conversation(&pr)?;
+        save(&path, &SavedConversation { fetched_at: now_secs(), conversation: conversation.clone() });
+        Ok(Json(conversation))
+    })
+    .await
 }
 
 /// Replies to a GitHub review thread right away.

@@ -1,8 +1,16 @@
 import { useState, type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
+import { ago } from '@/lib/format'
 import type { CheckRun } from '@/types/generated/CheckRun'
 import type { PrStatus } from '@/types/generated/PrStatus'
 import type { ReviewThread } from '@/types/generated/ReviewThread'
+import type { Freshness } from '../hooks/useChecks'
+
+const updated = (at: number | null) => {
+  if (at === null) return ''
+  const s = Date.now() / 1000 - at
+  return s < 60 ? 'updated just now' : `updated ${ago(new Date(at * 1000).toISOString())}`
+}
 
 type Tone = 'danger' | 'warning' | 'success' | 'neutral'
 type CheckState = 'failed' | 'running' | 'passed' | 'skipped'
@@ -45,6 +53,7 @@ function Chip({ tone, children, open, onClick, title }: { tone: Tone; children: 
 
 interface StatusChipsProps {
   status: PrStatus | null
+  freshness: Freshness
   threads: ReviewThread[]
   onThread(file: string, line: number): void
 }
@@ -53,7 +62,7 @@ interface StatusChipsProps {
  * What needs attention on GitHub, as chips: failing and running checks, unresolved threads, requested
  * changes or reviews, merge problems. Everything that's fine stays in one quiet line on the right.
  */
-export function StatusChips({ status, threads, onThread }: StatusChipsProps) {
+export function StatusChips({ status, freshness, threads, onThread }: StatusChipsProps) {
   const [open, setOpen] = useState<'checks' | null>(null)
   if (!status) return <p className="mt-3 text-xs text-fg-faint">Loading the PR's status from GitHub…</p>
   const checks = status.checks.map((c) => ({ c, state: checkState(c) }))
@@ -111,6 +120,7 @@ export function StatusChips({ status, threads, onThread }: StatusChipsProps) {
           <span>
             · {status.comments} {status.comments === 1 ? 'comment' : 'comments'}
           </span>
+          <span title="From GitHub">· {freshness.checking ? 'checking for updates…' : updated(freshness.at)}</span>
         </span>
       </div>
       {open === 'checks' && (

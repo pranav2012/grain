@@ -7,7 +7,7 @@ use crate::gh::gh;
 use crate::pr_ref::PrRef;
 
 /// Where a PR stands on GitHub: reviews, discussion, CI and whether it can merge.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct PrStatus {
@@ -26,7 +26,7 @@ pub struct PrStatus {
     pub checks: Vec<CheckRun>,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Reviewer {
@@ -36,7 +36,7 @@ pub struct Reviewer {
     pub state: String,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct CheckRun {
@@ -49,7 +49,7 @@ pub struct CheckRun {
     pub annotations: Vec<CheckAnnotation>,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct CheckAnnotation {

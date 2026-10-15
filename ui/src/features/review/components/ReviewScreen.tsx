@@ -71,7 +71,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const { conversation, actions: threadActions } = useConversation(data)
   const { patches, error: diffError } = usePrDiff(data.id, head)
   const agentName = agentNameOf(data)
-  const { report, prStatus, diagnosing, rerun, ai, reviewing, rereview, uses } = useChecks(data.id, !!base.pr?.local, status)
+  const { report, prStatus, freshness, diagnosing, rerun, ai, reviewing, rereview, uses } = useChecks(data.id, !!base.pr?.local, status)
   const [railHidden, setRailHidden] = useState(false)
   const [code, setCode] = useState<CodeLocation | null>(null)
 
@@ -408,7 +408,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             ref={page}
             data={data}
             chapters={chapters}
-            overview={<Overview data={data} chapters={chapters} patches={patches} problems={shownProblems} findings={findings.filter((f) => f.score >= 75 && !state.ai?.[findingKey(f)])} status={prStatus} threads={conversation?.threads ?? []} onJump={(f) => jump(f)} onProblem={revealProblem} onFinding={revealFinding} onThread={revealLine} />}
+            overview={<Overview data={data} chapters={chapters} patches={patches} problems={shownProblems} findings={findings.filter((f) => f.score >= 75 && !state.ai?.[findingKey(f)])} status={prStatus} freshness={freshness} threads={conversation?.threads ?? []} onJump={(f) => jump(f)} onProblem={revealProblem} onFinding={revealFinding} onThread={revealLine} />}
             renderFile={renderFile}
             onCurrent={onCurrent}
             onBackChange={setCanGoBack}

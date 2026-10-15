@@ -10,6 +10,7 @@ import type { Finding } from '@/types/generated/Finding'
 import type { LoadedPr } from '../model/types'
 import type { PrStatus } from '@/types/generated/PrStatus'
 import type { ReviewThread } from '@/types/generated/ReviewThread'
+import type { Freshness } from '../hooks/useChecks'
 import { StateBadge, StatusChips } from './StatusChips'
 
 interface OverviewProps {
@@ -20,6 +21,7 @@ interface OverviewProps {
   /** The agent's findings scored 75 or more that the reviewer hasn't decided on. */
   findings: Finding[]
   status: PrStatus | null
+  freshness: Freshness
   threads: ReviewThread[]
   onJump(file: string): void
   onProblem(id: string): void
@@ -28,7 +30,7 @@ interface OverviewProps {
 }
 
 /** Top of the review page: what the PR is and the order to read it in. */
-export function Overview({ data, chapters, patches, problems, findings, status, threads, onJump, onProblem, onFinding, onThread }: OverviewProps) {
+export function Overview({ data, chapters, patches, problems, findings, status, freshness, threads, onJump, onProblem, onFinding, onThread }: OverviewProps) {
   const pr = data.pr
   const files = chapters.flatMap((c) => [...c.sections.flatMap((s) => s.files), ...c.tests])
   const tests = files.filter(isTestPath).length
@@ -101,7 +103,7 @@ export function Overview({ data, chapters, patches, problems, findings, status, 
         </p>
       )}
       {pr && !pr.local ? (
-        <StatusChips status={status} threads={threads} onThread={onThread} />
+        <StatusChips status={status} freshness={freshness} threads={threads} onThread={onThread} />
       ) : (
         <p className="mt-0.5 text-sm text-fg-subtle">
           {files.length} files · <span className="text-success">+{added}</span> <span className="text-danger">−{removed}</span>

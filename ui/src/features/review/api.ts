@@ -5,6 +5,8 @@ import type { AskResponse } from '@/types/generated/AskResponse'
 import type { Conversation } from '@/types/generated/Conversation'
 import type { Diagnostics } from '@/types/generated/Diagnostics'
 import type { PrStatus } from '@/types/generated/PrStatus'
+import type { SavedConversation } from '@/types/generated/SavedConversation'
+import type { SavedPrStatus } from '@/types/generated/SavedPrStatus'
 import type { NavigateRequest } from '@/types/generated/NavigateRequest'
 import type { NavigateResponse } from '@/types/generated/NavigateResponse'
 import type { OutsideUsesFile } from '@/types/generated/OutsideUsesFile'
@@ -58,6 +60,9 @@ export const reviewApi = {
   aiReview: (id: string) => file(id, 'ai-review.json').then((r) => json<AiReview>(r)),
   rereview: (id: string) => post<null>(`/api/reviews/${id}/second-opinion`, {}),
   prStatus: (id: string) => request<PrStatus>(`/api/reviews/${id}/pr-status`),
+  /** The PR's status and threads as last fetched from GitHub; null before the first fetch. */
+  savedPrStatus: (id: string) => file(id, 'pr-status.json').then((r) => json<SavedPrStatus>(r)),
+  savedConversation: (id: string) => file(id, 'conversation.json').then((r) => json<SavedConversation>(r)),
   replyToThread: (id: string, thread: string, body: string) =>
     post<ThreadComment>(`/api/reviews/${id}/threads/${thread}/replies`, { body }),
   resolveThread: (id: string, thread: string, resolved: boolean) =>
