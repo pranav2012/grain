@@ -11,7 +11,9 @@ use grain_github::PrRef;
 use grain_lsp::{Lookup, TsUsage};
 use grain_store::read_json;
 
-use crate::contract::{NavLocation, NavigateRequest, NavigateResponse};
+use crate::contract::{
+    NavLocation, NavigateRequest, NavigateResponse, OutsideUse, OutsideUsesRequest, OutsideUsesResponse,
+};
 use crate::error::{ApiResult, blocking};
 use crate::state::{App, Shared};
 
@@ -42,6 +44,72 @@ pub(super) async fn navigate(
         let results =
             found.into_iter().take(MAX_RESULTS).map(|(file, line)| locate(&root, &review, file, line)).collect();
         Ok(Json(NavigateResponse { precise, results, truncated }))
+    })
+    .await
+}
+
+/// Every place outside the PR that uses the names `file` changes: each changed name's declaration is
+/// found in the file, then its references are looked up (TypeScript precisely, others by name).
+pub(super) async fn outside_uses(
+    State(app): State<Shared>,
+    Path((owner, repo, number)): Path<(String, String, u64)>,
+    Json(body): Json<OutsideUsesRequest>,
+) -> ApiResult<Json<OutsideUsesResponse>> {
+    let pr = PrRef { owner, repo, number };
+    blocking(move || {
+        let root = checkout(&app, &pr)?;
+        let review = read_json(&app.home.review_dir(&pr).join("review.json")).context("PR not prepared")?;
+        let blocks = review["blocks"].as_array().cloned().unwrap_or_default();
+        let pr_files: std::collections::HashSet<String> = blocks
+            .iter()
+            .flat_map(|b| b["files"].as_array().cloned().unwrap_or_default())
+            .filter_map(|f| f.as_str().map(str::to_string))
+            .collect();
+        let mut names: Vec<String> = blocks
+            .iter()
+            .flat_map(|b| b["changes"].as_array().cloned().unwrap_or_default())
+            .filter(|c| c["file"] == body.file.as_str() && c["change"] != "deleted")
+            .filter_map(|c| c["name"].as_str().map(str::to_string))
+            .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$'))
+            .collect();
+        names.sort();
+        names.dedup();
+        let text = std::fs::read_to_string(root.join(&body.file)).unwrap_or_default();
+        let ext = body.file.rsplit_once('.').map_or("", |x| x.1);
+        let nav = TS.contains(&ext).then(|| navigator(&app, &pr, &root)).flatten();
+        let mut precise = nav.is_some();
+        let mut uses = Vec::new();
+        for name in names {
+            let declared = text
+                .lines()
+                .enumerate()
+                .find_map(|(i, l)| if defines(l, &name) { l.find(&name).map(|c| (i, c)) } else { None });
+            let precise_found = nav.as_ref().zip(declared).and_then(|(nav, (line, col))| {
+                nav.locate(
+                    Lookup::References,
+                    &body.file,
+                    u32::try_from(line).unwrap_or(0),
+                    u32::try_from(col).unwrap_or(0),
+                )
+            });
+            let found: Vec<(String, u32)> = if let Some(found) = precise_found {
+                found.into_iter().map(|l| (l.file, l.line + 1)).collect()
+            } else {
+                precise = false;
+                by_name(&root, &name, true)
+            };
+            let mut locations: Vec<NavLocation> = found
+                .into_iter()
+                .filter(|(f, _)| !pr_files.contains(f))
+                .take(MAX_RESULTS)
+                .map(|(f, l)| locate(&root, &review, f, l))
+                .collect();
+            locations.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+            if !locations.is_empty() {
+                uses.push(OutsideUse { name, locations });
+            }
+        }
+        Ok(Json(OutsideUsesResponse { precise, uses }))
     })
     .await
 }

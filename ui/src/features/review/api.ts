@@ -7,6 +7,7 @@ import type { Diagnostics } from '@/types/generated/Diagnostics'
 import type { PrStatus } from '@/types/generated/PrStatus'
 import type { NavigateRequest } from '@/types/generated/NavigateRequest'
 import type { NavigateResponse } from '@/types/generated/NavigateResponse'
+import type { OutsideUsesResponse } from '@/types/generated/OutsideUsesResponse'
 import type { LocalRepo } from '@/types/generated/LocalRepo'
 import type { SubmitRequest } from '@/types/generated/SubmitRequest'
 import type { SubmitResponse } from '@/types/generated/SubmitResponse'
@@ -34,6 +35,8 @@ export const reviewApi = {
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),
   /** Definition or references of the name at a position in the new version of a file. */
   navigate: (id: string, req: NavigateRequest) => post<NavigateResponse>(`/api/reviews/${id}/navigate`, req),
+  /** Every place outside the PR that uses the names a file changes. */
+  outsideUses: (id: string, file: string) => post<OutsideUsesResponse>(`/api/reviews/${id}/outside-uses`, { file }),
   /** Asks the reviewer's agent about one change; can take a while. */
   ask: (id: string, req: AskRequest) => post<AskResponse>(`/api/reviews/${id}/ask`, req),
   /** `fullRepo` is `owner/repo`. */

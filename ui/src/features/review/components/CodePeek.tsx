@@ -8,19 +8,25 @@ export interface Peek {
   side: 'additions' | 'deletions'
   name: string
   references: boolean
+  /** Column of the name, to look it up again (definition ⇄ references). */
+  character: number
   result?: NavigateResponse
   error?: string
 }
 
 interface CodePeekProps {
   peek: Peek
-  /** Scrolls to a file changed in this PR. */
-  onJump(file: string): void
+  /** Scrolls to a line of a file changed in this PR. */
+  onJump(file: string, line: number): void
+  /** Looks the same name up the other way. */
+  onSwitch(references: boolean): void
+  /** The line on GitHub, for places outside this PR (none for local reviews). */
+  githubUrl?: (file: string, line: number) => string
   onClose(): void
 }
 
 /** Inline box under a line: where a name is defined, or every place that uses it. */
-export function CodePeek({ peek, onJump, onClose }: CodePeekProps) {
+export function CodePeek({ peek, onJump, onSwitch, githubUrl, onClose }: CodePeekProps) {
   const r = peek.result
   const what = peek.references ? 'References to' : 'Definition of'
   return (
@@ -35,9 +41,15 @@ export function CodePeek({ peek, onJump, onClose }: CodePeekProps) {
             approximate
           </span>
         )}
-        <LinkButton className="ml-auto" onClick={onClose}>
-          Close
-        </LinkButton>
+        <span className="ml-auto flex items-center gap-2.5">
+          <LinkButton aria-pressed={!peek.references} className="aria-pressed:text-fg" onClick={() => peek.references && onSwitch(false)}>
+            Definition
+          </LinkButton>
+          <LinkButton aria-pressed={peek.references} className="aria-pressed:text-fg" title="⇧⌘ click a name" onClick={() => !peek.references && onSwitch(true)}>
+            References
+          </LinkButton>
+          <LinkButton onClick={onClose}>Close</LinkButton>
+        </span>
       </div>
       {!r && !peek.error && <p className="px-3 py-2 text-sm text-fg-subtle">Looking it up…</p>}
       {peek.error && <p className="px-3 py-2 text-sm text-danger">{peek.error}</p>}
@@ -54,9 +66,13 @@ export function CodePeek({ peek, onJump, onClose }: CodePeekProps) {
                     {loc.file}:{loc.line}
                   </span>
                   {loc.block != null ? (
-                    <LinkButton className="ml-auto shrink-0 text-accent" onClick={() => onJump(loc.file)}>
+                    <LinkButton className="ml-auto shrink-0 text-accent" onClick={() => onJump(loc.file, loc.line)}>
                       in this review →
                     </LinkButton>
+                  ) : githubUrl ? (
+                    <a href={githubUrl(loc.file, loc.line)} target="_blank" rel="noreferrer" className="ml-auto shrink-0 text-fg-faint hover:text-fg">
+                      not changed in this PR · GitHub ↗
+                    </a>
                   ) : (
                     <span className="ml-auto shrink-0 text-fg-faint">not changed in this PR</span>
                   )}

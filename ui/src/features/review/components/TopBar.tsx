@@ -25,21 +25,21 @@ interface TopBarProps {
 export function TopBar({ data, mode, onMode, viewed, total, diffStyle, onDiffStyle, problems, onSwitch, onPalette, onSettings, onFinish }: TopBarProps) {
   return (
     <header className="flex items-center gap-4 border-b border-line bg-canvas px-3.5 [grid-area:top]">
-      <div className="flex items-center gap-1.5 text-md font-semibold tracking-[-0.01em]">
+      <div className="flex shrink-0 items-center gap-1.5 text-md font-semibold tracking-[-0.01em]">
         <GrainGlyph /> grain
       </div>
-      <button onClick={onSwitch} title="Open another pull request (⌘O)" className="group -ml-1.5 flex min-w-0 items-baseline gap-2 rounded-md px-1.5 py-1 text-left text-fg-subtle hover:bg-surface">
-        <strong title={data.pr?.title} className="max-w-[46ch] shrink-0 truncate font-medium text-fg">
+      <button onClick={onSwitch} title="Open another pull request (⌘O)" className="group -ml-1.5 flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-1.5 py-1 text-left text-fg-subtle hover:bg-surface">
+        <strong title={data.pr?.title} className="max-w-[46ch] min-w-0 truncate font-medium text-fg">
           {data.pr?.title ?? data.id}
         </strong>
         {data.pr?.local ? (
-          <span title={data.pr.local.path} className="min-w-0 truncate">
+          <span title={data.pr.local.path} className="min-w-0 truncate max-[1200px]:hidden">
             {data.pr.local.path.split('/').pop()}
             {data.pr.local.base && ` vs ${data.pr.local.base}`}, including uncommitted files
           </span>
         ) : (
           data.pr && (
-            <span className="whitespace-nowrap">
+            <span className="shrink-0 whitespace-nowrap max-[1200px]:hidden">
               {data.id.split('/').slice(0, 2).join('/')} #{data.pr.number}
             </span>
           )
@@ -65,7 +65,7 @@ export function TopBar({ data, mode, onMode, viewed, total, diffStyle, onDiffSty
           ['split', 'Split'],
         ]}
       />
-      <div className="flex min-w-[130px] flex-col gap-1 text-xs text-fg-subtle">
+      <div className="flex min-w-[130px] shrink-0 flex-col gap-1 text-xs text-fg-subtle max-[1100px]:hidden">
         <span>
           {viewed} of {total} files viewed
         </span>

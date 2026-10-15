@@ -5,7 +5,9 @@ import { WorkerPoolContextProvider } from '@pierre/diffs/react'
 import WorkerUrl from '@pierre/diffs/worker/worker.js?worker&url'
 
 const poolOptions = { workerFactory: () => new Worker(WorkerUrl, { type: 'module' }) }
-const highlighterOptions = { theme: { dark: 'pierre-dark', light: 'pierre-light' } } as const
+// Names are wrapped in their own elements so ⌘-click (go to definition) can find them; the shared
+// worker pool takes this once, so per-diff options can't turn it on.
+const highlighterOptions = { theme: { dark: 'pierre-dark', light: 'pierre-light' }, useTokenTransformer: true } as const
 
 /** App-wide providers: syntax highlighting runs in a worker pool shared by every diff. */
 export function Providers({ children }: { children: ReactNode }) {

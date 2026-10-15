@@ -300,3 +300,28 @@ pub(crate) struct ModelsResponse {
 pub(crate) struct ModelsQuery {
     pub agent: String,
 }
+
+/// Where code outside the PR uses one changed name of a file.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct OutsideUse {
+    pub name: String,
+    pub locations: Vec<NavLocation>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct OutsideUsesResponse {
+    /// False when found by name search (other languages, or the language server is unavailable).
+    pub precise: bool,
+    pub uses: Vec<OutsideUse>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct OutsideUsesRequest {
+    pub file: String,
+}

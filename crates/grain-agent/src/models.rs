@@ -188,8 +188,7 @@ pub fn available_cached(agent: Agent, cache_dir: &Path) -> Vec<ModelOption> {
     static CACHE: std::sync::Mutex<Vec<(Agent, std::time::Instant, Vec<ModelOption>)>> =
         std::sync::Mutex::new(Vec::new());
     let mut cache = CACHE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some((_, _, models)) =
-        cache.iter().find(|(a, at, _)| *a == agent && at.elapsed() < Duration::from_hours(1))
+    if let Some((_, _, models)) = cache.iter().find(|(a, at, _)| *a == agent && at.elapsed() < Duration::from_hours(1))
     {
         return models.clone();
     }

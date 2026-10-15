@@ -214,6 +214,16 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
   const toggleMineFirst = () => setPrefs((p) => ({ ...p, mineFirst: !p.mineFirst }))
   const back = () => page.current?.back()
+  const revealLine = (file: string, line: number) => {
+    setCollapsed((c) => ({ ...c, [file]: false }))
+    requestAnimationFrame(() => page.current?.reveal(file, (section) => rowFor(section, line)))
+  }
+  const githubUrl = useMemo(() => {
+    if (!data.pr || data.pr.local) return undefined
+    const repo = data.id.split('/').slice(0, 2).join('/')
+    const head = data.pr.headSha
+    return (file: string, line: number) => `https://github.com/${repo}/blob/${head}/${file}#L${line}`
+  }, [data.pr, data.id])
   const scroller = useCallback(() => page.current?.scroller() ?? null, [])
 
   /** Sends a question to the agent; `history` (earlier questions and answers) keeps follow-ups in context. */
@@ -317,7 +327,9 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
         kinds={copy.kinds}
         onCollapse={(c) => setCollapsed((all) => ({ ...all, [f]: c }))}
         onViewed={(on) => setViewed([f], on)}
-        onJump={(to) => jump(to)}
+        onJump={(to, line) => (line ? revealLine(to, line) : jump(to))}
+        onOutsideUses={() => reviewApi.outsideUses(data.id, f)}
+        githubUrl={githubUrl}
         onLookup={(t, references) => reviewApi.navigate(data.id, { file: f, line: t.line, character: t.character, name: t.name, references })}
         onComment={addComment}
         onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
