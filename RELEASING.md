@@ -11,8 +11,11 @@ Version bumps (before 1.0): `fix`/`perf` → patch (0.1.0 → 0.1.1); `feat` or 
 | curl (macOS, Linux) | `curl -LsSf https://github.com/pranav2012/grain/releases/latest/download/grain-installer.sh \| sh` | GitHub Release |
 | PowerShell (Windows) | `powershell -c "irm https://github.com/pranav2012/grain/releases/latest/download/grain-installer.ps1 \| iex"` | GitHub Release |
 | Homebrew | `brew install pranav2012/tap/grain` | `homebrew` publish job |
-| npm, pnpm, yarn, bun | `npm i -g grain-ci` · `pnpm add -g grain-ci` · `yarn global add grain-ci` · `bun add -g grain-ci` | `npm` publish job |
-| One-off run | `npx grain-ci` · `pnpm dlx grain-ci` · `bunx grain-ci` | `npm` publish job |
+| npm | `npm i -g grain-ci` | `npm` publish job |
+| pnpm | `pnpm add -g grain-ci` | `npm` publish job |
+| yarn (Yarn 1) | `yarn global add grain-ci` | `npm` publish job |
+| bun | `bun add -g grain-ci` | `npm` publish job |
+| One-off run | `npx grain-ci` · `pnpm dlx grain-ci` · `yarn dlx grain-ci` · `bunx grain-ci` | `npm` publish job |
 
 Targets: macOS (Apple Silicon, Intel), Linux (x64, arm64, glibc), Windows (x64).
 

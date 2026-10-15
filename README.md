@@ -9,15 +9,67 @@ Everything runs on your machine. GitHub access goes through your `gh` login.
 
 ## Install
 
+Homebrew:
+
 ```bash
-brew install pranav2012/tap/grain                                                        # Homebrew
-curl -LsSf https://github.com/pranav2012/grain/releases/latest/download/grain-installer.sh | sh   # macOS, Linux
-npm i -g grain-ci     # or: pnpm add -g grain-ci · yarn global add grain-ci · bun add -g grain-ci
+brew install pranav2012/tap/grain
 ```
 
-Or run it once without installing: `npx grain-ci` (also `pnpm dlx grain-ci`, `bunx grain-ci`).
+macOS, Linux:
 
-Windows (untested so far): `powershell -c "irm https://github.com/pranav2012/grain/releases/latest/download/grain-installer.ps1 | iex"`
+```bash
+curl -LsSf https://github.com/pranav2012/grain/releases/latest/download/grain-installer.sh | sh
+```
+
+npm:
+
+```bash
+npm i -g grain-ci
+```
+
+pnpm:
+
+```bash
+pnpm add -g grain-ci
+```
+
+yarn (Yarn 1; on Yarn 2+ use `yarn dlx grain-ci`):
+
+```bash
+yarn global add grain-ci
+```
+
+bun:
+
+```bash
+bun add -g grain-ci
+```
+
+The package is `grain-ci`; the command it installs is `grain`. pnpm and bun skip install scripts, so Grain downloads its binary on the first `grain` run instead; to download it at install time, use `pnpm add -g --allow-build=grain-ci grain-ci` or `bun add -g --trust grain-ci`.
+
+Or run it once without installing:
+
+```bash
+npx grain-ci
+```
+
+```bash
+pnpm dlx grain-ci
+```
+
+```bash
+yarn dlx grain-ci
+```
+
+```bash
+bunx grain-ci
+```
+
+Windows (untested so far):
+
+```powershell
+powershell -c "irm https://github.com/pranav2012/grain/releases/latest/download/grain-installer.ps1 | iex"
+```
 
 Then check your setup. Grain needs `git` and the GitHub CLI signed in (`gh auth login`); `grain doctor` says exactly what's missing and how to fix it:
 
