@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, LinkButton } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Kbd'
 import { cn } from '@/lib/cn'
@@ -18,6 +18,8 @@ interface CommentsRailProps {
   reviewing: boolean
   agentName: string
   calls: Record<string, Call>
+  /** Files in reading order. */
+  order: string[]
   threads: ReviewThread[]
   comments: ReviewComment[]
   scroller(): HTMLElement | null
@@ -59,14 +61,15 @@ function anchorFor(section: Element, line: number | null, side: Side): HTMLEleme
 
 const aiTone = (score: number) => (score >= 100 ? 'border-l-danger' : score >= 75 ? 'border-l-warning' : 'border-l-accent')
 
-/** Right column: GitHub threads, AI findings and the reviewer's drafts, each styled apart, beside their lines. */
-export function CommentsRail({ review, reviewing, agentName, calls, threads, comments, scroller, onKeep, onDismiss, onUndo, onReveal, onRetry }: CommentsRailProps) {
-  const railRef = useRef<HTMLElement>(null)
-  const headRef = useRef<HTMLDivElement>(null)
-  const cardRefs = useRef(new Map<string, HTMLDivElement>())
-  const [tops, setTops] = useState<Record<string, number>>({})
+/**
+ * Right column: every GitHub thread, AI finding and draft of the reviewer's, each styled apart, as one
+ * list in reading order. The list follows the page: what's on screen is marked and scrolled into view.
+ */
+export function CommentsRail({ review, reviewing, agentName, calls, order, threads, comments, scroller, onKeep, onDismiss, onUndo, onReveal, onRetry }: CommentsRailProps) {
+  const listRef = useRef<HTMLDivElement>(null)
+  const pointerIn = useRef(false)
   const [open, setOpen] = useState<string | null>(null)
-  const [listOpen, setListOpen] = useState(false)
+  const [onScreen, setOnScreen] = useState<{ file: string | null; keys: string[] }>({ file: null, keys: [] })
   const [hidden, setHidden] = useState<Partial<Record<Kind, boolean>>>({})
   const findings = useMemo(() => review?.findings ?? [], [review])
   const aiOn = review !== undefined
@@ -95,47 +98,67 @@ export function CommentsRail({ review, reviewing, agentName, calls, threads, com
     [threads, findings, comments, calls, draftIds],
   )
   const count = (k: Kind) => all.filter((i) => i.kind === k).length
-  const items = useMemo(() => all.filter((i) => !hidden[i.kind]), [all, hidden])
+  const items = useMemo(() => {
+    const at = new Map(order.map((f, i) => [f, i]))
+    const rank = (f: string) => at.get(f) ?? order.length
+    return all.filter((i) => !hidden[i.kind]).sort((a, b) => rank(a.file) - rank(b.file) || (a.line ?? -1) - (b.line ?? -1))
+  }, [all, hidden, order])
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const box = scroller()
     if (!box) return
     let frame = 0
-    const place = () => {
+    const look = () => {
       frame = 0
-      const rail = railRef.current?.getBoundingClientRect()
-      if (!rail) return
-      const wanted = items
-        .map((it) => {
-          const section = box.querySelector<HTMLElement>(`section[data-file="${CSS.escape(it.file)}"]`)
-          const anchor = section && anchorFor(section, it.line, it.side)
-          return { key: it.key, top: anchor ? anchor.getBoundingClientRect().top - rail.top - 2 : null }
+      const view = box.getBoundingClientRect()
+      const shown = (r: DOMRect) => r.bottom > view.top && r.top < view.bottom
+      const sections = new Map<string, HTMLElement>()
+      for (const s of box.querySelectorAll<HTMLElement>('section[data-file]')) sections.set(s.dataset.file ?? '', s)
+      const file = [...sections.values()].find((s) => s.getBoundingClientRect().bottom > view.top + 60)?.dataset.file ?? null
+      const keys = items
+        .filter((it) => {
+          const section = sections.get(it.file)
+          if (!section || !shown(section.getBoundingClientRect())) return false
+          const anchor = anchorFor(section, it.line, it.side)
+          return !!anchor && shown(anchor.getBoundingClientRect())
         })
-        .filter((x): x is { key: string; top: number } => x.top !== null && x.top > -40 && x.top < rail.height)
-        .sort((a, b) => a.top - b.top)
-      const next: Record<string, number> = {}
-      let floor = (headRef.current?.offsetHeight ?? 0) + 8
-      for (const w of wanted) {
-        const t = Math.max(w.top, floor)
-        next[w.key] = t
-        floor = t + (cardRefs.current.get(w.key)?.offsetHeight ?? 40) + 6
-      }
-      setTops((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+        .map((it) => it.key)
+      setOnScreen((prev) => (prev.file === file && prev.keys.join() === keys.join() ? prev : { file, keys }))
     }
     const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(place)
+      if (!frame) frame = requestAnimationFrame(look)
     }
     schedule()
     box.addEventListener('scroll', schedule, { passive: true })
     window.addEventListener('resize', schedule)
-      const timer = setInterval(schedule, 400)
+    // Diff rows are drawn a moment after scrolling stops; look again shortly.
+    const timer = setInterval(schedule, 400)
     return () => {
       box.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', schedule)
       clearInterval(timer)
       cancelAnimationFrame(frame)
     }
-  }, [items, scroller, open])
+  }, [items, scroller])
+
+  const groups = useMemo(() => {
+    const map = new Map<string, Item[]>()
+    for (const it of items) map.set(it.file, [...(map.get(it.file) ?? []), it])
+    return [...map]
+  }, [items])
+
+  // Keep the comments for what's being read in view: the first one on screen, else the first at or after the current file.
+  const target = useMemo(() => {
+    if (onScreen.keys[0]) return onScreen.keys[0]
+    const at = order.indexOf(onScreen.file ?? '')
+    return items.find((it) => order.indexOf(it.file) >= at)?.key ?? null
+  }, [onScreen, items, order])
+  useEffect(() => {
+    const list = listRef.current
+    const el = target && list?.querySelector<HTMLElement>(`[data-key="${CSS.escape(target)}"]`)
+    if (!list || !el || pointerIn.current) return
+    list.scrollTo({ top: Math.max(0, el.offsetTop - 30), behavior: 'smooth' })
+  }, [target])
 
   const highlight = (it: Item, on: boolean) => {
     const section = scroller()?.querySelector(`section[data-file="${CSS.escape(it.file)}"]`)
@@ -184,7 +207,13 @@ export function CommentsRail({ review, reviewing, agentName, calls, threads, com
     const call = callOf(f)
     return (
       <>
-        <button className="block w-full text-left" onClick={() => setOpen((o) => (o === it.key ? null : it.key))}>
+        <button
+          className="block w-full text-left"
+          onClick={() => {
+            setOpen((o) => (o === it.key ? null : it.key))
+            onReveal(it.file, it.line, it.side)
+          }}
+        >
           <span className="flex items-baseline gap-1.5 text-2xs">
             <span className="rounded-sm border border-accent/40 px-1 font-semibold text-accent">AI</span>
             <span className={cn('font-semibold tracking-wide uppercase', call ? 'text-fg-faint' : f.score >= 100 ? 'text-danger' : 'text-warning')}>{call === 'dismissed' ? 'dismissed' : f.category}</span>
@@ -227,15 +256,15 @@ export function CommentsRail({ review, reviewing, agentName, calls, threads, com
   }
 
   const style = (it: Item) => {
-    if (it.kind === 'github') return cn('border-l-fg-faint bg-surface', it.thread?.resolved && 'opacity-50')
-    if (it.kind === 'mine') return 'border-dashed border-success/50 border-l-success bg-surface'
+    if (it.kind === 'github') return cn('border-l-fg-faint', it.thread?.resolved && 'opacity-50')
+    if (it.kind === 'mine') return 'border-dashed border-success/50 border-l-success'
     const call = callOf(it.finding!)
-    return cn('bg-surface', call === 'dismissed' ? 'border-l-line opacity-50' : aiTone(it.finding!.score))
+    return call === 'dismissed' ? 'border-l-line opacity-50' : aiTone(it.finding!.score)
   }
 
   return (
-    <aside ref={railRef} aria-label="Comments" className="relative min-h-0 overflow-hidden border-l border-line bg-surface/40 [grid-area:rail]">
-      <div ref={headRef} className="relative z-10 border-b border-line bg-canvas px-3 py-2.5 text-xs">
+    <aside aria-label="Comments" className="flex min-h-0 flex-col border-l border-line bg-surface/40 [grid-area:rail]">
+      <div className="shrink-0 border-b border-line bg-canvas px-3 py-2.5 text-xs">
         <p className="flex items-center gap-1 text-sm font-medium text-fg-muted">
           Comments
           <span className="ml-auto flex gap-1">
@@ -276,50 +305,43 @@ export function CommentsRail({ review, reviewing, agentName, calls, threads, com
               {review.since && `; after new commits, only files changed since ${review.since.slice(0, 7)} were checked again`}. Nothing is posted unless you keep it.
             </p>
             {findings.length > 0 && (
-              <div className="mt-1.5 flex items-center gap-2">
-                <LinkButton onClick={() => setListOpen((o) => !o)}>{listOpen ? 'Hide list' : 'All findings'}</LinkButton>
-                <span className="ml-auto text-fg-faint">
-                  <Kbd>n</Kbd> <Kbd>p</Kbd> next, previous
-                </span>
-              </div>
-            )}
-            {listOpen && (
-              <ul className="mt-1.5 max-h-60 overflow-auto">
-                {findings.map((f) => (
-                  <li key={findingKey(f)}>
-                    <button onClick={() => onReveal(f.file, f.line, 'additions')} className={cn('w-full rounded-sm px-1.5 py-1 text-left hover:bg-raised', callOf(f) && 'opacity-50')}>
-                      <span className="block truncate text-fg-muted">{f.title}</span>
-                      <span className="font-mono text-2xs text-fg-faint">
-                        {fileName(f.file)}:{f.line}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <p className="mt-1 text-fg-faint">
+                <Kbd>n</Kbd> <Kbd>p</Kbd> next, previous finding
+              </p>
             )}
           </>
         )}
         {all.length === 0 && !aiOn && <p className="mt-1 text-fg-subtle">No comments yet.</p>}
       </div>
-      {items.map((it) => {
-        const top = tops[it.key]
-        if (top === undefined) return null
-        return (
-          <div
-            key={it.key}
-            ref={(el) => {
-              if (el) cardRefs.current.set(it.key, el)
-              else cardRefs.current.delete(it.key)
-            }}
-            style={{ top }}
-            onMouseEnter={() => highlight(it, true)}
-            onMouseLeave={() => highlight(it, false)}
-            className={cn('absolute right-2.5 left-2.5 rounded-md border border-l-[3px] border-line px-2.5 py-1.5 text-sm shadow-float transition-[top] duration-150', style(it))}
-          >
-            {card(it)}
-          </div>
-        )
-      })}
+      <div
+        ref={listRef}
+        onMouseEnter={() => (pointerIn.current = true)}
+        onMouseLeave={() => (pointerIn.current = false)}
+        className="relative min-h-0 flex-1 overflow-auto px-2.5 pb-[60vh]"
+      >
+        {groups.map(([file, group]) => (
+          <section key={file}>
+            <button
+              onClick={() => onReveal(file, null, 'additions')}
+              title={file}
+              className={cn('sticky top-0 z-10 -mx-2.5 block w-[calc(100%+1.25rem)] truncate bg-canvas px-3 py-1 text-left font-mono text-2xs hover:text-fg', file === onScreen.file ? 'text-fg-muted' : 'text-fg-faint')}
+            >
+              {fileName(file)}
+            </button>
+            {group.map((it) => (
+              <div
+                key={it.key}
+                data-key={it.key}
+                onMouseEnter={() => highlight(it, true)}
+                onMouseLeave={() => highlight(it, false)}
+                className={cn('my-1.5 rounded-md border border-l-[3px] border-line px-2.5 py-1.5 text-sm', onScreen.keys.includes(it.key) ? 'bg-raised shadow-float ring-1 ring-accent/40' : 'bg-surface', style(it))}
+              >
+                {card(it)}
+              </div>
+            ))}
+          </section>
+        ))}
+      </div>
     </aside>
   )
 }

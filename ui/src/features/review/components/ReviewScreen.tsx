@@ -421,6 +421,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             reviewing={reviewing}
             agentName={agentName ?? ''}
             calls={state.ai ?? {}}
+            order={order}
             threads={conversation?.threads ?? []}
             comments={state.comments}
             scroller={scroller}
