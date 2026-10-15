@@ -7,6 +7,7 @@ import type { Diagnostics } from '@/types/generated/Diagnostics'
 import type { PrStatus } from '@/types/generated/PrStatus'
 import type { SavedConversation } from '@/types/generated/SavedConversation'
 import type { SavedPrStatus } from '@/types/generated/SavedPrStatus'
+import type { Settings } from '@/types/generated/Settings'
 import type { NavigateRequest } from '@/types/generated/NavigateRequest'
 import type { NavigateResponse } from '@/types/generated/NavigateResponse'
 import type { OutsideUsesFile } from '@/types/generated/OutsideUsesFile'
@@ -33,6 +34,7 @@ export const reviewApi = {
   /** `refresh` waits for new commits or local edits instead of returning the stored review. */
   open: (pr: string, refresh = false) => post<OpenResponse>('/api/open', { pr, refresh }),
   status: (id: string) => request<Status>(`/api/reviews/${id}/status`),
+  settings: () => request<Settings>('/api/settings'),
   summaries: (id: string) => request<Record<string, Summary | LayerSummary>>(`/api/reviews/${id}/files/summaries.json`),
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),
   /** Definition or references of the name at a position in the new version of a file. */

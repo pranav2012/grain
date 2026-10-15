@@ -25,6 +25,7 @@ export type ReviewAction =
   | { type: 'view'; files: string[]; viewed: Viewed[] | null }
   | { type: 'comment'; comment: ReviewComment }
   | { type: 'deleteComment'; id: string }
+  | { type: 'editComment'; id: string; body: string; kind: ReviewComment['kind']; suggestion?: string }
   | { type: 'posted'; ids: string[] }
   | { type: 'ai'; key: string; call: { kept: string } | 'dismissed' | null }
 
@@ -46,6 +47,8 @@ function reducer(s: ReviewState, a: ReviewAction): ReviewState {
       return { ...s, comments: [...s.comments, a.comment] }
     case 'deleteComment':
       return { ...s, comments: s.comments.filter((c) => c.id !== a.id) }
+    case 'editComment':
+      return { ...s, comments: s.comments.map((c) => (c.id === a.id && !c.postedAt ? { ...c, body: a.body, kind: a.kind, suggestion: a.suggestion } : c)) }
     case 'ai': {
       const ai = { ...s.ai }
       if (a.call) ai[a.key] = a.call

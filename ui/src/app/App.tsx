@@ -40,7 +40,7 @@ export function App() {
       {pr ? (
         <ReviewPage key={pr} id={pr} settingsVersion={settingsVersion} onSwitch={() => setPicker(true)} onSettings={() => setSettings(true)} />
       ) : (
-        <HomePage onOpen={openPr} onSettings={() => setSettings(true)} />
+        <HomePage onOpen={openPr} onSettings={() => setSettings(true)} settingsVersion={settingsVersion} />
       )}
       {picker && <PrPicker variant="dialog" onOpen={openPr} onClose={() => setPicker(false)} />}
       <ConnectionBanner />

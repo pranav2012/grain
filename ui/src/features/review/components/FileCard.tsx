@@ -4,7 +4,9 @@ import { FileDiff } from '@pierre/diffs/react'
 import { Badge } from '@/components/ui/Badge'
 import { Button, LinkButton } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
+import { ago } from '@/lib/format'
 import type { Check } from '@/types/generated/Check'
+import type { Finding } from '@/types/generated/Finding'
 import type { ReviewThread } from '@/types/generated/ReviewThread'
 import type { FilePatch } from '../hooks/usePrDiff'
 import type { UsedBy } from '../model/files'
@@ -12,17 +14,18 @@ import type { FileProblems } from '../model/problems'
 import type { OutsideUsesResponse } from '@/types/generated/OutsideUsesResponse'
 import { markFindings, markProblems, squiggleCSS } from '../model/squiggles'
 import { newLines } from '../model/suggestion'
-import type { CommentKind, DiffStyle, LineThread, ReviewComment, Side } from '../model/types'
+import type { CommentKind, DiffStyle, LastChange, LineThread, ReviewComment, Side } from '../model/types'
 import { AiThread, ThreadMessages } from './AiThread'
 import type { CodeLocation } from './CodeModal'
 import { CodePeek, type Peek } from './CodePeek'
 import { HoverRefs, type HoverState } from './HoverRefs'
 import { CommentCard } from './CommentCard'
+import { FindingNote } from './FindingNote'
 import { Composer } from './Composer'
 import { ProblemRow } from './ProblemRow'
 import { ThreadCard } from './ThreadCard'
 
-type Note = { kind: 'draft' } | { kind: 'peek' } | { kind: 'ai'; id: string } | { kind: 'note'; id: string } | { kind: 'thread'; id: string } | { kind: 'problem'; id: string }
+type Note = { kind: 'draft' } | { kind: 'peek' } | { kind: 'finding'; key: string } | { kind: 'ai'; id: string } | { kind: 'note'; id: string } | { kind: 'thread'; id: string } | { kind: 'problem'; id: string }
 export type NewComment = Omit<ReviewComment, 'id' | 'createdAt' | 'blockId' | 'blockKey'>
 export type ThreadAnchor = Pick<LineThread, 'file' | 'side' | 'line' | 'about' | 'code'>
 
@@ -42,7 +45,8 @@ export interface FileCardProps {
   viewed: boolean
   changedSinceViewed: boolean
   test: boolean
-  owned: boolean
+  /** Who last changed this file before the PR. */
+  lastChange?: LastChange
   diffStyle: DiffStyle
   usedBy: UsedBy
   checks: Check[]
@@ -52,6 +56,14 @@ export interface FileCardProps {
   problems: FileProblems
   /** Lines the agent's second opinion comments on. */
   findingLines: number[]
+  /** The agent's findings in this file still waiting for the reviewer's call, by `findingKey`. */
+  findings: [string, Finding][]
+  /** A draft (its id) or finding (`ai:` + key) open for editing, on any file. */
+  editing: string | null
+  onEditing(id: string | null): void
+  onEditComment(id: string, body: string, kind: CommentKind, suggestion?: string): void
+  onKeepFinding(f: Finding, edited?: { body: string; kind: CommentKind; suggestion?: string }): void
+  onDismissFinding(f: Finding): void
   agentName: string | null
   kinds: [CommentKind, string][]
   onCollapse(collapsed: boolean): void
@@ -76,6 +88,11 @@ export interface FileCardProps {
   onToggleThread(threadId: string, open: boolean): void
 }
 
+/** Hidden-lines bars styled like GitHub's: a blue band with blue expand arrows that fill on hover. */
+const hunkBarCSS = `[data-separator], [data-separator-wrapper], [data-separator-content] { background-color: color-mix(in srgb, var(--color-accent) 10%, var(--color-canvas)) !important; color: var(--color-fg-subtle) !important; }
+[data-expand-button] { background-color: color-mix(in srgb, var(--color-accent) 18%, var(--color-canvas)) !important; color: var(--color-accent) !important; border-right-color: transparent !important; }
+[data-expand-button]:hover { background-color: var(--color-accent) !important; color: var(--color-canvas) !important; }`
+
 const baseOptions: FileDiffOptions<Note, undefined> = {
   theme: { dark: 'pierre-dark', light: 'pierre-light' },
   themeType: 'dark',
@@ -83,8 +100,10 @@ const baseOptions: FileDiffOptions<Note, undefined> = {
   enableLineSelection: true,
   lineHoverHighlight: 'number',
   hunkSeparators: 'line-info',
+  // Like GitHub: each click on a hidden-lines bar shows 20 more lines.
+  expansionLineCount: 20,
   lineDiffType: 'word-alt',
-  unsafeCSS: `* { --diffs-dark-bg: var(--color-canvas) !important; }\n${squiggleCSS}`,
+  unsafeCSS: `* { --diffs-dark-bg: var(--color-canvas) !important; }\n${hunkBarCSS}\n${squiggleCSS}`,
 }
 
 const fileName = (p: string) => p.split('/').pop()!
@@ -102,7 +121,6 @@ export function FileCard(p: FileCardProps) {
   const [peek, setPeek] = useState<Peek | null>(null)
   const [hover, setHover] = useState<{ id: string; left: number; top: number } | null>(null)
   const sectionRef = useRef<HTMLElement>(null)
-  const [fullFile, setFullFile] = useState(false)
   const [refHover, setRefHover] = useState<HoverState | null>(null)
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const hoverCache = useRef(new Map<string, Promise<[Peek['result'], Peek['result']]>>())
@@ -156,7 +174,6 @@ export function FileCard(p: FileCardProps) {
     () => ({
       ...baseOptions,
       diffStyle: p.diffStyle,
-      expandUnchanged: fullFile,
       loadDiffFiles: (diff) => hoverRef.current.loadFiles(diff),
       onTokenEnter: (t) => hoverRef.current.hoverName(t),
       onTokenLeave: () => hoverRef.current.leaveName(),
@@ -176,7 +193,7 @@ export function FileCard(p: FileCardProps) {
         lookupRef.current({ line: t.lineNumber, character: t.lineCharStart, name: t.tokenText, side: t.side }, e.shiftKey)
       },
     }),
-    [p.diffStyle, fullFile],
+    [p.diffStyle],
   )
 
   const annotations = useMemo(() => {
@@ -186,15 +203,15 @@ export function FileCard(p: FileCardProps) {
       .map((c): DiffLineAnnotation<Note> => ({ side: c.side ?? 'additions', lineNumber: c.endLine ?? c.line!, metadata: { kind: 'note', id: c.id } })))
     for (const t of p.threads) if (t.line && !t.outdated) out.push({ side: t.side === 'LEFT' ? 'deletions' : 'additions', lineNumber: t.line, metadata: { kind: 'thread', id: t.id } })
     for (const t of p.aiThreads) out.push({ side: t.side, lineNumber: t.line, metadata: { kind: 'ai', id: t.id } })
+    for (const [key, f] of p.findings) out.push({ side: 'additions', lineNumber: f.endLine || f.line, metadata: { kind: 'finding', key } })
     if (draft) out.push({ side: draft.side, lineNumber: draft.endLine, metadata: { kind: 'draft' } })
     if (peek) out.push({ side: peek.side, lineNumber: peek.line, metadata: { kind: 'peek' } })
     return out
-  }, [p.problems, p.comments, p.threads, p.aiThreads, draft, peek])
+  }, [p.problems, p.comments, p.threads, p.aiThreads, p.findings, draft, peek])
 
   const suggestionSeed = draft && draft.side === 'additions' && p.patch ? newLines(p.patch.diff, draft.line, draft.endLine) : null
   const notes = p.comments.filter((c) => !c.line)
   const outdated = p.threads.filter((t) => !t.line || t.outdated)
-  // The engine's "used outside this PR" note says the same as the clickable line below; keep one.
   // The engine's "used outside this PR" note counts a whole group of files; the exact list below replaces it.
   const warnings = p.checks.filter((c) => c.level === 'warn' && !c.text.startsWith('Changed code is used in'))
   const outside = p.outsideUses?.uses ?? []
@@ -203,6 +220,22 @@ export function FileCard(p: FileCardProps) {
   const showBody = !p.collapsed && p.patch !== undefined
   const hovered = hover && p.aiThreads.find((t) => t.id === hover.id)
   const range = draft && `${draft.line}${draft.endLine !== draft.line ? `–${draft.endLine}` : ''}`
+
+  const editor = (c: ReviewComment) => (
+    <Composer
+      kinds={p.kinds}
+      initialKind={c.kind}
+      initialBody={c.body}
+      initialSuggestion={c.suggestion}
+      suggestionSeed={c.side !== 'deletions' && c.line && p.patch ? newLines(p.patch.diff, c.line, c.endLine ?? c.line) : null}
+      onCancel={() => p.onEditing(null)}
+      onSave={(body: string, kind: CommentKind, suggestion?: string) => {
+        p.onEditComment(c.id, body, kind, suggestion)
+        p.onEditing(null)
+      }}
+    />
+  )
+  const draftCard = (c: ReviewComment) => (p.editing === c.id ? editor(c) : <CommentCard c={c} onEdit={() => p.onEditing(c.id)} onDelete={() => p.onDeleteComment(c.id)} />)
 
   const renderAnnotation = (a: DiffLineAnnotation<Note>) => {
     const meta = a.metadata
@@ -280,11 +313,34 @@ export function FileCard(p: FileCardProps) {
         </>,
       )
     const c = meta.kind === 'note' && p.comments.find((x) => x.id === meta.id)
-    return c ? wrap(<CommentCard c={c} onDelete={() => p.onDeleteComment(c.id)} />) : null
+    if (meta.kind === 'finding') {
+      const f = p.findings.find(([k]) => k === meta.key)?.[1]
+      if (!f) return null
+      if (p.editing === `ai:${meta.key}`)
+        return wrap(
+          <Composer
+            kinds={p.kinds}
+            initialBody={f.comment}
+            placeholder="Edit the AI's comment; saving makes it your draft"
+            suggestionSeed={p.patch ? newLines(p.patch.diff, f.line, f.endLine || f.line) : null}
+            onCancel={() => p.onEditing(null)}
+            onSave={(body: string, kind: CommentKind, suggestion?: string) => {
+              p.onKeepFinding(f, { body, kind, suggestion })
+              p.onEditing(null)
+            }}
+          />,
+        )
+      return wrap(<FindingNote finding={f} onKeep={() => p.onKeepFinding(f)} onEdit={() => p.onEditing(`ai:${meta.key}`)} onDismiss={() => p.onDismissFinding(f)} />)
+    }
+    return c ? wrap(draftCard(c)) : null
   }
 
   return (
-    <section ref={sectionRef} data-file={p.path} className="relative mb-4 rounded-lg border border-line bg-canvas">
+    <section
+      ref={sectionRef}
+      data-file={p.path}
+      className="relative mb-4 rounded-lg border border-line bg-canvas"
+    >
       <header
         className={cn(
           'sticky top-0 z-10 flex items-center gap-1.5 rounded-t-lg border-b border-line bg-surface px-2.5 py-1.5 text-sm',
@@ -307,7 +363,14 @@ export function FileCard(p: FileCardProps) {
         </button>
         {p.patch?.diff.type === 'new' && <Badge tone="success">new</Badge>}
         {p.patch?.diff.type === 'deleted' && <Badge tone="danger">deleted</Badge>}
-        {p.owned && <Badge tone="accent">yours</Badge>}
+        {p.lastChange && (
+          <span
+            className="min-w-0 shrink truncate text-xs text-fg-faint max-[1100px]:hidden"
+            title={`Last change before this PR: ${p.lastChange.sha.slice(0, 7)} ${p.lastChange.subject} (${p.lastChange.author}, ${new Date(p.lastChange.at * 1000).toLocaleDateString()})`}
+          >
+            last: {p.lastChange.author} · {ago(new Date(p.lastChange.at * 1000).toISOString())}
+          </span>
+        )}
         {errors > 0 && (
           <Badge tone="danger" title="Errors on lines this PR changed">
             ✕ {errors} {errors === 1 ? 'error' : 'errors'}
@@ -326,11 +389,6 @@ export function FileCard(p: FileCardProps) {
             </>
           )}
         </span>
-        {p.patch && p.patch.diff.type !== 'new' && p.patch.diff.type !== 'deleted' && !p.collapsed && (
-          <LinkButton className="ml-2 shrink-0 text-xs" aria-pressed={fullFile} onClick={() => setFullFile((v) => !v)}>
-            {fullFile ? 'Changes only' : 'Full file'}
-          </LinkButton>
-        )}
         <LinkButton className="ml-2 shrink-0 text-xs" onClick={() => setFileNote(true)}>
           Comment
         </LinkButton>
@@ -380,7 +438,7 @@ export function FileCard(p: FileCardProps) {
             <ThreadCard key={t.id} thread={t} />
           ))}
           {notes.map((c) => (
-            <CommentCard key={c.id} c={c} onDelete={() => p.onDeleteComment(c.id)} />
+            <div key={c.id}>{draftCard(c)}</div>
           ))}
           {fileNote && (
             <Composer

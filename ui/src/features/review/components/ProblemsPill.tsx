@@ -10,11 +10,20 @@ interface ProblemsPillProps {
   diagnosing: boolean
   onNext(): void
   onChooseClone(): void
+  /** No work folders set, so Grain can't find the reviewer's clones. */
+  noWorkFolders: boolean
+  onAddWorkFolder(): void
 }
 
 /** Top bar: how many errors and warnings the PR's changed lines have; click or `e` jumps to the next. */
-export function ProblemsPill({ problems, report, diagnosing, onNext, onChooseClone }: ProblemsPillProps) {
+export function ProblemsPill({ problems, report, diagnosing, onNext, onChooseClone, noWorkFolders, onAddWorkFolder }: ProblemsPillProps) {
   if (diagnosing && !problems.length) return <span className="text-xs whitespace-nowrap text-fg-faint">Checking for errors…</span>
+  if (report?.unavailable && !problems.length && noWorkFolders)
+    return (
+      <Button size="sm" variant="ghost" title="Grain finds your local clones in your work folders and checks the PR with their TypeScript and lint setup" onClick={onAddWorkFolder} className="whitespace-nowrap text-warning">
+        Errors: add a work folder
+      </Button>
+    )
   if (report?.unavailable && !problems.length)
     return (
       <Button size="sm" variant="ghost" title={report.unavailable} onClick={onChooseClone} className="text-warning">

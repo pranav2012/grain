@@ -19,8 +19,9 @@ import { modeOrder, modes } from '../model/modes'
 import { allProblems, changedLines, problemsByFile, type FileProblems } from '../model/problems'
 import { findingKey, rowFor } from '../model/findings'
 import { chaptersFor, ownedBlocks } from '../model/story'
-import type { Ask, LineThread, LoadedPr, Mode, ReviewComment, Side } from '../model/types'
+import type { Ask, CommentKind, LineThread, LoadedPr, Mode, ReviewComment, Side } from '../model/types'
 import type { Finding } from '@/types/generated/Finding'
+import type { Settings } from '@/types/generated/Settings'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
 import { FileCard, type NewComment, type ThreadAnchor } from './FileCard'
@@ -41,6 +42,7 @@ import { TopBar } from './TopBar'
 const LARGE_FILE = 1500
 const noProblems: FileProblems = { shown: [], other: [] }
 const noLines: number[] = []
+const noFindings: [string, Finding][] = []
 
 interface ReviewScreenProps {
   base: LoadedPr
@@ -63,6 +65,10 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const head = base.pr?.headSha ?? ''
 
   const status = useReviewStatus(base.id, settingsVersion)
+  const [settings, setSettings] = useState<Settings | null>(null)
+  useEffect(() => {
+    reviewApi.settings().then(setSettings, () => {})
+  }, [settingsVersion])
   const live = useLiveReview(base, status)
   const byFile = useMemo(() => blocksByFile(live), [live])
   const blockOrder = useMemo(() => chaptersFor(live, prefs.mineFirst).flatMap((c) => c.sections.flatMap((s) => s.blocks)), [live, prefs.mineFirst])
@@ -193,10 +199,24 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     for (const f of findings) map.set(f.file, [...(map.get(f.file) ?? []), f.line])
     return map
   }, [findings])
+  // Waiting for the reviewer: no call yet, or kept as a draft that was since deleted.
+  const waitingByFile = useMemo(() => {
+    const ids = new Set(state.comments.map((c) => c.id))
+    const map = new Map<string, [string, Finding][]>()
+    for (const f of findings) {
+      const call = state.ai?.[findingKey(f)]
+      if (call && (call === 'dismissed' || ids.has(call.kept))) continue
+      map.set(f.file, [...(map.get(f.file) ?? []), [findingKey(f), f]])
+    }
+    return map
+  }, [findings, state.ai, state.comments])
+  const [editing, setEditing] = useState<string | null>(null)
   const aiShown = !!agentName && (reviewing || !!ai)
   const drafts = state.comments.filter((c) => c.file && !c.postedAt).length
   const commentCount = (conversation?.threads.length ?? 0) + drafts
-  const showRail = !railHidden && (aiShown || commentCount > 0)
+  const aiOff = !!settings && !settings.agent
+  const railAvailable = aiShown || commentCount > 0 || aiOff
+  const showRail = !railHidden && railAvailable
   const findingAt = useRef(-1)
   const revealFinding = (f: Finding) => {
     findingAt.current = findings.indexOf(f)
@@ -205,9 +225,10 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     requestAnimationFrame(() => page.current?.reveal(f.file, (section) => rowFor(section, f.line)))
   }
   const stepFinding = (d: number) => findings.length && revealFinding(findings[(findingAt.current + d + findings.length) % findings.length])
-  const keepFinding = (f: Finding) => {
+  const keepFinding = (f: Finding, edited?: { body: string; kind: CommentKind; suggestion?: string }) => {
     const id = crypto.randomUUID()
-    dispatch({ type: 'comment', comment: { id, blockId: 0, blockKey: f.file, kind: 'comment', body: f.comment, file: f.file, side: 'additions', line: f.line, endLine: f.endLine, createdAt: Date.now() } })
+    const body = edited ? { body: edited.body, kind: edited.kind, suggestion: edited.suggestion } : { body: f.comment, kind: 'comment' as const }
+    dispatch({ type: 'comment', comment: { id, blockId: 0, blockKey: f.file, ...body, file: f.file, side: 'additions', line: f.line, endLine: f.endLine, createdAt: Date.now() } })
     dispatch({ type: 'ai', key: findingKey(f), call: { kept: id } })
   }
   const undoFinding = (f: Finding) => {
@@ -291,7 +312,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     e: nextProblem,
     n: () => stepFinding(1),
     p: () => stepFinding(-1),
-    a: () => (aiShown || commentCount > 0) && setRailHidden((h) => !h),
+    a: () => railAvailable && setRailHidden((h) => !h),
     s: toggleDiffStyle,
     m: () => ownedFiles.size && toggleMineFirst(),
     '1': () => setMode('self'),
@@ -333,7 +354,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
         viewed={isViewed(f)}
         changedSinceViewed={!!v && !isViewed(f)}
         test={isTestPath(f)}
-        owned={ownedFiles.has(f)}
+        lastChange={data.owners.lastChange?.[f]}
         diffStyle={p?.diff.type === 'new' || p?.diff.type === 'deleted' ? 'unified' : prefs.diffStyle}
         usedBy={usedBy(data, f)}
         checks={blocks.flatMap((b) => b.checks)}
@@ -342,6 +363,12 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
         aiThreads={lineThreads.filter((t) => t.file === f)}
         problems={fileProblems.get(f) ?? noProblems}
         findingLines={findingLines.get(f) ?? noLines}
+        findings={waitingByFile.get(f) ?? noFindings}
+        editing={editing}
+        onEditing={setEditing}
+        onEditComment={(id, body, kind, suggestion) => dispatch({ type: 'editComment', id, body, kind, suggestion })}
+        onKeepFinding={keepFinding}
+        onDismissFinding={(x) => dispatch({ type: 'ai', key: findingKey(x), call: 'dismissed' })}
         agentName={agentName}
         kinds={copy.kinds}
         onCollapse={(c) => setCollapsed((all) => ({ ...all, [f]: c }))}
@@ -383,13 +410,27 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
           problems={
             <>
-              <ProblemsPill problems={shownProblems} report={report} diagnosing={diagnosing} onNext={nextProblem} onChooseClone={chooseClone} />
-              {(aiShown || commentCount > 0) && (
+              <ProblemsPill
+                problems={shownProblems}
+                report={report}
+                diagnosing={diagnosing}
+                onNext={nextProblem}
+                onChooseClone={chooseClone}
+                noWorkFolders={!!settings && settings.workFolders.length === 0}
+                onAddWorkFolder={onSettings}
+              />
+              {settings && !settings.agent && (
+                <Button size="sm" variant="ghost" title="Get a second opinion on every PR from Claude Code, Codex or OpenCode, run read-only on your machine" onClick={onSettings} className="whitespace-nowrap">
+                  <span className="text-2xs font-semibold text-accent">AI</span> off · turn on
+                </Button>
+              )}
+              {railAvailable && (
                 <Button size="sm" variant="ghost" aria-pressed={!railHidden} title="Show or hide the comments column (a)" onClick={() => setRailHidden((h) => !h)} className="whitespace-nowrap">
                   {aiShown && <span className="text-2xs font-semibold text-accent">AI</span>}
                   {aiShown && (reviewing && !ai ? 'reviewing…' : `${findings.filter((f) => !state.ai?.[findingKey(f)]).length} to check`)}
                   {aiShown && commentCount > 0 && <span className="text-fg-faint">·</span>}
                   {commentCount > 0 && `${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}`}
+                  {!aiShown && commentCount === 0 && 'Comments'}
                 </Button>
               )}
               {agentName && status && <SpendChip spend={status.spend} />}
@@ -428,7 +469,13 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             onKeep={keepFinding}
             onDismiss={(f) => dispatch({ type: 'ai', key: findingKey(f), call: 'dismissed' })}
             onUndo={undoFinding}
+            onEdit={(id, file, line, side) => {
+              setEditing(id)
+              revealComment(file, line, side)
+            }}
             onReveal={revealComment}
+            aiOff={aiOff}
+            onTurnOnAi={onSettings}
             onRetry={rereview}
           />
         )}

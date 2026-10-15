@@ -7,6 +7,8 @@ interface ComposerProps {
   kinds: [CommentKind, string][]
   initialKind?: CommentKind
   initialBody?: string
+  /** A suggestion already on the comment being edited. */
+  initialSuggestion?: string
   placeholder?: string
   /** The selected new-code lines; when set, the comment can carry a suggested replacement. */
   suggestionSeed?: string | null
@@ -14,11 +16,11 @@ interface ComposerProps {
   onCancel(): void
 }
 
-export function Composer({ kinds, initialKind, initialBody, placeholder, suggestionSeed, onSave, onCancel }: ComposerProps) {
+export function Composer({ kinds, initialKind, initialBody, initialSuggestion, placeholder, suggestionSeed, onSave, onCancel }: ComposerProps) {
   const [body, setBody] = useState(initialBody ?? '')
   const [kind, setKind] = useState<CommentKind>(initialKind ?? kinds[0][0])
-  const [suggestion, setSuggestion] = useState<string | null>(null)
-  const changed = suggestion !== null && suggestion !== suggestionSeed
+  const [suggestion, setSuggestion] = useState<string | null>(initialSuggestion ?? null)
+  const changed = suggestion !== null && (initialSuggestion !== undefined || suggestion !== suggestionSeed)
   const canSave = !!body.trim() || changed
   const save = () => canSave && onSave(body.trim(), kind, changed ? suggestion : undefined)
   const keys = (e: KeyboardEvent) => {

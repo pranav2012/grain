@@ -26,8 +26,13 @@ interface CommentsRailProps {
   onKeep(f: Finding): void
   onDismiss(f: Finding): void
   onUndo(f: Finding): void
+  /** Opens a draft (its id) or finding (`ai:` + key) for editing under its line. */
+  onEdit(id: string, file: string, line: number | null, side: Side): void
   onReveal(file: string, line: number | null, side: Side): void
   onRetry(): void
+  /** AI is off in settings: show a nudge to turn it on. */
+  aiOff: boolean
+  onTurnOnAi(): void
 }
 
 interface Item {
@@ -65,7 +70,7 @@ const aiTone = (score: number) => (score >= 100 ? 'border-l-danger' : score >= 7
  * Right column: every GitHub thread, AI finding and draft of the reviewer's, each styled apart, as one
  * list in reading order. The list follows the page: what's on screen is marked and scrolled into view.
  */
-export function CommentsRail({ review, reviewing, agentName, calls, order, threads, comments, scroller, onKeep, onDismiss, onUndo, onReveal, onRetry }: CommentsRailProps) {
+export function CommentsRail({ review, reviewing, agentName, calls, order, threads, comments, scroller, onKeep, onDismiss, onUndo, onEdit, onReveal, onRetry, aiOff, onTurnOnAi }: CommentsRailProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const pointerIn = useRef(false)
   const [open, setOpen] = useState<string | null>(null)
@@ -193,14 +198,19 @@ export function CommentsRail({ review, reviewing, agentName, calls, order, threa
     if (it.kind === 'mine' && it.comment) {
       const c = it.comment
       return (
-        <button className="block w-full text-left" onClick={() => onReveal(it.file, it.line, it.side)}>
-          <span className="flex items-baseline gap-1.5 text-2xs">
-            <span className="font-semibold tracking-wide text-success uppercase">Draft</span>
-            <span className="text-fg-subtle">not posted{fromAi.has(c.id) ? ' · from AI' : ''}</span>
-            <span className="ml-auto truncate font-mono text-fg-faint">{place(it)}</span>
-          </span>
-          <span className="mt-0.5 line-clamp-3 text-fg-muted">{c.body}</span>
-        </button>
+        <>
+          <button className="block w-full text-left" onClick={() => onReveal(it.file, it.line, it.side)}>
+            <span className="flex items-baseline gap-1.5 text-2xs">
+              <span className="font-semibold tracking-wide text-success uppercase">Draft</span>
+              <span className="shrink-0 text-fg-subtle">not posted{fromAi.has(c.id) ? ' · from AI' : ''}</span>
+              <span className="ml-auto min-w-0 truncate font-mono text-fg-faint">{place(it)}</span>
+            </span>
+            <span className="mt-0.5 line-clamp-3 text-fg-muted">{c.body}</span>
+          </button>
+          <LinkButton className="mt-0.5 text-xs" onClick={() => onEdit(c.id, it.file, it.line, it.side)}>
+            Edit
+          </LinkButton>
+        </>
       )
     }
     const f = it.finding!
@@ -242,7 +252,10 @@ export function CommentsRail({ review, reviewing, agentName, calls, order, threa
             open === it.key && (
               <>
                 <Button size="sm" variant="primary" onClick={() => onKeep(f)}>
-                  Keep as my comment
+                  Keep
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => onEdit(`ai:${findingKey(f)}`, it.file, it.line, it.side)}>
+                  Edit
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => onDismiss(f)}>
                   Dismiss
@@ -286,6 +299,18 @@ export function CommentsRail({ review, reviewing, agentName, calls, order, threa
               ))}
           </span>
         </p>
+        {aiOff && (
+          <div className="mt-2 rounded-md border border-accent/40 bg-accent/10 px-2.5 py-2">
+            <p className="text-fg-muted">
+              <span className="mr-1 rounded-sm border border-accent/40 px-1 text-2xs font-semibold text-accent">AI</span>
+              Get a second opinion on every PR
+            </p>
+            <p className="mt-0.5 text-fg-subtle">Claude Code, Codex or OpenCode reviews the PR read-only on your machine; its findings show up here for you to keep or dismiss.</p>
+            <Button size="sm" variant="primary" className="mt-1.5" onClick={onTurnOnAi}>
+              Turn on AI
+            </Button>
+          </div>
+        )}
         {aiOn && reviewing && !review && <p className="mt-1 text-fg-subtle">{agentName} is reviewing this PR with {skill}. This takes a few minutes; keep reading.</p>}
         {review?.error && (
           <p className="mt-1 text-danger">
