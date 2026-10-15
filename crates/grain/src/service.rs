@@ -9,6 +9,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 
 /// One registration per port, so a second Grain on another port doesn't replace the first.
+#[cfg(any(target_os = "macos", test))]
 fn label(port: u16) -> String {
     format!("io.github.pranav2012.grain.{port}")
 }
@@ -21,6 +22,7 @@ fn environment() -> Vec<(String, String)> {
         .collect()
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
@@ -49,6 +51,7 @@ fn without_env(plist: &str) -> String {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn port_free(port: u16) -> bool {
     std::net::TcpListener::bind(std::net::SocketAddr::from(([127, 0, 0, 1], port))).is_ok()
 }
