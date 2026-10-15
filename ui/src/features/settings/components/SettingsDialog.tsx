@@ -95,6 +95,19 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
               </small>
             </span>
           </label>
+          <label className="mt-1.5 flex items-start gap-2.5 text-fg-subtle has-[:disabled]:opacity-50">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={s.smallModelForSummaries}
+              disabled={!s.agent}
+              onChange={(e) => setS({ ...s, smallModelForSummaries: e.target.checked })}
+            />
+            <span>
+              Use a small, cheaper model for summaries and chapter intros
+              <small className="block text-sm text-fg-faint">Claude Code uses Haiku for these. Questions and second opinions keep your model. Codex and OpenCode use their configured model.</small>
+            </span>
+          </label>
           <label className="mt-3 flex items-start gap-2.5 text-fg-subtle">
             <input type="checkbox" className="mt-1" checked={s.prefetch} onChange={(e) => setS({ ...s, prefetch: e.target.checked })} />
             <span>

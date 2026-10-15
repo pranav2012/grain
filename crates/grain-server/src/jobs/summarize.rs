@@ -106,7 +106,14 @@ impl App {
                 }
                 return;
             }
-            let model = self.settings.lock().unwrap_or_else(std::sync::PoisonError::into_inner).model.clone();
+            let model = {
+                let settings = self.settings.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                if settings.small_model_for_summaries && agent == Agent::Claude {
+                    Some("haiku".to_string())
+                } else {
+                    settings.model.clone()
+                }
+            };
             let chapter = key.strip_prefix(CHAPTER_PREFIX);
             let Some(files) = read_json(&dir.join("review.json")).and_then(|r| files_for(&r, &key)) else { continue };
             let Ok(mut diff) = block_diff(&self.home, pr, &files) else { continue };

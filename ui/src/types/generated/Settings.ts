@@ -29,6 +29,11 @@ secondOpinion: boolean,
  */
 dailyBudgetUsd: number, 
 /**
+ * Write block summaries and chapter intros with a small, cheap model (Claude Code: Haiku).
+ * Questions and second opinions keep the chosen model.
+ */
+smallModelForSummaries: boolean, 
+/**
  * Folders the reviewer keeps their clones in; searched (two levels deep) along with the
  * usual code folders when a repository opens for the first time.
  */

@@ -232,13 +232,13 @@ impl App {
             }
             app.diagnosing.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
             if then_review {
-                app.second_opinion(&pr);
+                app.second_opinion(&pr, false);
             }
         });
     }
 
     /// Reviews the PR with the reviewer's agent and review skill in the background (see `jobs::second_opinion`).
-    pub(crate) fn second_opinion(self: &Shared, pr: &PrRef) {
+    pub(crate) fn second_opinion(self: &Shared, pr: &PrRef, force: bool) {
         if !self.second_opinions.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone()) {
             return;
         }
@@ -247,7 +247,7 @@ impl App {
         std::thread::spawn(move || {
             let t = std::time::Instant::now();
             match guarded("reviewing with your agent", || {
-                crate::jobs::second_opinion::run(&app.home, &app.settings(), &pr)
+                crate::jobs::second_opinion::run(&app.home, &app.settings(), &pr, force)
             }) {
                 Ok(()) => tracing::info!(pr = %pr.number, ms = t.elapsed().as_millis(), "second opinion done"),
                 Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "second opinion failed"),

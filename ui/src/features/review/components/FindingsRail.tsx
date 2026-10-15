@@ -101,11 +101,18 @@ export function FindingsRail({ review, reviewing, agentName, calls, scroller, on
             <LinkButton onClick={onRetry}>Try again</LinkButton>
           </p>
         )}
-        {review && !review.error && (
+        {review?.paused && (
+          <p className="mt-1 text-fg-subtle">
+            Not started: {review.paused}{' '}
+            <LinkButton onClick={onRetry}>Review it</LinkButton>
+          </p>
+        )}
+        {review && !review.error && !review.paused && (
           <>
             <p className="mt-1 text-fg-subtle">
               {findings.length ? `${findings.length} ${findings.length === 1 ? 'finding' : 'findings'} · ${toCheck} to check` : 'Nothing found.'} {agentName}, {skill}
-              {review.usage && `, about ${usd(review.usage.costUsd)}${review.usage.estimated ? ' (est.)' : ''}`}. Nothing is posted unless you keep it.
+              {review.usage && `, about ${usd(review.usage.costUsd)}${review.usage.estimated ? ' (est.)' : ''}`}
+              {review.since && `; after new commits, only files changed since ${review.since.slice(0, 7)} were checked again`}. Nothing is posted unless you keep it.
             </p>
             {findings.length > 0 && (
               <div className="mt-1.5 flex items-center gap-2">

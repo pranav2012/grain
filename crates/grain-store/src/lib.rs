@@ -125,6 +125,9 @@ pub struct Settings {
     pub second_opinion: bool,
     /// Estimated AI spend allowed per day (USD at API prices); 0 means no cap.
     pub daily_budget_usd: f64,
+    /// Write block summaries and chapter intros with a small, cheap model (Claude Code: Haiku).
+    /// Questions and second opinions keep the chosen model.
+    pub small_model_for_summaries: bool,
     /// Folders the reviewer keeps their clones in; searched (two levels deep) along with the
     /// usual code folders when a repository opens for the first time.
     pub work_folders: Vec<String>,
@@ -140,6 +143,7 @@ impl Default for Settings {
             prefetch: true,
             second_opinion: true,
             daily_budget_usd: 5.0,
+            small_model_for_summaries: true,
             work_folders: Vec::new(),
         }
     }

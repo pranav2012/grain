@@ -10,4 +10,17 @@ export type AiReview = { head: string, agent: Agent, skillHash: string, findings
 /**
  * What the review used, when the agent reported it.
  */
-usage: Usage | null, ms: number, };
+usage: Usage | null, 
+/**
+ * Why the review didn't run by itself (only routine changes, or a large PR that would cost a lot);
+ * the reviewer can start it anyway.
+ */
+paused: string | null, 
+/**
+ * Changed lines of code the review covered, for estimating what later reviews cost.
+ */
+lines: number, 
+/**
+ * The earlier head this review built on: only files changed since then were reviewed again.
+ */
+since: string | null, ms: number, };

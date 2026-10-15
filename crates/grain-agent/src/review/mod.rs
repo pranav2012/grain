@@ -56,6 +56,14 @@ pub struct AiReview {
     pub error: Option<String>,
     /// What the review used, when the agent reported it.
     pub usage: Option<crate::Usage>,
+    /// Why the review didn't run by itself (only routine changes, or a large PR that would cost a lot);
+    /// the reviewer can start it anyway.
+    pub paused: Option<String>,
+    /// Changed lines of code the review covered, for estimating what later reviews cost.
+    #[ts(type = "number")]
+    pub lines: u64,
+    /// The earlier head this review built on: only files changed since then were reviewed again.
+    pub since: Option<String>,
     #[ts(type = "number")]
     pub ms: u64,
 }
@@ -70,6 +78,8 @@ pub struct PrContext<'a> {
     pub files: &'a [String],
     /// Existing review comments, one per line as `path:line: text`, so settled points aren't raised again.
     pub prior_comments: &'a [String],
+    /// A follow-up after new commits: the head reviewed before, and the files changed since then.
+    pub since: Option<(&'a str, &'a [String])>,
 }
 
 fn prompt(skill: &str, pr: &PrContext) -> String {
@@ -80,12 +90,19 @@ fn prompt(skill: &str, pr: &PrContext) -> String {
          reviewer of {repo}#{number} \"{title}\". The PR is checked out in the working directory at its head.\n\
          Merge base: {base}\nHead: {head}\nRead the changes with `git diff {base} {head}`.\n\nChanged files:\n{files}\n\n\
          Existing review comments on the PR:\n{prior}\n\n\
-         Do steps 1 to 4 of the review above, completely, then stop: don't ask for approval, don't post anything to \
+         {follow_up}Do steps 1 to 4 of the review above, completely, then stop: don't ask for approval, don't post anything to \
          GitHub and don't modify any file. Return every finding that survived step 4 with a score of 50 or more, \
          most severe first, as JSON matching the schema. `line` and `endLine` are line numbers in the head version of \
          `file`. `title` is the issue in one line, `why` why it matters, `fix` the suggested fix, and `comment` the \
          inline comment exactly as the writing style above says to write it. Return an empty list when nothing \
          survives.",
+        follow_up = pr.since.map_or_else(String::new, |(since, focus)| format!(
+            "This is a follow-up: the PR was already reviewed at {since}. Only these files changed since then:\n{}\n\
+             Review the PR's changes in these files only (`git diff {since} {head} -- <file>` shows what is new); \
+             report findings only in them.\n\n",
+            focus.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n"),
+            head = pr.head,
+        )),
         repo = pr.repo,
         number = pr.number,
         title = pr.title,

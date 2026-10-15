@@ -127,11 +127,10 @@ pub(super) async fn rediagnose(State(app): State<Shared>, Path(p): Path<(String,
     StatusCode::ACCEPTED
 }
 
-/// Reviews the PR with the reviewer's agent again (e.g. after a failure or a new skill).
+/// Reviews the PR with the reviewer's agent now, even if it was held back (routine-only or large PR),
+/// e.g. after a failure, or when the reviewer chose to start it.
 pub(super) async fn rereview(State(app): State<Shared>, Path(p): Path<(String, String, u64)>) -> StatusCode {
-    let pr = pr_of(p);
-    let _ = std::fs::remove_file(app.home.review_dir(&pr).join("ai-review.json"));
-    app.second_opinion(&pr);
+    app.second_opinion(&pr_of(p), true);
     StatusCode::ACCEPTED
 }
 
