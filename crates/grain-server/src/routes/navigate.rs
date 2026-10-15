@@ -114,6 +114,27 @@ pub(super) async fn outside_uses(
     .await
 }
 
+/// Files larger than this aren't shown in full.
+const MAX_SOURCE: u64 = 2 * 1024 * 1024;
+
+/// The whole of one file at the PR's head, for reading a reference in context. Only files inside the
+/// review's checkout are served.
+pub(super) async fn source(
+    State(app): State<Shared>,
+    Path((owner, repo, number)): Path<(String, String, u64)>,
+    axum::extract::Query(q): axum::extract::Query<crate::contract::SourceQuery>,
+) -> ApiResult<String> {
+    let pr = PrRef { owner, repo, number };
+    blocking(move || {
+        let root = checkout(&app, &pr)?.canonicalize()?;
+        let path = root.join(&q.path).canonicalize().context("That file isn't in this checkout.")?;
+        anyhow::ensure!(path.starts_with(&root) && path.is_file(), "That file isn't in this checkout.");
+        anyhow::ensure!(path.metadata()?.len() <= MAX_SOURCE, "This file is too large to show here.");
+        std::fs::read_to_string(&path).context("This file isn't text.")
+    })
+    .await
+}
+
 /// The checkout the review reads: the user's folder for local reviews, else Grain's worktree.
 fn checkout(app: &App, pr: &PrRef) -> anyhow::Result<PathBuf> {
     if pr.is_local() { crate::jobs::local::repo_path(&app.home, pr) } else { Ok(app.home.worktree_dir(pr)) }

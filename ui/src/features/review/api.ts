@@ -37,6 +37,13 @@ export const reviewApi = {
   navigate: (id: string, req: NavigateRequest) => post<NavigateResponse>(`/api/reviews/${id}/navigate`, req),
   /** Every place outside the PR that uses the names a file changes. */
   outsideUses: (id: string, file: string) => post<OutsideUsesResponse>(`/api/reviews/${id}/outside-uses`, { file }),
+  /** One whole file at the PR's head. */
+  source: (id: string, path: string) =>
+    serverFetch(`/api/reviews/${id}/source?path=${encodeURIComponent(path)}`).then(async (r) => {
+      if (r.ok) return r.text()
+      const body = await r.json().catch(() => null)
+      throw new Error(body?.error ?? `Couldn't open ${path} (${r.status})`)
+    }),
   /** Asks the reviewer's agent about one change; can take a while. */
   ask: (id: string, req: AskRequest) => post<AskResponse>(`/api/reviews/${id}/ask`, req),
   /** `fullRepo` is `owner/repo`. */

@@ -325,3 +325,8 @@ pub(crate) struct OutsideUsesResponse {
 pub(crate) struct OutsideUsesRequest {
     pub file: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SourceQuery {
+    pub path: String,
+}

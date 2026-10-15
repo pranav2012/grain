@@ -20,13 +20,15 @@ interface CodePeekProps {
   onJump(file: string, line: number): void
   /** Looks the same name up the other way. */
   onSwitch(references: boolean): void
+  /** Opens the whole file at that line. */
+  onOpen(file: string, line: number): void
   /** The line on GitHub, for places outside this PR (none for local reviews). */
   githubUrl?: (file: string, line: number) => string
   onClose(): void
 }
 
 /** Inline box under a line: where a name is defined, or every place that uses it. */
-export function CodePeek({ peek, onJump, onSwitch, githubUrl, onClose }: CodePeekProps) {
+export function CodePeek({ peek, onJump, onSwitch, onOpen, githubUrl, onClose }: CodePeekProps) {
   const r = peek.result
   const what = peek.references ? 'References to' : 'Definition of'
   return (
@@ -62,9 +64,9 @@ export function CodePeek({ peek, onJump, onSwitch, githubUrl, onClose }: CodePee
             return (
               <li key={`${loc.file}:${loc.line}`} className="border-b border-line last:border-0">
                 <div className="flex items-center gap-2 px-3 pt-1.5 text-xs">
-                  <span className="truncate font-mono text-fg-muted" title={loc.file}>
+                  <button onClick={() => onOpen(loc.file, loc.line)} className="truncate font-mono text-fg-muted hover:text-fg hover:underline" title={`Open ${loc.file} in full`}>
                     {loc.file}:{loc.line}
-                  </span>
+                  </button>
                   {loc.block != null ? (
                     <LinkButton className="ml-auto shrink-0 text-accent" onClick={() => onJump(loc.file, loc.line)}>
                       in this review →
@@ -77,7 +79,7 @@ export function CodePeek({ peek, onJump, onSwitch, githubUrl, onClose }: CodePee
                     <span className="ml-auto shrink-0 text-fg-faint">not changed in this PR</span>
                   )}
                 </div>
-                <pre className="overflow-x-auto px-3 pt-0.5 pb-1.5 font-mono text-xs leading-relaxed">
+                <pre onClick={() => onOpen(loc.file, loc.line)} className="cursor-pointer overflow-x-auto px-3 pt-0.5 pb-1.5 font-mono text-xs leading-relaxed hover:bg-raised">
                   {lines.map((text, i) => (
                     <div key={i} className={cn('grid grid-cols-[3rem_1fr]', first + i === loc.line && !peek.references && 'bg-accent/10')}>
                       <span className="pr-3 text-right text-fg-faint select-none">{first + i}</span>

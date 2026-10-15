@@ -14,6 +14,7 @@ import { markFindings, markProblems, squiggleCSS } from '../model/squiggles'
 import { newLines } from '../model/suggestion'
 import type { CommentKind, DiffStyle, LineThread, ReviewComment, Side } from '../model/types'
 import { AiThread, ThreadMessages } from './AiThread'
+import type { CodeLocation } from './CodeModal'
 import { CodePeek, type Peek } from './CodePeek'
 import { CommentCard } from './CommentCard'
 import { Composer } from './Composer'
@@ -55,6 +56,8 @@ export interface FileCardProps {
   onCollapse(collapsed: boolean): void
   onViewed(viewed: boolean): void
   onJump(path: string, line?: number): void
+  /** Opens a whole file at a line, or at the first use of a name. */
+  onOpenCode(loc: CodeLocation): void
   /** Where outside code uses this file's changes (loaded on request). */
   onOutsideUses(): Promise<OutsideUsesResponse>
   /** A line on GitHub, for code outside this PR; none for local reviews. */
@@ -169,6 +172,7 @@ export function FileCard(p: FileCardProps) {
           githubUrl={p.githubUrl}
           onJump={(f, line) => (setPeek(null), p.onJump(f, line))}
           onSwitch={(references) => lookup({ line: peek.line, character: peek.character, name: peek.name, side: peek.side }, references)}
+          onOpen={(file, line) => p.onOpenCode({ file, line })}
           onClose={() => setPeek(null)}
         />,
       )
@@ -291,9 +295,9 @@ export function FileCard(p: FileCardProps) {
               <code className="font-mono text-fg">{u.name}</code>
               <span className="text-fg-faint">used by</span>
               {u.files.slice(0, 5).map((f) => (
-                <button key={f} title={f} onClick={() => p.onJump(f)} className="inline-flex items-baseline gap-1 rounded-sm border border-line-strong px-1.5 text-fg-muted hover:border-accent hover:text-fg">
+                <button key={f} title={`Open ${f} where it uses ${u.name}`} onClick={() => p.onOpenCode({ file: f, find: u.name })} className="inline-flex items-baseline gap-1 rounded-sm border border-line-strong px-1.5 text-fg-muted hover:border-accent hover:text-fg">
                   {stem(f)}
-                  <span className="text-2xs text-accent">↓ in this PR</span>
+                  <span className="text-2xs text-accent">in this PR</span>
                 </button>
               ))}
               {u.files.length > 5 && <span className="text-fg-faint">+{u.files.length - 5} more</span>}
@@ -301,7 +305,7 @@ export function FileCard(p: FileCardProps) {
           ))}
           {p.usedBy.inside.length > 4 && <p className="text-fg-faint">{p.usedBy.inside.length - 4} more changed names are used elsewhere in this PR</p>}
           {p.usedBy.outsideCount > 0 && (
-            <OutsideUses count={p.usedBy.outsideCount} sample={p.usedBy.outside} load={p.onOutsideUses} githubUrl={p.githubUrl} />
+            <OutsideUses count={p.usedBy.outsideCount} sample={p.usedBy.outside} load={p.onOutsideUses} githubUrl={p.githubUrl} onOpen={p.onOpenCode} />
           )}
           {p.problems.other.length > 0 && (
             <p
@@ -371,7 +375,19 @@ export function FileCard(p: FileCardProps) {
 }
 
 /** "Used outside this PR in N files", opening into every place that uses this file's changes. */
-function OutsideUses({ count, sample, load, githubUrl }: { count: number; sample: string[]; load(): Promise<OutsideUsesResponse>; githubUrl?: (file: string, line: number) => string }) {
+function OutsideUses({
+  count,
+  sample,
+  load,
+  githubUrl,
+  onOpen,
+}: {
+  count: number
+  sample: string[]
+  load(): Promise<OutsideUsesResponse>
+  githubUrl?: (file: string, line: number) => string
+  onOpen(loc: CodeLocation): void
+}) {
   const [state, setState] = useState<OutsideUsesResponse | 'loading' | string | null>(null)
   const open = state !== null
   const toggle = () => {
@@ -406,9 +422,11 @@ function OutsideUses({ count, sample, load, githubUrl }: { count: number; sample
                     {u.locations
                       .filter((l) => l.file === file)
                       .map((l) => (
-                        <div key={l.line} className="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-baseline gap-2 font-mono">
-                          <span className="text-right text-fg-faint">{l.line}</span>
-                          <span className="truncate text-fg-subtle">{(l.snippet[l.line - l.snippetStart] ?? '').trim()}</span>
+                        <div key={l.line} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 font-mono">
+                          <button onClick={() => onOpen({ file: l.file, line: l.line })} title="Open the whole file here" className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-2 rounded-sm text-left hover:bg-raised">
+                            <span className="text-right text-fg-faint">{l.line}</span>
+                            <span className="truncate text-fg-subtle">{(l.snippet[l.line - l.snippetStart] ?? '').trim()}</span>
+                          </button>
                           {githubUrl && (
                             <a href={githubUrl(l.file, l.line)} target="_blank" rel="noreferrer" className="font-sans text-fg-faint hover:text-fg">
                               GitHub ↗
