@@ -220,9 +220,28 @@ fn check_port(port: u16) -> Check {
         return ok("Port", true, format!("{port} is free"));
     }
     if grain_is_listening(port) {
-        return ok("Port", true, format!("Grain is already running at http://localhost:{port}"));
+        return ok("Port", true, format!("Grain is already running at {}", crate::domain::url(port)));
     }
     problem("Port", true, format!("{port} is used by another program."), format!("grain --port {}", port + 1))
+}
+
+/// Whether Grain answers at grain.localhost without a port.
+fn check_domain(port: u16) -> Check {
+    match crate::domain::target() {
+        Some(p) if p == port && crate::domain::forwarder_exe_exists() => {
+            ok("Address", false, "http://grain.localhost".to_string())
+        }
+        Some(p) if p == port => problem(
+            "Address",
+            false,
+            "http://grain.localhost points at a grain binary that no longer exists",
+            "grain domain",
+        ),
+        Some(p) => {
+            problem("Address", false, format!("http://grain.localhost goes to port {p}, not {port}"), "grain domain")
+        }
+        None => ok("Address", false, format!("{} (run `grain domain` to drop the port)", grain_server::url(port))),
+    }
 }
 
 fn check_agents() -> Vec<Check> {
@@ -256,6 +275,7 @@ pub(crate) fn full(port: u16) -> Vec<Check> {
         checks.push(check_network());
     }
     checks.push(check_port(port));
+    checks.push(check_domain(port));
     checks.extend(check_agents());
     checks.push(check_typescript());
     checks

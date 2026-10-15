@@ -62,6 +62,12 @@ pub struct Options {
     pub listener: Option<std::net::TcpListener>,
 }
 
+/// Where Grain is reached in the browser. `*.localhost` always points at this machine, so the
+/// name needs no setup; plain `localhost` works too.
+pub fn url(port: u16) -> String {
+    format!("http://grain.localhost:{port}")
+}
+
 /// Serves on localhost until asked to stop (`grain stop`, Ctrl+C, SIGTERM or idle), then exits the
 /// process. `on_ready` receives the base URL.
 pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
@@ -83,7 +89,7 @@ pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
         }
         None => tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], opts.port))).await?,
     };
-    on_ready(&format!("http://localhost:{}", opts.port));
+    on_ready(&url(opts.port));
     stop_when_idle(app.clone());
     let stopping = app.clone();
     axum::serve(listener, router).with_graceful_shutdown(stop_requested(stopping)).await?;

@@ -2,6 +2,7 @@
 
 mod daemon;
 mod doctor;
+mod domain;
 mod service;
 
 use std::path::PathBuf;
@@ -49,6 +50,18 @@ enum Command {
     Service {
         #[command(subcommand)]
         action: ServiceAction,
+    },
+    /// Open Grain at grain.localhost, without a port (asks for your password once).
+    Domain {
+        /// Go back to grain.localhost with Grain's port.
+        #[arg(long)]
+        remove: bool,
+    },
+    /// Hands connections on the port-80 socket the OS passes in to Grain's port (`grain domain`).
+    #[command(hide = true)]
+    Forward {
+        #[arg(long)]
+        to: u16,
     },
     /// Stop the Grain running in the background.
     Stop,
@@ -106,11 +119,24 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Some(Command::Serve { activated }) => return serve(cli.port, activated).await,
+        Some(Command::Forward { to }) => return domain::forward(to).await,
+        Some(Command::Domain { remove }) => {
+            if remove {
+                domain::remove()?;
+                println!("Removed. Grain is at {} again.", domain::url(cli.port));
+            } else {
+                println!("Grain will answer at http://grain.localhost (port 80 on this computer only).");
+                println!("This needs your password once to add a small system service that runs as you.");
+                domain::install(&std::env::current_exe()?, cli.port, &daemon::log_path())?;
+                println!("Done: http://grain.localhost opens Grain. Undo with `grain domain --remove`.");
+            }
+            return Ok(());
+        }
         Some(Command::Service { action }) => {
             match action {
                 ServiceAction::Install => {
                     service::install(&std::env::current_exe()?, cli.port, &daemon::log_path())?;
-                    println!("Grain now starts by itself when you open http://localhost:{}.", cli.port);
+                    println!("Grain now starts by itself when you open {}.", domain::url(cli.port));
                 }
                 ServiceAction::Uninstall => {
                     service::uninstall(cli.port)?;
@@ -139,11 +165,11 @@ async fn main() -> Result<()> {
         Some(Command::Status) => {
             let asleep = service::installed(cli.port).is_some() && !service::is_running(cli.port);
             match if asleep { None } else { doctor::running_build(cli.port) } {
-                Some(build) => println!("Grain {build} is running at http://localhost:{}", cli.port),
+                Some(build) => println!("Grain {build} is running at {}", domain::url(cli.port)),
                 None if !asleep && doctor::grain_is_listening(cli.port) => {
-                    println!("An older Grain is running at http://localhost:{}", cli.port);
+                    println!("An older Grain is running at {}", domain::url(cli.port));
                 }
-                None if asleep => println!("Grain is stopped; it starts when you open http://localhost:{}", cli.port),
+                None if asleep => println!("Grain is stopped; it starts when you open {}", domain::url(cli.port)),
                 None => println!("Grain isn't running. Start it with `grain`."),
             }
             println!("Log: {}", daemon::log_path().display());
@@ -208,7 +234,7 @@ async fn main() -> Result<()> {
     };
     let path = open_pr.as_ref().map(|p| format!("/?pr={}/{}", p.full_repo(), p.number)).unwrap_or_default();
     let build = build_id();
-    let url = format!("http://localhost:{}{path}", cli.port);
+    let url = format!("{}{path}", domain::url(cli.port));
     if on_demand(cli.port, &build)? {
         println!("Grain is running at {url}  (it stops by itself when unused; `grain stop`, `grain logs`)");
     } else {

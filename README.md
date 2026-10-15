@@ -23,7 +23,7 @@ Then check your setup. Grain needs `git` and the GitHub CLI signed in (`gh auth 
 
 ```bash
 grain doctor
-grain                       # opens http://localhost:7420
+grain                       # opens http://grain.localhost:7420
 grain owner/repo#123        # straight to a PR
 grain .                     # self-review your branch plus uncommitted and new files
 grain stop                  # stop it (also: grain status, grain logs -f)
@@ -47,7 +47,7 @@ AI summaries are optional. Press `,` in the app to pick Claude Code, Codex or Op
 
 ```bash
 pnpm --dir ui install && pnpm --dir ui build   # build the UI (it gets embedded into the binary)
-cargo run --release -p grain                   # opens http://localhost:7420
+cargo run --release -p grain                   # opens http://grain.localhost:7420
 ```
 
 ### Developing the UI

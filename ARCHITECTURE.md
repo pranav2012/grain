@@ -1,6 +1,6 @@
 # Architecture
 
-Grain runs locally. The `grain` binary serves a React UI and an HTTP API on `localhost:7420`, prepares pull requests on demand, and keeps everything under `~/.grain`.
+Grain runs locally. The `grain` binary serves a React UI and an HTTP API on `grain.localhost:7420` (any `*.localhost` name points at this machine), prepares pull requests on demand, and keeps everything under `~/.grain`.
 
 ## Data flow
 
