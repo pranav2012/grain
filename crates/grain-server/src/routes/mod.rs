@@ -1,7 +1,7 @@
 //! HTTP routes. Bodies are typed in `crate::contract`.
 
 mod github;
-mod navigate;
+pub(crate) mod navigate;
 mod reviews;
 mod settings;
 
@@ -59,7 +59,6 @@ pub(crate) fn router(app: Shared) -> Router {
         .route("/api/reviews/{owner}/{repo}/{number}/summarize", post(reviews::summarize))
         .route("/api/reviews/{owner}/{repo}/{number}/ask", post(reviews::ask))
         .route("/api/reviews/{owner}/{repo}/{number}/navigate", post(navigate::navigate))
-        .route("/api/reviews/{owner}/{repo}/{number}/outside-uses", post(navigate::outside_uses))
         .route("/api/reviews/{owner}/{repo}/{number}/source", get(navigate::source))
         .route("/api/reviews/{owner}/{repo}/{number}/diff", post(reviews::diff))
         .route("/api/reviews/{owner}/{repo}/{number}/conversation", get(reviews::conversation))

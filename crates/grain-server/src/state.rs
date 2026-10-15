@@ -230,6 +230,11 @@ impl App {
                 Ok(()) => tracing::info!(pr = %pr.number, ms = t.elapsed().as_millis(), "diagnostics done"),
                 Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "diagnostics failed"),
             }
+            let t = std::time::Instant::now();
+            match guarded("finding outside uses", || crate::jobs::uses::run(&app, &pr)) {
+                Ok(()) => tracing::info!(pr = %pr.number, ms = t.elapsed().as_millis(), "outside uses done"),
+                Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "outside uses failed"),
+            }
             app.diagnosing.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
             if then_review {
                 app.second_opinion(&pr, false);

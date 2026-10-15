@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AiReview } from '@/types/generated/AiReview'
 import type { Diagnostics } from '@/types/generated/Diagnostics'
+import type { OutsideUsesFile } from '@/types/generated/OutsideUsesFile'
 import type { PrStatus } from '@/types/generated/PrStatus'
 import type { Status } from '@/types/generated/Status'
 import { reviewApi } from '../api'
@@ -32,11 +33,16 @@ export function useChecks(id: string, local: boolean, status: Status | null) {
     }
   }, [id, reviewing, head, version])
 
+  const [uses, setUses] = useState<OutsideUsesFile | null>(null)
   useEffect(() => {
     if (diagnosing) return
     let alive = true
     reviewApi.diagnostics(id).then(
       (r) => alive && setReport(r),
+      () => {},
+    )
+    reviewApi.outsideUsesFile(id).then(
+      (u) => alive && setUses(u),
       () => {},
     )
     return () => {
@@ -72,5 +78,5 @@ export function useChecks(id: string, local: boolean, status: Status | null) {
     setAi(null)
     reviewApi.rereview(id).then(() => setTimeout(() => setVersion((v) => v + 1), 1500), () => {})
   }
-  return { report, prStatus, diagnosing: !!status?.diagnosing, rerun, ai, reviewing: !!status?.reviewing, rereview }
+  return { report, prStatus, diagnosing: !!status?.diagnosing, rerun, ai, reviewing: !!status?.reviewing, rereview, uses }
 }

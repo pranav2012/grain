@@ -53,6 +53,7 @@ export function CodePeek({ peek, onJump, onSwitch, onOpen, githubUrl, onClose }:
           <LinkButton onClick={onClose}>Close</LinkButton>
         </span>
       </div>
+      {r?.removed && <p className="px-3 pt-2 text-sm text-warning">{peek.name} no longer exists in this file after the PR; these places still mention it.</p>}
       {!r && !peek.error && <p className="px-3 py-2 text-sm text-fg-subtle">Looking it up…</p>}
       {peek.error && <p className="px-3 py-2 text-sm text-danger">{peek.error}</p>}
       {r && r.results.length === 0 && <p className="px-3 py-2 text-sm text-fg-subtle">Nothing found in this repository.</p>}

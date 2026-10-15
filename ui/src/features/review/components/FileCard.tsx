@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { DiffLineAnnotation, FileDiffOptions } from '@pierre/diffs'
+import type { DiffLineAnnotation, FileDiffLoadedFiles, FileDiffMetadata, FileDiffOptions } from '@pierre/diffs'
 import { FileDiff } from '@pierre/diffs/react'
 import { Badge } from '@/components/ui/Badge'
 import { Button, LinkButton } from '@/components/ui/Button'
@@ -16,6 +16,7 @@ import type { CommentKind, DiffStyle, LineThread, ReviewComment, Side } from '..
 import { AiThread, ThreadMessages } from './AiThread'
 import type { CodeLocation } from './CodeModal'
 import { CodePeek, type Peek } from './CodePeek'
+import { HoverRefs, type HoverState } from './HoverRefs'
 import { CommentCard } from './CommentCard'
 import { Composer } from './Composer'
 import { ProblemRow } from './ProblemRow'
@@ -59,10 +60,14 @@ export interface FileCardProps {
   /** Opens a whole file at a line, or at the first use of a name. */
   onOpenCode(loc: CodeLocation): void
   /** Where outside code uses this file's changes (loaded on request). */
-  onOutsideUses(): Promise<OutsideUsesResponse>
+  /** Where code outside the PR uses this file's changes; undefined while still being worked out. */
+  outsideUses?: OutsideUsesResponse | null
+  /** Both versions of the file, so the diff can show unchanged lines. */
+  loadFiles(diff: FileDiffMetadata): Promise<FileDiffLoadedFiles>
+  inPr(file: string): boolean
   /** A line on GitHub, for code outside this PR; none for local reviews. */
   githubUrl?: (file: string, line: number) => string
-  onLookup(token: { line: number; character: number; name: string }, references: boolean): Promise<Peek['result']>
+  onLookup(token: { line: number; character: number; name: string; oldSide?: boolean }, references: boolean): Promise<Peek['result']>
   onComment(c: NewComment): void
   onDeleteComment(id: string): void
   onAskAt(anchor: ThreadAnchor, question: string): void
@@ -86,6 +91,10 @@ const fileName = (p: string) => p.split('/').pop()!
 const dirName = (p: string) => p.split('/').slice(0, -1).join('/')
 const stem = (p: string) => fileName(p).replace(/\.[^.]+$/, '')
 
+const KEYWORDS = new Set(
+  'import export from default as const let var function return if else for while do switch case break continue new this typeof instanceof in of async await class extends interface type enum true false null undefined void try catch finally throw yield static public private protected readonly implements declare namespace keyof satisfies'.split(' '),
+)
+
 /** One changed file on the review page: a pinned header, who uses it, then its whole diff with notes under lines. */
 export function FileCard(p: FileCardProps) {
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -93,28 +102,64 @@ export function FileCard(p: FileCardProps) {
   const [peek, setPeek] = useState<Peek | null>(null)
   const [hover, setHover] = useState<{ id: string; left: number; top: number } | null>(null)
   const sectionRef = useRef<HTMLElement>(null)
+  const [fullFile, setFullFile] = useState(false)
+  const [refHover, setRefHover] = useState<HoverState | null>(null)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const hoverCache = useRef(new Map<string, Promise<[Peek['result'], Peek['result']]>>())
 
   const lookup = (t: { line: number; character: number; name: string; side: Side }, references: boolean) => {
     const next: Peek = { itemId: p.path, line: t.line, side: t.side, name: t.name, references, character: t.character }
     setPeek(next)
-    p.onLookup(t, references).then(
+    p.onLookup({ ...t, oldSide: t.side === 'deletions' }, references).then(
       (result) => setPeek((cur) => (cur === next ? { ...next, result } : cur)),
       (e: Error) => setPeek((cur) => (cur === next ? { ...next, error: e.message } : cur)),
     )
   }
+  // After resting on a name for half a second, show where it's defined and used.
+  const hoverName = (t: { lineNumber: number; lineCharStart: number; tokenText: string; side: Side; tokenElement: HTMLElement }) => {
+    clearTimeout(hoverTimer.current)
+    if (!/^[A-Za-z_$][\w$]*$/.test(t.tokenText) || t.tokenText.length < 2 || KEYWORDS.has(t.tokenText)) return
+    hoverTimer.current = setTimeout(() => {
+      const rect = t.tokenElement.getBoundingClientRect()
+      const base: HoverState = { name: t.tokenText, token: { line: t.lineNumber, character: t.lineCharStart, side: t.side }, left: rect.left, top: rect.bottom + 6 }
+      setRefHover(base)
+      const key = `${t.side}:${t.lineNumber}:${t.lineCharStart}`
+      let found = hoverCache.current.get(key)
+      if (!found) {
+        const token = { line: t.lineNumber, character: t.lineCharStart, name: t.tokenText, oldSide: t.side === 'deletions' }
+        found = Promise.all([p.onLookup(token, false), p.onLookup(token, true)])
+        found.catch(() => hoverCache.current.delete(key))
+        hoverCache.current.set(key, found)
+      }
+      found.then(
+        ([definition, references]) => setRefHover((h) => (h?.name === base.name && h.left === base.left ? { ...h, definition, references } : h)),
+        (e: Error) => setRefHover((h) => (h?.name === base.name ? { ...h, error: e.message } : h)),
+      )
+    }, 500)
+  }
+  const leaveName = () => {
+    clearTimeout(hoverTimer.current)
+    hoverTimer.current = setTimeout(() => setRefHover(null), 250)
+  }
   const lookupRef = useRef(lookup)
   const problemsRef = useRef(p.problems.shown)
   const findingsRef = useRef(p.findingLines)
+  const hoverRef = useRef({ hoverName, leaveName, loadFiles: p.loadFiles })
   useLayoutEffect(() => {
     lookupRef.current = lookup
     problemsRef.current = p.problems.shown
     findingsRef.current = p.findingLines
+    hoverRef.current = { hoverName, leaveName, loadFiles: p.loadFiles }
   })
 
   const options = useMemo<FileDiffOptions<Note, undefined>>(
     () => ({
       ...baseOptions,
       diffStyle: p.diffStyle,
+      expandUnchanged: fullFile,
+      loadDiffFiles: (diff) => hoverRef.current.loadFiles(diff),
+      onTokenEnter: (t) => hoverRef.current.hoverName(t),
+      onTokenLeave: () => hoverRef.current.leaveName(),
       onLineSelectionEnd: (range) => {
         if (!range) return
         const side = (range.endSide ?? range.side ?? 'additions') as Side
@@ -126,12 +171,12 @@ export function FileCard(p: FileCardProps) {
       },
       // ⌘/Ctrl-click a name shows its definition, like in an editor; with Shift, its references.
       onTokenClick: (t, e) => {
-        if (!(e.metaKey || e.ctrlKey) || t.side === 'deletions' || !/^[A-Za-z_$][\w$]*$/.test(t.tokenText)) return
+        if (!(e.metaKey || e.ctrlKey) || !/^[A-Za-z_$][\w$]*$/.test(t.tokenText)) return
         e.preventDefault()
         lookupRef.current({ line: t.lineNumber, character: t.lineCharStart, name: t.tokenText, side: t.side }, e.shiftKey)
       },
     }),
-    [p.diffStyle],
+    [p.diffStyle, fullFile],
   )
 
   const annotations = useMemo(() => {
@@ -150,7 +195,9 @@ export function FileCard(p: FileCardProps) {
   const notes = p.comments.filter((c) => !c.line)
   const outdated = p.threads.filter((t) => !t.line || t.outdated)
   // The engine's "used outside this PR" note says the same as the clickable line below; keep one.
-  const warnings = p.checks.filter((c) => c.level === 'warn' && !(p.usedBy.outsideCount > 0 && c.text.startsWith('Changed code is used in')))
+  // The engine's "used outside this PR" note counts a whole group of files; the exact list below replaces it.
+  const warnings = p.checks.filter((c) => c.level === 'warn' && !c.text.startsWith('Changed code is used in'))
+  const outside = p.outsideUses?.uses ?? []
   const errors = p.problems.shown.filter((x) => x.severity === 'error').length
   const warningCount = p.problems.shown.length - errors
   const showBody = !p.collapsed && p.patch !== undefined
@@ -279,6 +326,11 @@ export function FileCard(p: FileCardProps) {
             </>
           )}
         </span>
+        {p.patch && p.patch.diff.type !== 'new' && p.patch.diff.type !== 'deleted' && !p.collapsed && (
+          <LinkButton className="ml-2 shrink-0 text-xs" aria-pressed={fullFile} onClick={() => setFullFile((v) => !v)}>
+            {fullFile ? 'Changes only' : 'Full file'}
+          </LinkButton>
+        )}
         <LinkButton className="ml-2 shrink-0 text-xs" onClick={() => setFileNote(true)}>
           Comment
         </LinkButton>
@@ -288,7 +340,7 @@ export function FileCard(p: FileCardProps) {
         </label>
       </header>
 
-      {!p.collapsed && (p.usedBy.inside.length > 0 || p.usedBy.outsideCount > 0 || warnings.length > 0 || p.problems.other.length > 0) && (
+      {!p.collapsed && (p.usedBy.inside.length > 0 || outside.length > 0 || p.outsideUses === undefined || warnings.length > 0 || p.problems.other.length > 0) && (
         <div className="flex flex-col gap-1 border-b border-line bg-surface/40 px-3 py-1.5 text-xs">
           {p.usedBy.inside.slice(0, 4).map((u) => (
             <div key={u.name} className="flex flex-wrap items-center gap-1.5">
@@ -304,9 +356,8 @@ export function FileCard(p: FileCardProps) {
             </div>
           ))}
           {p.usedBy.inside.length > 4 && <p className="text-fg-faint">{p.usedBy.inside.length - 4} more changed names are used elsewhere in this PR</p>}
-          {p.usedBy.outsideCount > 0 && (
-            <OutsideUses count={p.usedBy.outsideCount} sample={p.usedBy.outside} load={p.onOutsideUses} githubUrl={p.githubUrl} onOpen={p.onOpenCode} />
-          )}
+          {p.outsideUses === undefined && <p className="text-fg-faint">Finding uses outside this PR…</p>}
+          {outside.length > 0 && p.outsideUses && <OutsideUses found={p.outsideUses} githubUrl={p.githubUrl} onOpen={p.onOpenCode} />}
           {p.problems.other.length > 0 && (
             <p
               title={p.problems.other.map((x) => `${x.line}: ${x.message.split('\n')[0]}`).join('\n')}
@@ -370,76 +421,57 @@ export function FileCard(p: FileCardProps) {
           <ThreadMessages thread={hovered} agentName={p.agentName} />
         </div>
       )}
+      {refHover && (
+        <HoverRefs
+          hover={refHover}
+          inPr={p.inPr}
+          onOpen={(loc) => (setRefHover(null), p.onOpenCode(loc))}
+          onAllReferences={() => {
+            setRefHover(null)
+            lookup({ ...refHover.token, name: refHover.name }, true)
+          }}
+          onEnter={() => clearTimeout(hoverTimer.current)}
+          onLeave={leaveName}
+        />
+      )}
     </section>
   )
 }
 
-/** "Used outside this PR in N files", opening into every place that uses this file's changes. */
-function OutsideUses({
-  count,
-  sample,
-  load,
-  githubUrl,
-  onOpen,
-}: {
-  count: number
-  sample: string[]
-  load(): Promise<OutsideUsesResponse>
-  githubUrl?: (file: string, line: number) => string
-  onOpen(loc: CodeLocation): void
-}) {
-  const [state, setState] = useState<OutsideUsesResponse | 'loading' | string | null>(null)
-  const open = state !== null
-  const toggle = () => {
-    if (open) return setState(null)
-    setState('loading')
-    load().then(setState, (e: Error) => setState(e.message))
-  }
+/** Every place outside the PR that uses this file's changed names; one click opens the whole file there. */
+function OutsideUses({ found, githubUrl, onOpen }: { found: OutsideUsesResponse; githubUrl?: (file: string, line: number) => string; onOpen(loc: CodeLocation): void }) {
+  const [all, setAll] = useState(false)
+  const rows = found.uses.flatMap((u) => u.locations.map((l) => ({ name: u.name, l })))
+  const files = new Set(rows.map((r) => r.l.file)).size
+  const shown = all ? rows : rows.slice(0, 5)
   return (
     <div>
-      <button onClick={toggle} aria-expanded={open} className="text-left text-warning hover:underline">
-        {open ? '▾' : '▸'} Used outside this PR in {count} {count === 1 ? 'file' : 'files'}
-        {!open && sample.length > 0 && <span className="text-fg-faint">: {sample.slice(0, 3).join(', ')}</span>}
-      </button>
-      {state === 'loading' && <p className="mt-1 text-fg-faint">Finding every place that uses these changes…</p>}
-      {typeof state === 'string' && state !== 'loading' && <p className="mt-1 text-danger">{state}</p>}
-      {state && typeof state === 'object' && (
-        <div className="mt-1.5 flex flex-col gap-2 rounded-md border border-line bg-canvas px-2.5 py-2">
-          {!state.precise && <p className="text-warning">Found by searching for the names, so some matches may be unrelated.</p>}
-          {state.uses.length === 0 && <p className="text-fg-faint">No uses found outside this PR.</p>}
-          {state.uses.map((u) => (
-            <div key={u.name}>
-              <p className="text-fg-subtle">
-                <code className="font-mono text-fg">{u.name}</code> is used in {u.locations.length} {u.locations.length === 1 ? 'place' : 'places'}
-              </p>
-              <ul className="mt-1 flex flex-col gap-1.5">
-                {[...new Set(u.locations.map((l) => l.file))].map((file) => (
-                  <li key={file}>
-                    <p className="truncate" title={file}>
-                      <span className="font-mono text-fg">{fileName(file)}</span>
-                      <span className="ml-2 font-mono text-fg-faint">{dirName(file)}</span>
-                    </p>
-                    {u.locations
-                      .filter((l) => l.file === file)
-                      .map((l) => (
-                        <div key={l.line} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 font-mono">
-                          <button onClick={() => onOpen({ file: l.file, line: l.line })} title="Open the whole file here" className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-2 rounded-sm text-left hover:bg-raised">
-                            <span className="text-right text-fg-faint">{l.line}</span>
-                            <span className="truncate text-fg-subtle">{(l.snippet[l.line - l.snippetStart] ?? '').trim()}</span>
-                          </button>
-                          {githubUrl && (
-                            <a href={githubUrl(l.file, l.line)} target="_blank" rel="noreferrer" className="font-sans text-fg-faint hover:text-fg">
-                              GitHub ↗
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
+      <p className="text-warning">
+        Used outside this PR in {rows.length} {rows.length === 1 ? 'place' : 'places'}
+        {files > 1 && ` across ${files} files`}
+        {!found.precise && <span className="text-fg-faint"> · found by name, may include unrelated matches</span>}
+      </p>
+      <ul className="mt-0.5 flex flex-col">
+        {shown.map(({ name, l }) => (
+          <li key={`${l.file}:${l.line}:${name}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2">
+            <button onClick={() => onOpen({ file: l.file, line: l.line })} title={`Open ${l.file} at line ${l.line}`} className="grid min-w-0 grid-cols-[minmax(0,16rem)_minmax(0,1fr)] gap-3 rounded-sm px-1 text-left font-mono hover:bg-raised">
+              <span className="truncate text-fg-muted">
+                {fileName(l.file)}:{l.line}
+              </span>
+              <span className="truncate text-fg-subtle">{(l.snippet[l.line - l.snippetStart] ?? '').trim()}</span>
+            </button>
+            {githubUrl && (
+              <a href={githubUrl(l.file, l.line)} target="_blank" rel="noreferrer" className="text-fg-faint hover:text-fg">
+                GitHub ↗
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+      {rows.length > 5 && (
+        <LinkButton className="mt-0.5 text-xs" onClick={() => setAll((v) => !v)}>
+          {all ? 'Show fewer' : `Show all ${rows.length}`}
+        </LinkButton>
       )}
     </div>
   )

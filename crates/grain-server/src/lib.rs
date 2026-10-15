@@ -6,7 +6,7 @@ mod folder_picker;
 mod jobs;
 mod local_repos;
 mod patch_index;
-mod routes;
+pub(crate) mod routes;
 mod state;
 mod ui;
 

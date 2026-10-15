@@ -133,12 +133,19 @@ pub(crate) struct NavigateRequest {
     pub character: u32,
     pub name: String,
     pub references: bool,
+    /// The name is on the old side of the diff (removed or replaced code); it's looked up in the new
+    /// version near the same line.
+    #[serde(default)]
+    #[ts(optional)]
+    pub old_side: Option<bool>,
 }
 
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub(crate) struct NavigateResponse {
+    /// Set when an old-side name no longer appears in the new version of the file.
+    pub removed: bool,
     /// False when found by name search (other languages, or the language server is unavailable).
     pub precise: bool,
     pub results: Vec<NavLocation>,
@@ -319,14 +326,18 @@ pub(crate) struct OutsideUsesResponse {
     pub uses: Vec<OutsideUse>,
 }
 
-#[derive(Debug, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub(crate) struct OutsideUsesRequest {
-    pub file: String,
-}
-
 #[derive(Debug, Deserialize)]
 pub(crate) struct SourceQuery {
     pub path: String,
+    /// `base` for the version the PR started from (the merge base); the PR's head otherwise.
+    pub rev: Option<String>,
+}
+
+/// Outside uses of every changed file, computed in the background for one head (`outside-uses.json`).
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct OutsideUsesFile {
+    pub head: String,
+    pub files: std::collections::BTreeMap<String, OutsideUsesResponse>,
 }

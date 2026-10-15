@@ -162,6 +162,7 @@ pub(super) async fn file(
             | "owners.json"
             | "diagnostics.json"
             | "ai-review.json"
+            | "outside-uses.json"
     ) {
         return Err(ApiError::not_found("unknown file"));
     }

@@ -7,7 +7,7 @@ import type { Diagnostics } from '@/types/generated/Diagnostics'
 import type { PrStatus } from '@/types/generated/PrStatus'
 import type { NavigateRequest } from '@/types/generated/NavigateRequest'
 import type { NavigateResponse } from '@/types/generated/NavigateResponse'
-import type { OutsideUsesResponse } from '@/types/generated/OutsideUsesResponse'
+import type { OutsideUsesFile } from '@/types/generated/OutsideUsesFile'
 import type { LocalRepo } from '@/types/generated/LocalRepo'
 import type { SubmitRequest } from '@/types/generated/SubmitRequest'
 import type { SubmitResponse } from '@/types/generated/SubmitResponse'
@@ -35,11 +35,9 @@ export const reviewApi = {
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),
   /** Definition or references of the name at a position in the new version of a file. */
   navigate: (id: string, req: NavigateRequest) => post<NavigateResponse>(`/api/reviews/${id}/navigate`, req),
-  /** Every place outside the PR that uses the names a file changes. */
-  outsideUses: (id: string, file: string) => post<OutsideUsesResponse>(`/api/reviews/${id}/outside-uses`, { file }),
   /** One whole file at the PR's head. */
-  source: (id: string, path: string) =>
-    serverFetch(`/api/reviews/${id}/source?path=${encodeURIComponent(path)}`).then(async (r) => {
+  source: (id: string, path: string, rev?: 'base') =>
+    serverFetch(`/api/reviews/${id}/source?path=${encodeURIComponent(path)}${rev ? `&rev=${rev}` : ''}`).then(async (r) => {
       if (r.ok) return r.text()
       const body = await r.json().catch(() => null)
       throw new Error(body?.error ?? `Couldn't open ${path} (${r.status})`)
@@ -54,6 +52,8 @@ export const reviewApi = {
   /** Type errors and lint findings for the stored head; null until computed. */
   diagnostics: (id: string) => file(id, 'diagnostics.json').then((r) => json<Diagnostics>(r)),
   rediagnose: (id: string) => post<null>(`/api/reviews/${id}/diagnostics`, {}),
+  /** Outside uses of every changed file, once the background job has worked them out. */
+  outsideUsesFile: (id: string) => file(id, 'outside-uses.json').then((r) => json<OutsideUsesFile>(r)),
   /** The agent's second opinion for the stored head; null until it has run. */
   aiReview: (id: string) => file(id, 'ai-review.json').then((r) => json<AiReview>(r)),
   rereview: (id: string) => post<null>(`/api/reviews/${id}/second-opinion`, {}),

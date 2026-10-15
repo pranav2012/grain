@@ -8,3 +8,4 @@ pub(crate) mod prefetch;
 pub(crate) mod prepare;
 pub(crate) mod second_opinion;
 pub(crate) mod summarize;
+pub(crate) mod uses;

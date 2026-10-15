@@ -21,8 +21,10 @@ struct State {
     started: Instant,
     /// Total time allowed for queries; `None` for an interactive session (navigation).
     budget: Option<Duration>,
-    /// Set after a timeout or crash; later queries fall back immediately.
+    /// Set after repeated timeouts or a crash; later queries fall back immediately.
     broken: bool,
+    /// Failed requests in a row.
+    failures: u32,
 }
 
 /// Answers "which files reference this declaration" for TS/JS files in one checkout.
@@ -92,7 +94,7 @@ impl TsUsage {
         Ok(TsUsage {
             root: root.to_path_buf(),
             real_root,
-            state: Mutex::new(State { client, started: Instant::now(), budget, broken: false }),
+            state: Mutex::new(State { client, started: Instant::now(), budget, broken: false, failures: 0 }),
         })
     }
 
@@ -155,10 +157,15 @@ impl TsUsage {
         let result = state.client.request(method, &params, PER_REQUEST);
         let _ = state.client.notify("textDocument/didClose", &json!({ "textDocument": { "uri": doc } }));
         match result {
-            Ok(v) => Some(v),
+            Ok(v) => {
+                state.failures = 0;
+                Some(v)
+            }
             Err(e) => {
-                tracing::warn!(error = %e, %method, "TypeScript lookup failed");
-                state.broken = true;
+                // A slow answer while a big project loads isn't fatal; only repeated failures turn TypeScript off.
+                state.failures += 1;
+                state.broken = state.failures >= 3;
+                tracing::warn!(error = %e, %method, failures = state.failures, "TypeScript lookup failed");
                 None
             }
         }

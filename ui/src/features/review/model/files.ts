@@ -56,17 +56,12 @@ export function blocksByFile(data: LoadedPr): Map<string, number[]> {
 export interface UsedBy {
   /** Changed names in this file and the other PR files that use each. */
   inside: { name: string; files: string[] }[]
-  outside: string[]
-  outsideCount: number
 }
 
-/** Who uses a file's changes: other PR files per changed name, plus the engine's outside production users. */
-export function usedBy(data: LoadedPr, file: string, byFile: Map<string, number[]>): UsedBy {
+/** Which other PR files use each changed name of a file (outside uses come from the server's job). */
+export function usedBy(data: LoadedPr, file: string): UsedBy {
   const names = new Map<string, Set<string>>()
   for (const u of data.review.uses) if (u.file === file) names.set(u.name, (names.get(u.name) ?? new Set()).add(u.userFile))
   const inside = [...names].map(([name, files]) => ({ name, files: [...files].sort() })).sort((a, b) => b.files.length - a.files.length || a.name.localeCompare(b.name))
-  const blocks = (byFile.get(file) ?? []).map((id) => data.blocks.get(id)!).filter(Boolean)
-  const outside = [...new Set(blocks.flatMap((b) => b.usedBySample))]
-  const outsideCount = blocks.reduce((n, b) => Math.max(n, b.usedBy), 0)
-  return { inside, outside, outsideCount: Math.max(outsideCount, outside.length) }
+  return { inside }
 }

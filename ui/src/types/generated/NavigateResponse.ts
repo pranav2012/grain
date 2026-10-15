@@ -3,6 +3,10 @@ import type { NavLocation } from "./NavLocation";
 
 export type NavigateResponse = { 
 /**
+ * Set when an old-side name no longer appears in the new version of the file.
+ */
+removed: boolean, 
+/**
  * False when found by name search (other languages, or the language server is unavailable).
  */
 precise: boolean, results: Array<NavLocation>, 

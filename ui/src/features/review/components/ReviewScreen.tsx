@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { FileDiffLoadedFiles, FileDiffMetadata } from '@pierre/diffs'
 import { CommandPalette, type Command } from '@/components/CommandPalette'
 import { Button } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Kbd'
@@ -70,7 +71,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const { conversation, actions: threadActions } = useConversation(data)
   const { patches, error: diffError } = usePrDiff(data.id, head)
   const agentName = agentNameOf(data)
-  const { report, prStatus, diagnosing, rerun, ai, reviewing, rereview } = useChecks(data.id, !!base.pr?.local, status)
+  const { report, prStatus, diagnosing, rerun, ai, reviewing, rereview, uses } = useChecks(data.id, !!base.pr?.local, status)
   const [railHidden, setRailHidden] = useState(false)
   const [code, setCode] = useState<CodeLocation | null>(null)
 
@@ -227,6 +228,14 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     return (file: string, line: number) => `https://github.com/${repo}/blob/${head}/${file}#L${line}`
   }, [data.pr, data.id])
   const scroller = useCallback(() => page.current?.scroller() ?? null, [])
+  const inPr = useCallback((file: string) => order.includes(file), [order])
+  const loadFiles = useCallback(
+    async (diff: FileDiffMetadata): Promise<FileDiffLoadedFiles> => {
+      const [oldContents, newContents] = await Promise.all([reviewApi.source(data.id, diff.prevName ?? diff.name, 'base'), reviewApi.source(data.id, diff.name)])
+      return { oldFile: { name: diff.prevName ?? diff.name, contents: oldContents }, newFile: { name: diff.name, contents: newContents } }
+    },
+    [data.id],
+  )
 
   /** Sends a question to the agent; `history` (earlier questions and answers) keeps follow-ups in context. */
   const askAgent = (file: string, question: string, code: string | undefined, history: Ask[], done: (patch: Partial<Ask>) => void) => {
@@ -318,7 +327,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
         test={isTestPath(f)}
         owned={ownedFiles.has(f)}
         diffStyle={p?.diff.type === 'new' || p?.diff.type === 'deleted' ? 'unified' : prefs.diffStyle}
-        usedBy={usedBy(data, f, byFile)}
+        usedBy={usedBy(data, f)}
         checks={blocks.flatMap((b) => b.checks)}
         comments={state.comments.filter((c) => c.file === f)}
         threads={conversation?.threads.filter((t) => t.path === f) ?? []}
@@ -330,10 +339,12 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
         onCollapse={(c) => setCollapsed((all) => ({ ...all, [f]: c }))}
         onViewed={(on) => setViewed([f], on)}
         onJump={(to, line) => (line ? revealLine(to, line) : jump(to))}
-        onOutsideUses={() => reviewApi.outsideUses(data.id, f)}
+        outsideUses={uses && uses.head === head ? (uses.files[f] ?? null) : diagnosing || !uses ? undefined : null}
+        loadFiles={loadFiles}
+        inPr={inPr}
         onOpenCode={setCode}
         githubUrl={githubUrl}
-        onLookup={(t, references) => reviewApi.navigate(data.id, { file: f, line: t.line, character: t.character, name: t.name, references })}
+        onLookup={(t, references) => reviewApi.navigate(data.id, { file: f, line: t.line, character: t.character, name: t.name, references, oldSide: t.oldSide })}
         onComment={addComment}
         onDeleteComment={(id) => dispatch({ type: 'deleteComment', id })}
         onAskAt={askAt}
