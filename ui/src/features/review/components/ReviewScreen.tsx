@@ -313,7 +313,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             ref={page}
             data={data}
             chapters={chapters}
-            overview={<Overview data={data} chapters={chapters} patches={patches} problems={shownProblems} onJump={(f) => jump(f)} onProblem={revealProblem} />}
+            overview={<Overview data={data} chapters={chapters} patches={patches} problems={shownProblems} status={prStatus} threads={conversation?.threads ?? []} onJump={(f) => jump(f)} onProblem={revealProblem} />}
             renderFile={renderFile}
             onCurrent={onCurrent}
             onBackChange={setCanGoBack}
