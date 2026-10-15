@@ -6,6 +6,10 @@ export type Usage = { model: string | null, inputTokens: number,
  */
 cachedTokens: number, outputTokens: number, costUsd: number, 
 /**
- * True when the cost was computed by Grain from token counts and list prices.
+ * True when the cost was computed by Grain from token counts and catalog prices.
  */
-estimated: boolean, };
+estimated: boolean, 
+/**
+ * False when the model's price is unknown (not in the catalog, or the catalog couldn't be fetched).
+ */
+priced: boolean, };

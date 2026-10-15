@@ -283,3 +283,20 @@ pub(crate) struct PrSpend {
     pub cost: f64,
     pub requests: usize,
 }
+
+/// Models an agent offers, for the Settings pickers.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct ModelsResponse {
+    pub models: Vec<grain_agent::models::ModelOption>,
+    /// What "Automatic" would use for summaries right now; none means the agent's default.
+    pub summary_auto: Option<grain_agent::models::ModelOption>,
+    /// False when the models.dev catalog couldn't be fetched (no prices or dates).
+    pub catalog: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ModelsQuery {
+    pub agent: String,
+}

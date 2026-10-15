@@ -1,5 +1,5 @@
 //! What an agent request used: tokens and cost. Claude Code reports its cost; Codex and OpenCode
-//! report tokens (OpenCode sometimes cost), which are priced from list prices and marked estimated.
+//! report tokens (OpenCode sometimes cost), priced from the models.dev catalog and marked estimated.
 //! On a subscription the cost is what the same usage would cost at API prices, not a bill.
 
 use serde::{Deserialize, Serialize};
@@ -18,29 +18,35 @@ pub struct Usage {
     #[ts(type = "number")]
     pub output_tokens: u64,
     pub cost_usd: f64,
-    /// True when the cost was computed by Grain from token counts and list prices.
+    /// True when the cost was computed by Grain from token counts and catalog prices.
     pub estimated: bool,
+    /// False when the model's price is unknown (not in the catalog, or the catalog couldn't be fetched).
+    pub priced: bool,
 }
 
-/// USD per million tokens: (input, cached input, output). Approximate list prices; update when providers change them.
-fn price(model: Option<&str>) -> (f64, f64, f64) {
-    let m = model.unwrap_or_default().to_ascii_lowercase();
-    if m.contains("mini") || m.contains("haiku") || m.contains("flash") {
-        (0.25, 0.025, 2.0)
-    } else if m.contains("opus") {
-        (15.0, 1.5, 75.0)
-    } else if m.contains("sonnet") || m.contains("claude") {
-        (3.0, 0.3, 15.0)
-    } else {
-        (1.25, 0.125, 10.0)
+fn tokens(model: Option<String>, input: u64, cached: u64, output: u64) -> Usage {
+    Usage {
+        model,
+        input_tokens: input,
+        cached_tokens: cached,
+        output_tokens: output,
+        cost_usd: 0.0,
+        estimated: true,
+        priced: false,
     }
 }
 
-fn estimate(model: Option<String>, input: u64, cached: u64, output: u64) -> Usage {
-    let (pi, pc, po) = price(model.as_deref());
-    let fresh = input.saturating_sub(cached);
-    let cost = (fresh as f64 * pi + cached as f64 * pc + output as f64 * po) / 1_000_000.0;
-    Usage { model, input_tokens: input, cached_tokens: cached, output_tokens: output, cost_usd: cost, estimated: true }
+/// Prices token counts from the catalog; usage with a cost reported by the agent is left alone.
+pub(crate) fn price(usage: &mut Usage, agent: crate::Agent, catalog: Option<&crate::models::Catalog>) {
+    if usage.priced {
+        return;
+    }
+    let Some(p) = usage.model.as_deref().and_then(|m| catalog?.price(agent, m)) else { return };
+    let fresh = usage.input_tokens.saturating_sub(usage.cached_tokens);
+    usage.cost_usd =
+        (fresh as f64 * p.input + usage.cached_tokens as f64 * p.cached + usage.output_tokens as f64 * p.output)
+            / 1_000_000.0;
+    usage.priced = true;
 }
 
 fn n(v: &serde_json::Value) -> u64 {
@@ -68,10 +74,11 @@ pub(crate) fn from_claude(out: &serde_json::Value) -> Option<Usage> {
         output_tokens: n(&u["output_tokens"]),
         cost_usd: cost,
         estimated: false,
+        priced: true,
     })
 }
 
-/// From `codex exec --json` events: the `turn.completed` usage, priced for `model`.
+/// From `codex exec --json` events: the `turn.completed` token counts for `model` (priced later).
 pub(crate) fn from_codex(stdout: &str, model: Option<&str>) -> Option<Usage> {
     let mut found = None;
     for line in stdout.lines() {
@@ -80,7 +87,7 @@ pub(crate) fn from_codex(stdout: &str, model: Option<&str>) -> Option<Usage> {
             let u = &e["usage"];
             let output = n(&u["output_tokens"]) + n(&u["reasoning_output_tokens"]);
             found =
-                Some(estimate(model.map(str::to_string), n(&u["input_tokens"]), n(&u["cached_input_tokens"]), output));
+                Some(tokens(model.map(str::to_string), n(&u["input_tokens"]), n(&u["cached_input_tokens"]), output));
         }
     }
     found
@@ -104,10 +111,11 @@ pub(crate) fn from_opencode(stdout: &str, model: Option<String>) -> Option<Usage
     if !seen {
         return None;
     }
-    let mut u = estimate(model, input + cached, cached, output);
+    let mut u = tokens(model, input + cached, cached, output);
     if cost > 0.0 {
         u.cost_usd = cost;
         u.estimated = false;
+        u.priced = true;
     }
     Some(u)
 }
@@ -129,10 +137,10 @@ mod tests {
     #[test]
     fn reads_claude_cost() {
         let out = serde_json::json!({"total_cost_usd": 0.0123, "usage": {"input_tokens": 10, "cache_creation_input_tokens": 5, "cache_read_input_tokens": 100, "output_tokens": 7},
-            "modelUsage": {"claude-haiku": {"costUSD": 0.001}, "claude-opus": {"costUSD": 0.01}}});
+            "modelUsage": {"small-model": {"costUSD": 0.001}, "main-model": {"costUSD": 0.01}}});
         let u = from_claude(&out).unwrap_or_default();
         assert_eq!((u.input_tokens, u.cached_tokens, u.output_tokens), (115, 100, 7));
-        assert_eq!(u.model.as_deref(), Some("claude-opus"));
+        assert_eq!(u.model.as_deref(), Some("main-model"));
         assert!(!u.estimated);
     }
 
@@ -142,6 +150,6 @@ mod tests {
 {"type":"turn.completed","usage":{"input_tokens":17830,"cached_input_tokens":13184,"output_tokens":5,"reasoning_output_tokens":0}}"#;
         let u = from_codex(out, Some("gpt-x")).unwrap_or_default();
         assert_eq!((u.input_tokens, u.cached_tokens, u.output_tokens), (17830, 13184, 5));
-        assert!(u.estimated && u.cost_usd > 0.0 && u.cost_usd < 0.01);
+        assert!(u.estimated && !u.priced);
     }
 }

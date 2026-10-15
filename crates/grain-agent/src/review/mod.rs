@@ -118,6 +118,7 @@ pub fn review(
     model: Option<&str>,
     checkout: &Path,
     pr: &PrContext,
+    cache_dir: &Path,
 ) -> (Result<Vec<Finding>, String>, Option<crate::Usage>) {
     if let Some(reason) = policy_check(agent, model) {
         return (Err(reason), None);
@@ -133,16 +134,22 @@ pub fn review(
             LIMIT,
         ),
     };
+    let priced = |u: Option<crate::Usage>| {
+        u.map(|mut u| {
+            crate::usage::price(&mut u, agent, crate::models::Catalog::load(cache_dir).as_ref());
+            u
+        })
+    };
     match res {
         Ok((Some(v), out)) => (
             serde_json::from_value::<Vec<Finding>>(v["findings"].clone())
                 .map_err(|e| format!("unexpected answer: {e}")),
-            out.usage,
+            priced(out.usage),
         ),
         Ok((None, out)) => {
             let raw = format!("{}\n{}", out.stdout, out.stderr);
             let raw = raw.trim();
-            (Err(raw[raw.floor_char_boundary(raw.len().saturating_sub(800))..].to_string()), out.usage)
+            (Err(raw[raw.floor_char_boundary(raw.len().saturating_sub(800))..].to_string()), priced(out.usage))
         }
         Err(e) => (Err(e.to_string()), None),
     }

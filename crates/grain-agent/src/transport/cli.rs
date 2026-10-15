@@ -41,6 +41,7 @@ pub(crate) fn claude(
     prompt: &str,
     schema: &str,
     model: Option<&str>,
+    light: bool,
 ) -> std::io::Result<(Option<serde_json::Value>, CliOutput)> {
     let mut cmd = Command::new(crate::resolve_program("claude"));
     cmd.args(["-p", "--output-format", "json", "--json-schema", schema, "--tools", "", "--strict-mcp-config"]).args([
@@ -50,6 +51,9 @@ pub(crate) fn claude(
     ]);
     if let Some(m) = model {
         cmd.args(["--model", m]);
+    }
+    if light {
+        cmd.args(["--effort", "low"]);
     }
     let out = run(cmd, prompt, &scratch_dir())?;
     let mut out = out;
@@ -64,6 +68,7 @@ pub(crate) fn codex(
     prompt: &str,
     schema: &str,
     model: Option<&str>,
+    light: bool,
 ) -> std::io::Result<(Option<serde_json::Value>, CliOutput)> {
     let dir = scratch_dir();
     let (schema_path, out_path) = (dir.join("schema.json"), dir.join("last.txt"));
@@ -77,6 +82,9 @@ pub(crate) fn codex(
         .arg(&out_path);
     if let Some(m) = model {
         cmd.args(["-m", m]);
+    }
+    if light {
+        cmd.args(["-c", "model_reasoning_effort=\"low\""]);
     }
     let out = run(cmd, prompt, &dir)?;
     let mut out = out;

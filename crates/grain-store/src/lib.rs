@@ -94,11 +94,20 @@ impl Home {
         self.root.join("settings.json")
     }
 
+    /// Saved settings; the older `model` setting becomes `reviewModel`.
     pub fn load_settings(&self) -> Settings {
-        std::fs::read_to_string(self.settings_path())
+        let Some(mut v) = std::fs::read_to_string(self.settings_path())
             .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        else {
+            return Settings::default();
+        };
+        if v.get("reviewModel").is_none()
+            && let Some(old) = v.get("model").cloned()
+        {
+            v["reviewModel"] = old;
+        }
+        serde_json::from_value(v).unwrap_or_default()
     }
 
     pub fn save_settings(&self, s: &Settings) -> std::io::Result<()> {
@@ -112,7 +121,8 @@ impl Home {
 pub struct Settings {
     /// `None` means review without AI (the default).
     pub agent: Option<Agent>,
-    pub model: Option<String>,
+    /// Model for second opinions and questions; `None` uses the agent's own default (kept current by its maker).
+    pub review_model: Option<String>,
     /// Fresh (non-cached) agent requests allowed per PR review.
     pub max_summaries_per_review: usize,
     /// Summarize the next blocks automatically while reading. Off by default: summaries are
@@ -125,9 +135,9 @@ pub struct Settings {
     pub second_opinion: bool,
     /// Estimated AI spend allowed per day (USD at API prices); 0 means no cap.
     pub daily_budget_usd: f64,
-    /// Write block summaries and chapter intros with a small, cheap model (Claude Code: Haiku).
-    /// Questions and second opinions keep the chosen model.
-    pub small_model_for_summaries: bool,
+    /// Model for block summaries and chapter intros; `None` picks the newest of the cheapest models
+    /// the agent offers, run at low effort.
+    pub summary_model: Option<String>,
     /// Folders the reviewer keeps their clones in; searched (two levels deep) along with the
     /// usual code folders when a repository opens for the first time.
     pub work_folders: Vec<String>,
@@ -137,13 +147,13 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             agent: None,
-            model: None,
+            review_model: None,
             max_summaries_per_review: 30,
             auto_summarize: false,
             prefetch: true,
             second_opinion: true,
             daily_budget_usd: 5.0,
-            small_model_for_summaries: true,
+            summary_model: None,
             work_folders: Vec::new(),
         }
     }

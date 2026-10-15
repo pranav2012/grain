@@ -111,7 +111,7 @@ export function FindingsRail({ review, reviewing, agentName, calls, scroller, on
           <>
             <p className="mt-1 text-fg-subtle">
               {findings.length ? `${findings.length} ${findings.length === 1 ? 'finding' : 'findings'} · ${toCheck} to check` : 'Nothing found.'} {agentName}, {skill}
-              {review.usage && `, about ${usd(review.usage.costUsd)}${review.usage.estimated ? ' (est.)' : ''}`}
+              {review.usage && (review.usage.priced ? `, about ${usd(review.usage.costUsd)}${review.usage.estimated ? ' (est.)' : ''}` : ', cost unknown')}
               {review.since && `; after new commits, only files changed since ${review.since.slice(0, 7)} were checked again`}. Nothing is posted unless you keep it.
             </p>
             {findings.length > 0 && (

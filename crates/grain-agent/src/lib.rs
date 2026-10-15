@@ -2,6 +2,7 @@
 //! Policy and rationale: docs/COMPLIANCE.md.
 
 mod agent;
+pub mod models;
 mod policy;
 mod prompt;
 pub mod review;
@@ -56,30 +57,39 @@ fn looks_limited(s: &str) -> bool {
 
 /// Summarizes one block diff. Identical requests are answered from `cache_dir` and never re-sent.
 pub fn summarize(agent: Agent, model: Option<&str>, diff: &str, cache_dir: &Path) -> Outcome {
-    ask(agent, model, PROMPT, SCHEMA, diff, cache_dir)
+    ask(agent, model, true, PROMPT, SCHEMA, diff, cache_dir)
 }
 
 /// Writes a chapter intro from the chapter's combined diff; cached like [`summarize`].
 pub fn summarize_layer(agent: Agent, model: Option<&str>, diff: &str, cache_dir: &Path) -> Outcome {
-    ask(agent, model, LAYER_PROMPT, LAYER_SCHEMA, diff, cache_dir)
+    ask(agent, model, true, LAYER_PROMPT, LAYER_SCHEMA, diff, cache_dir)
 }
 
 /// Answers a reviewer's question about a change (`context`: the diff, and any selected lines).
 /// The summary value is `{ "answer": "…" }`; identical questions are answered from the cache.
 pub fn answer(agent: Agent, model: Option<&str>, context: &str, question: &str, cache_dir: &Path) -> Outcome {
     let body = format!("QUESTION: {question}\n\nCODE:\n{context}");
-    match ask(agent, model, ASK_PROMPT, ASK_SCHEMA, &body, cache_dir) {
-        Outcome::Failed { .. } => ask(agent, model, ASK_PROMPT, ASK_SCHEMA, &body, cache_dir),
+    match ask(agent, model, false, ASK_PROMPT, ASK_SCHEMA, &body, cache_dir) {
+        Outcome::Failed { .. } => ask(agent, model, false, ASK_PROMPT, ASK_SCHEMA, &body, cache_dir),
         other => other,
     }
 }
 
-fn ask(agent: Agent, model: Option<&str>, head: &str, schema: &str, diff: &str, cache_dir: &Path) -> Outcome {
+/// One structured request. `light` runs it at low reasoning effort (summaries), which costs less.
+fn ask(
+    agent: Agent,
+    model: Option<&str>,
+    light: bool,
+    head: &str,
+    schema: &str,
+    diff: &str,
+    cache_dir: &Path,
+) -> Outcome {
     if let Some(reason) = policy_check(agent, model) {
         return Outcome::Refused { reason };
     }
     let prompt = format!("{head}{diff}");
-    let key = format!("{:x}", Sha256::digest(format!("{}|cli|{model:?}|{schema}|{prompt}", agent.id())));
+    let key = format!("{:x}", Sha256::digest(format!("{}|cli|{model:?}|{light}|{schema}|{prompt}", agent.id())));
     let cache_file = cache_dir.join(format!("{key}.json"));
     if let Ok(hit) = std::fs::read_to_string(&cache_file)
         && let Ok(summary) = serde_json::from_str(&hit)
@@ -87,15 +97,19 @@ fn ask(agent: Agent, model: Option<&str>, head: &str, schema: &str, diff: &str, 
         return Outcome::Done { summary, cached: true, usage: None };
     }
     let res = match agent {
-        Agent::Claude => cli::claude(&prompt, schema, model),
-        Agent::Codex => cli::codex(&prompt, schema, model),
+        Agent::Claude => cli::claude(&prompt, schema, model, light),
+        Agent::Codex => cli::codex(&prompt, schema, model, light),
         Agent::Opencode => cli::opencode(&format!("{prompt}\n\nReply with ONLY JSON matching: {schema}"), model),
     };
     match res {
         Ok((Some(summary), out)) => {
             std::fs::create_dir_all(cache_dir).ok();
             std::fs::write(&cache_file, summary.to_string()).ok();
-            Outcome::Done { summary, cached: false, usage: out.usage }
+            let usage = out.usage.map(|mut u| {
+                usage::price(&mut u, agent, models::Catalog::load(cache_dir).as_ref());
+                u
+            });
+            Outcome::Done { summary, cached: false, usage }
         }
         Ok((None, out)) => {
             let raw = format!("{}\n{}", out.stdout, out.stderr);

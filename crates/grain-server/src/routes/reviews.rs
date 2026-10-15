@@ -217,7 +217,7 @@ pub(super) async fn ask(
         }
         match grain_agent::answer(
             agent,
-            settings.model.as_deref(),
+            settings.review_model.as_deref(),
             &context,
             body.question.trim(),
             &app.home.cache_dir(),

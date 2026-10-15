@@ -176,7 +176,8 @@ pub(crate) fn run(home: &Home, settings: &Settings, pr: &PrRef, force: bool) -> 
         since: focus.as_ref().map(|(since, f)| (since.as_str(), f.as_slice())),
     };
     let started = std::time::Instant::now();
-    let (result, usage) = grain_agent::review::review(agent, settings.model.as_deref(), &checkout, &context);
+    let (result, usage) =
+        grain_agent::review::review(agent, settings.review_model.as_deref(), &checkout, &context, &home.cache_dir());
     if let Some(u) = &usage {
         home.record_usage(&format!("{repo}/{}", pr.number), "review", agent, u);
     }

@@ -10,6 +10,7 @@ import type { Agent } from '@/types/generated/Agent'
 import type { Settings } from '@/types/generated/Settings'
 import type { UsageReport } from '@/types/generated/UsageReport'
 import { settingsApi } from '../api'
+import { ModelPicker } from './ModelPicker'
 
 const agents: [Agent | null, string, string][] = [
   [null, 'No AI', 'Grain describes each block from the code and runs its own checks. Nothing is sent anywhere.'],
@@ -59,13 +60,22 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
                   key={label}
                   checked={s.agent === id}
                   disabled={missing}
-                  onSelect={() => setS({ ...s, agent: id })}
+                  onSelect={() => setS(s.agent === id ? s : { ...s, agent: id, reviewModel: null, summaryModel: null })}
                   label={label}
                   help={missing ? 'Not installed on this machine.' : help}
                 />
               )
             })}
           </ChoiceGroup>
+          {s.agent && (
+            <ModelPicker
+              key={s.agent}
+              agent={s.agent}
+              reviewModel={s.reviewModel}
+              summaryModel={s.summaryModel}
+              onChange={(m) => setS({ ...s, ...m })}
+            />
+          )}
           <label className="mt-1.5 flex items-start gap-2.5 text-fg-subtle has-[:disabled]:opacity-50">
             <input
               type="checkbox"
@@ -93,19 +103,6 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
                 Your agent runs Grain's review skill read-only on the PR and its findings appear beside the code. Takes a few minutes and uses
                 your plan. Nothing is posted unless you keep it.
               </small>
-            </span>
-          </label>
-          <label className="mt-1.5 flex items-start gap-2.5 text-fg-subtle has-[:disabled]:opacity-50">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={s.smallModelForSummaries}
-              disabled={!s.agent}
-              onChange={(e) => setS({ ...s, smallModelForSummaries: e.target.checked })}
-            />
-            <span>
-              Use a small, cheaper model for summaries and chapter intros
-              <small className="block text-sm text-fg-faint">Claude Code uses Haiku for these. Questions and second opinions keep your model. Codex and OpenCode use their configured model.</small>
             </span>
           </label>
           <label className="mt-3 flex items-start gap-2.5 text-fg-subtle">

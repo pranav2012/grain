@@ -5,7 +5,11 @@ export type Settings = {
 /**
  * `None` means review without AI (the default).
  */
-agent: Agent | null, model: string | null, 
+agent: Agent | null, 
+/**
+ * Model for second opinions and questions; `None` uses the agent's own default (kept current by its maker).
+ */
+reviewModel: string | null, 
 /**
  * Fresh (non-cached) agent requests allowed per PR review.
  */
@@ -29,10 +33,10 @@ secondOpinion: boolean,
  */
 dailyBudgetUsd: number, 
 /**
- * Write block summaries and chapter intros with a small, cheap model (Claude Code: Haiku).
- * Questions and second opinions keep the chosen model.
+ * Model for block summaries and chapter intros; `None` picks the newest of the cheapest models
+ * the agent offers, run at low effort.
  */
-smallModelForSummaries: boolean, 
+summaryModel: string | null, 
 /**
  * Folders the reviewer keeps their clones in; searched (two levels deep) along with the
  * usual code folders when a repository opens for the first time.

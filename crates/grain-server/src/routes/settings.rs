@@ -34,3 +34,19 @@ pub(super) async fn usage(State(app): State<Shared>) -> Json<crate::contract::Us
     prs.sort_by(|a, b| b.cost.total_cmp(&a.cost).then_with(|| a.pr.cmp(&b.pr)));
     Json(crate::contract::UsageReport { spend: app.home.spend(None), prs })
 }
+
+/// The models an agent offers (from the agent itself, or the catalog for Claude Code).
+pub(super) async fn models(
+    State(app): State<Shared>,
+    axum::extract::Query(q): axum::extract::Query<crate::contract::ModelsQuery>,
+) -> ApiResult<Json<crate::contract::ModelsResponse>> {
+    let agent = grain_agent::Agent::parse(&q.agent).ok_or_else(|| ApiError::bad_request("Unknown agent."))?;
+    crate::error::blocking(move || {
+        let cache = app.home.cache_dir();
+        let models = grain_agent::models::available_cached(agent, &cache);
+        let summary_auto = grain_agent::models::summary_auto(agent, &models);
+        let catalog = grain_agent::models::Catalog::load(&cache).is_some();
+        Ok(Json(crate::contract::ModelsResponse { models, summary_auto, catalog }))
+    })
+    .await
+}
