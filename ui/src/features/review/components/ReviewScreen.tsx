@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CommandPalette, type Command } from '@/components/CommandPalette'
 import { Button } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Kbd'
+import { cn } from '@/lib/cn'
 import { pickFolder } from '@/lib/pick-folder'
 import { useHotkeys } from '@/lib/useHotkeys'
 import { reviewApi } from '../api'
@@ -15,11 +16,14 @@ import { agentName as agentNameOf, chapterSummaryKey, chapterSummaryOf, isTestPa
 import { blocksByFile, fileChapters, filesInOrder, usedBy } from '../model/files'
 import { modeOrder, modes } from '../model/modes'
 import { allProblems, changedLines, problemsByFile, type FileProblems } from '../model/problems'
+import { findingKey, rowFor } from '../model/findings'
 import { chaptersFor, ownedBlocks } from '../model/story'
 import type { Ask, LineThread, LoadedPr, Mode, ReviewComment } from '../model/types'
+import type { Finding } from '@/types/generated/Finding'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
 import { FileCard, type NewComment, type ThreadAnchor } from './FileCard'
+import { FindingsRail } from './FindingsRail'
 import { FinishDialog } from './FinishDialog'
 import { KeyHints } from './KeyHints'
 import { NewCommitsNotice } from './NewCommitsNotice'
@@ -33,6 +37,7 @@ import { TopBar } from './TopBar'
 /** Diffs bigger than this start collapsed so the page stays quick to scan. */
 const LARGE_FILE = 1500
 const noProblems: FileProblems = { shown: [], other: [] }
+const noLines: number[] = []
 
 interface ReviewScreenProps {
   base: LoadedPr
@@ -63,7 +68,8 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const { conversation, actions: threadActions } = useConversation(data)
   const { patches, error: diffError } = usePrDiff(data.id, head)
   const agentName = agentNameOf(data)
-  const { report, prStatus, diagnosing, rerun } = useChecks(data.id, !!base.pr?.local, status)
+  const { report, prStatus, diagnosing, rerun, ai, reviewing, rereview } = useChecks(data.id, !!base.pr?.local, status)
+  const [railHidden, setRailHidden] = useState(false)
 
   const allFiles = useMemo(() => (patches ? [...patches.keys()] : [...byFile.keys()]), [patches, byFile])
   const chapters = useMemo(() => fileChapters(data, chaptersFor(data, prefs.mineFirst), allFiles), [data, prefs.mineFirst, allFiles])
@@ -161,7 +167,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     if (!x) return
     problemAt.current = shownProblems.indexOf(x)
     setCollapsed((c) => ({ ...c, [x.file]: false }))
-    requestAnimationFrame(() => page.current?.reveal(x.file, `problem-${x.id}`))
+    requestAnimationFrame(() => page.current?.reveal(x.file, (section) => section.querySelector<HTMLElement>(`#problem-${CSS.escape(x.id)}`)))
   }
   const nextProblem = () => shownProblems.length && revealProblem(shownProblems[(problemAt.current + 1) % shownProblems.length].id)
   const chooseClone = () => {
@@ -174,10 +180,40 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     )
   }
 
+  const findings = useMemo(() => {
+    const at = new Map(order.map((f, i) => [f, i]))
+    return [...(ai?.findings ?? [])].sort((a, b) => (at.get(a.file) ?? 1e9) - (at.get(b.file) ?? 1e9) || a.line - b.line)
+  }, [ai, order])
+  const findingLines = useMemo(() => {
+    const map = new Map<string, number[]>()
+    for (const f of findings) map.set(f.file, [...(map.get(f.file) ?? []), f.line])
+    return map
+  }, [findings])
+  const showRail = !!agentName && (reviewing || !!ai) && !railHidden
+  const findingAt = useRef(-1)
+  const revealFinding = (f: Finding) => {
+    findingAt.current = findings.indexOf(f)
+    setCollapsed((c) => ({ ...c, [f.file]: false }))
+    setRailHidden(false)
+    requestAnimationFrame(() => page.current?.reveal(f.file, (section) => rowFor(section, f.line)))
+  }
+  const stepFinding = (d: number) => findings.length && revealFinding(findings[(findingAt.current + d + findings.length) % findings.length])
+  const keepFinding = (f: Finding) => {
+    const id = crypto.randomUUID()
+    dispatch({ type: 'comment', comment: { id, blockId: 0, blockKey: f.file, kind: 'comment', body: f.comment, file: f.file, side: 'additions', line: f.line, endLine: f.endLine, createdAt: Date.now() } })
+    dispatch({ type: 'ai', key: findingKey(f), call: { kept: id } })
+  }
+  const undoFinding = (f: Finding) => {
+    const call = state.ai?.[findingKey(f)]
+    if (call && call !== 'dismissed') dispatch({ type: 'deleteComment', id: call.kept })
+    dispatch({ type: 'ai', key: findingKey(f), call: null })
+  }
+
   const setMode = (mode: Mode) => dispatch({ type: 'mode', mode })
   const toggleDiffStyle = () => setPrefs((p) => ({ ...p, diffStyle: p.diffStyle === 'split' ? 'unified' : 'split' }))
   const toggleMineFirst = () => setPrefs((p) => ({ ...p, mineFirst: !p.mineFirst }))
   const back = () => page.current?.back()
+  const scroller = useCallback(() => page.current?.scroller() ?? null, [])
 
   /** Sends a question to the agent; `history` (earlier questions and answers) keeps follow-ups in context. */
   const askAgent = (file: string, question: string, code: string | undefined, history: Ask[], done: (patch: Partial<Ask>) => void) => {
@@ -223,6 +259,9 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     v: toggleViewedAndNext,
     b: back,
     e: nextProblem,
+    n: () => stepFinding(1),
+    p: () => stepFinding(-1),
+    a: () => agentName && setRailHidden((h) => !h),
     s: toggleDiffStyle,
     m: () => ownedFiles.size && toggleMineFirst(),
     '1': () => setMode('self'),
@@ -272,6 +311,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
         threads={conversation?.threads.filter((t) => t.path === f) ?? []}
         aiThreads={lineThreads.filter((t) => t.file === f)}
         problems={fileProblems.get(f) ?? noProblems}
+        findingLines={findingLines.get(f) ?? noLines}
         agentName={agentName}
         kinds={copy.kinds}
         onCollapse={(c) => setCollapsed((all) => ({ ...all, [f]: c }))}
@@ -290,7 +330,14 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
 
   return (
     <ThreadActionsContext value={threadActions}>
-      <div className="grid h-screen grid-cols-[272px_minmax(0,1fr)] grid-rows-[48px_minmax(0,1fr)_30px] [grid-template-areas:'top_top'_'toc_main'_'keys_keys'] max-[900px]:grid-cols-[0_minmax(0,1fr)]">
+      <div
+        className={cn(
+          'grid h-screen grid-rows-[48px_minmax(0,1fr)_30px]',
+          showRail
+            ? "grid-cols-[272px_minmax(0,1fr)_300px] [grid-template-areas:'top_top_top'_'toc_main_rail'_'keys_keys_keys'] max-[1100px]:grid-cols-[0_minmax(0,1fr)_280px]"
+            : "grid-cols-[272px_minmax(0,1fr)] [grid-template-areas:'top_top'_'toc_main'_'keys_keys'] max-[900px]:grid-cols-[0_minmax(0,1fr)]",
+        )}
+      >
         <TopBar
           data={data}
           mode={state.mode}
@@ -299,7 +346,17 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           total={order.length}
           diffStyle={prefs.diffStyle}
           onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
-          problems={<ProblemsPill problems={shownProblems} report={report} diagnosing={diagnosing} onNext={nextProblem} onChooseClone={chooseClone} />}
+          problems={
+            <>
+              <ProblemsPill problems={shownProblems} report={report} diagnosing={diagnosing} onNext={nextProblem} onChooseClone={chooseClone} />
+              {agentName && (reviewing || ai) && (
+                <Button size="sm" variant="ghost" aria-pressed={!railHidden} title="Show or hide the second opinion (a)" onClick={() => setRailHidden((h) => !h)} className="whitespace-nowrap">
+                  <span className="text-2xs font-semibold text-accent">AI</span>
+                  {reviewing && !ai ? 'reviewing…' : `${findings.filter((f) => !state.ai?.[findingKey(f)]).length} to check`}
+                </Button>
+              )}
+            </>
+          }
           onSwitch={onSwitch}
           onPalette={() => setOverlay('palette')}
           onSettings={onSettings}
@@ -313,11 +370,25 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             ref={page}
             data={data}
             chapters={chapters}
-            overview={<Overview data={data} chapters={chapters} patches={patches} problems={shownProblems} status={prStatus} threads={conversation?.threads ?? []} onJump={(f) => jump(f)} onProblem={revealProblem} />}
+            overview={<Overview data={data} chapters={chapters} patches={patches} problems={shownProblems} findings={findings.filter((f) => f.score >= 75 && !state.ai?.[findingKey(f)])} status={prStatus} threads={conversation?.threads ?? []} onJump={(f) => jump(f)} onProblem={revealProblem} onFinding={revealFinding} />}
             renderFile={renderFile}
             onCurrent={onCurrent}
             onBackChange={setCanGoBack}
             onViewAll={(files) => setViewed(files, true)}
+          />
+        )}
+        {showRail && (
+          <FindingsRail
+            review={ai}
+            reviewing={reviewing}
+            agentName={agentName ?? ''}
+            calls={state.ai ?? {}}
+            scroller={scroller}
+            onKeep={keepFinding}
+            onDismiss={(f) => dispatch({ type: 'ai', key: findingKey(f), call: 'dismissed' })}
+            onUndo={undoFinding}
+            onReveal={revealFinding}
+            onRetry={rereview}
           />
         )}
         <KeyHints

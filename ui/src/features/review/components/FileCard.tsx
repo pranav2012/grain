@@ -9,7 +9,7 @@ import type { ReviewThread } from '@/types/generated/ReviewThread'
 import type { FilePatch } from '../hooks/usePrDiff'
 import type { UsedBy } from '../model/files'
 import type { FileProblems } from '../model/problems'
-import { markProblems, squiggleCSS } from '../model/squiggles'
+import { markFindings, markProblems, squiggleCSS } from '../model/squiggles'
 import { newLines } from '../model/suggestion'
 import type { CommentKind, DiffStyle, LineThread, ReviewComment, Side } from '../model/types'
 import { AiThread, ThreadMessages } from './AiThread'
@@ -47,6 +47,8 @@ export interface FileCardProps {
   threads: ReviewThread[]
   aiThreads: LineThread[]
   problems: FileProblems
+  /** Lines the agent's second opinion comments on. */
+  findingLines: number[]
   agentName: string | null
   kinds: [CommentKind, string][]
   onCollapse(collapsed: boolean): void
@@ -94,9 +96,11 @@ export function FileCard(p: FileCardProps) {
   }
   const lookupRef = useRef(lookup)
   const problemsRef = useRef(p.problems.shown)
+  const findingsRef = useRef(p.findingLines)
   useLayoutEffect(() => {
     lookupRef.current = lookup
     problemsRef.current = p.problems.shown
+    findingsRef.current = p.findingLines
   })
 
   const options = useMemo<FileDiffOptions<Note, undefined>>(
@@ -108,7 +112,10 @@ export function FileCard(p: FileCardProps) {
         const side = (range.endSide ?? range.side ?? 'additions') as Side
         setDraft({ side, line: Math.min(range.start, range.end), endLine: Math.max(range.start, range.end) })
       },
-      onPostRender: (node) => markProblems(node.shadowRoot ?? node, problemsRef.current),
+      onPostRender: (node) => {
+        markProblems(node.shadowRoot ?? node, problemsRef.current)
+        markFindings(node.shadowRoot ?? node, findingsRef.current)
+      },
       // ⌘/Ctrl-click a name jumps to its definition, like in an editor.
       onTokenClick: (t, e) => {
         if (!(e.metaKey || e.ctrlKey) || t.side === 'deletions' || !/^[A-Za-z_$][\w$]*$/.test(t.tokenText)) return

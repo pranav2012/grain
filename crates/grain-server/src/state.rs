@@ -34,6 +34,8 @@ pub(crate) struct App {
     pub(crate) enriching: Mutex<HashSet<PrRef>>,
     /// PRs whose type errors and lint findings are being computed.
     pub(crate) diagnosing: Mutex<HashSet<PrRef>>,
+    /// PRs being reviewed by the reviewer's agent (or waiting for their turn).
+    pub(crate) second_opinions: Mutex<HashSet<PrRef>>,
     pub(crate) patches: crate::patch_index::PatchCache,
     /// Identifies the running binary, so a newer `grain` can tell it's outdated.
     pub(crate) build: String,
@@ -73,6 +75,7 @@ impl App {
             busy: Mutex::new(HashSet::new()),
             enriching: Mutex::new(HashSet::new()),
             diagnosing: Mutex::new(HashSet::new()),
+            second_opinions: Mutex::new(HashSet::new()),
             patches: crate::patch_index::PatchCache::default(),
             local_heads: Mutex::new(HashMap::new()),
             navigators: Mutex::new(HashMap::new()),
@@ -192,13 +195,14 @@ impl App {
                 .get(&pr)
                 .is_some_and(|j| matches!(j.stage, Stage::Ready))
             {
-                app.diagnose(&pr);
+                app.diagnose(&pr, by_reviewer);
             }
         });
     }
 
-    /// Computes type errors and lint findings for the PR's current head unless already done or running.
-    pub(crate) fn diagnose(self: &Shared, pr: &PrRef) {
+    /// Computes type errors and lint findings for the PR's current head unless already done or running,
+    /// then (for PRs the reviewer opened) asks for the agent's second opinion.
+    pub(crate) fn diagnose(self: &Shared, pr: &PrRef, then_review: bool) {
         if !self.diagnosing.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone()) {
             return;
         }
@@ -211,6 +215,28 @@ impl App {
                 Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "diagnostics failed"),
             }
             app.diagnosing.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
+            if then_review {
+                app.second_opinion(&pr);
+            }
+        });
+    }
+
+    /// Reviews the PR with the reviewer's agent and review skill in the background (see `jobs::second_opinion`).
+    pub(crate) fn second_opinion(self: &Shared, pr: &PrRef) {
+        if !self.second_opinions.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone()) {
+            return;
+        }
+        let app = self.clone();
+        let pr = pr.clone();
+        std::thread::spawn(move || {
+            let t = std::time::Instant::now();
+            match guarded("reviewing with your agent", || {
+                crate::jobs::second_opinion::run(&app.home, &app.settings(), &pr)
+            }) {
+                Ok(()) => tracing::info!(pr = %pr.number, ms = t.elapsed().as_millis(), "second opinion done"),
+                Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "second opinion failed"),
+            }
+            app.second_opinions.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
         });
     }
 }

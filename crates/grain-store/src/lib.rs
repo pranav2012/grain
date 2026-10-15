@@ -117,6 +117,9 @@ pub struct Settings {
     pub auto_summarize: bool,
     /// Prepare the newest review requests in the background (git and grouping only, never AI).
     pub prefetch: bool,
+    /// With an agent set, review each PR the reviewer opens with the review skill (read-only, in
+    /// Grain's checkout) and show its findings beside the code. Nothing is posted.
+    pub second_opinion: bool,
     /// Folders the reviewer keeps their clones in; searched (two levels deep) along with the
     /// usual code folders when a repository opens for the first time.
     pub work_folders: Vec<String>,
@@ -130,6 +133,7 @@ impl Default for Settings {
             max_summaries_per_review: 30,
             auto_summarize: false,
             prefetch: true,
+            second_opinion: true,
             work_folders: Vec::new(),
         }
     }

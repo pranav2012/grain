@@ -11,8 +11,9 @@ import type { LoadedPr } from '../model/types'
 
 export interface PrPageHandle {
   jump(file: string, remember?: boolean): void
-  /** Jumps to `file`, then centers the element with `id` once the diff has drawn it. */
-  reveal(file: string, id: string): void
+  /** Jumps to `file`, then centers what `locate` finds in it once the diff has drawn it. */
+  reveal(file: string, locate: (section: HTMLElement) => HTMLElement | null): void
+  scroller(): HTMLElement | null
   top(): void
   back(): boolean
   canGoBack(): boolean
@@ -66,15 +67,16 @@ export function PrPage({ ref, data, chapters, overview, renderFile, onCurrent, o
 
   useImperativeHandle(ref, () => ({
     jump,
-    reveal(file, id) {
+    scroller: () => scrollRef.current,
+    reveal(file, locate) {
       jump(file)
       let tries = 0
       // Only lines near the viewport are drawn, so walk down the file until the row exists.
       const look = () => {
         const box = scrollRef.current
-        const el = box?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)
-        if (el) return el.scrollIntoView({ block: 'center' })
         const section = sectionOf(file)
+        const el = section && locate(section)
+        if (el) return el.scrollIntoView({ block: 'center' })
         if (!box || !section || tries++ > 40 || section.getBoundingClientRect().bottom < box.getBoundingClientRect().bottom) return
         box.scrollBy({ top: box.clientHeight * 0.7 })
         setTimeout(look, 80)

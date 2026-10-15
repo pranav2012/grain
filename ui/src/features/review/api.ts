@@ -1,4 +1,5 @@
 import { post, put, request, serverFetch } from '@/lib/http'
+import type { AiReview } from '@/types/generated/AiReview'
 import type { AskRequest } from '@/types/generated/AskRequest'
 import type { AskResponse } from '@/types/generated/AskResponse'
 import type { Conversation } from '@/types/generated/Conversation'
@@ -43,6 +44,9 @@ export const reviewApi = {
   /** Type errors and lint findings for the stored head; null until computed. */
   diagnostics: (id: string) => file(id, 'diagnostics.json').then((r) => json<Diagnostics>(r)),
   rediagnose: (id: string) => post<null>(`/api/reviews/${id}/diagnostics`, {}),
+  /** The agent's second opinion for the stored head; null until it has run. */
+  aiReview: (id: string) => file(id, 'ai-review.json').then((r) => json<AiReview>(r)),
+  rereview: (id: string) => post<null>(`/api/reviews/${id}/second-opinion`, {}),
   prStatus: (id: string) => request<PrStatus>(`/api/reviews/${id}/pr-status`),
   replyToThread: (id: string, thread: string, body: string) =>
     post<ThreadComment>(`/api/reviews/${id}/threads/${thread}/replies`, { body }),

@@ -15,6 +15,8 @@ export interface ReviewState {
   currentFile: string | null
   viewed: Record<string, Viewed>
   comments: ReviewComment[]
+  /** The reviewer's call on each AI finding, by `findingKey`: kept as a draft comment (its id) or dismissed. */
+  ai?: Record<string, { kept: string } | 'dismissed'>
 }
 
 export type ReviewAction =
@@ -24,6 +26,7 @@ export type ReviewAction =
   | { type: 'comment'; comment: ReviewComment }
   | { type: 'deleteComment'; id: string }
   | { type: 'posted'; ids: string[] }
+  | { type: 'ai'; key: string; call: { kept: string } | 'dismissed' | null }
 
 function reducer(s: ReviewState, a: ReviewAction): ReviewState {
   switch (a.type) {
@@ -43,6 +46,12 @@ function reducer(s: ReviewState, a: ReviewAction): ReviewState {
       return { ...s, comments: [...s.comments, a.comment] }
     case 'deleteComment':
       return { ...s, comments: s.comments.filter((c) => c.id !== a.id) }
+    case 'ai': {
+      const ai = { ...s.ai }
+      if (a.call) ai[a.key] = a.call
+      else delete ai[a.key]
+      return { ...s, ai }
+    }
     case 'posted': {
       const at = Date.now()
       return { ...s, comments: s.comments.map((c) => (a.ids.includes(c.id) ? { ...c, postedAt: at } : c)) }

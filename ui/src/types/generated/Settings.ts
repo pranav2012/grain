@@ -20,6 +20,11 @@ autoSummarize: boolean,
  */
 prefetch: boolean, 
 /**
+ * With an agent set, review each PR the reviewer opens with the review skill (read-only, in
+ * Grain's checkout) and show its findings beside the code. Nothing is posted.
+ */
+secondOpinion: boolean, 
+/**
  * Folders the reviewer keeps their clones in; searched (two levels deep) along with the
  * usual code folders when a repository opens for the first time.
  */

@@ -4,6 +4,7 @@
 mod agent;
 mod policy;
 mod prompt;
+pub mod review;
 mod transport;
 
 use std::path::Path;

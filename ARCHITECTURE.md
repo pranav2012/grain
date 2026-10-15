@@ -31,7 +31,7 @@ Each crate has one job. Dependencies only point down this list; nothing depends 
 | `grain-engine` | Git range → blocks, a story of user-flow chapters, skim, facts, checks, estimated risk; optional `UsageProvider` hook | sem-core |
 | `grain-git` | git CLI operations (fetch, merge-base, worktrees, diffs) | — |
 | `grain-github` | PR and repo lookups, clones, via the user's `gh` login | — |
-| `grain-agent` | Optional block summaries from the user's own agent CLI, with provider-terms guards | — |
+| `grain-agent` | Optional block summaries, answers and full PR reviews (the bundled review skill, read-only) from the user's own agent CLI, with provider-terms guards | — |
 | `grain-store` | `~/.grain` layout, settings, atomic writes | agent, github |
 
 ### Inside `grain-engine`

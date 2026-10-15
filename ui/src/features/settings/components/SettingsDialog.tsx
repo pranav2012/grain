@@ -75,6 +75,22 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
               <small className="block text-sm text-fg-faint">Never runs when a pull request first opens. Off by default.</small>
             </span>
           </label>
+          <label className="mt-1.5 flex items-start gap-2.5 text-fg-subtle has-[:disabled]:opacity-50">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={s.secondOpinion}
+              disabled={!s.agent}
+              onChange={(e) => setS({ ...s, secondOpinion: e.target.checked })}
+            />
+            <span>
+              Give me a second opinion on every PR I open
+              <small className="block text-sm text-fg-faint">
+                Your agent runs Grain's review skill read-only on the PR and its findings appear beside the code. Takes a few minutes and uses
+                your plan. Nothing is posted unless you keep it.
+              </small>
+            </span>
+          </label>
           <label className="mt-3 flex items-start gap-2.5 text-fg-subtle">
             <input type="checkbox" className="mt-1" checked={s.prefetch} onChange={(e) => setS({ ...s, prefetch: e.target.checked })} />
             <span>

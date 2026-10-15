@@ -115,6 +115,8 @@ pub(crate) struct Status {
     pub head_sha: Option<String>,
     /// Type errors and lint findings are being computed.
     pub diagnosing: bool,
+    /// The reviewer's agent is reviewing the PR (or waiting for its turn).
+    pub reviewing: bool,
 }
 
 /// Go to definition or find references for the name at a position in the new version of a file.

@@ -1,3 +1,4 @@
+import { isNewSide } from './findings'
 import type { Problem } from './problems'
 
 /** Styles for the marks below, injected into the diff's shadow root. */
@@ -6,9 +7,15 @@ export const squiggleCSS = `
 .grain-sq-warning { text-decoration: underline wavy var(--color-warning); text-underline-offset: 4px; text-decoration-skip-ink: none; }
 [data-grain-problem="error"] [data-line-number-content] { color: var(--color-danger); font-weight: 600; }
 [data-grain-problem="warning"] [data-line-number-content] { color: var(--color-warning); font-weight: 600; }
+[data-grain-finding] { box-shadow: inset 3px 0 var(--color-accent); }
+[data-grain-hl] { outline: 1px solid var(--color-accent); outline-offset: -1px; }
 `
 
-const isNewSide = (el: Element) => !(el.getAttribute('data-line-type') ?? '').includes('deletion')
+/** Marks the line numbers of lines the agent's second opinion comments on. */
+export function markFindings(root: ParentNode, lines: number[]) {
+  for (const line of lines) for (const g of root.querySelectorAll(`[data-column-number="${line}"]`)) if (isNewSide(g)) g.setAttribute('data-grain-finding', '')
+}
+
 
 /** Wraps characters [start, end) of `row` in a span with `cls`, splitting text nodes as needed. */
 function wrap(row: Element, start: number, end: number, cls: string, id: string) {

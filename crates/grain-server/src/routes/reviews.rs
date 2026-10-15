@@ -114,6 +114,7 @@ pub(super) async fn status(State(app): State<Shared>, Path(p): Path<(String, Str
         enriching,
         head_sha,
         diagnosing: app.diagnosing.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&pr),
+        reviewing: app.second_opinions.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&pr),
     })
 }
 
@@ -121,7 +122,15 @@ pub(super) async fn status(State(app): State<Shared>, Path(p): Path<(String, Str
 pub(super) async fn rediagnose(State(app): State<Shared>, Path(p): Path<(String, String, u64)>) -> StatusCode {
     let pr = pr_of(p);
     let _ = std::fs::remove_file(app.home.review_dir(&pr).join("diagnostics.json"));
-    app.diagnose(&pr);
+    app.diagnose(&pr, false);
+    StatusCode::ACCEPTED
+}
+
+/// Reviews the PR with the reviewer's agent again (e.g. after a failure or a new skill).
+pub(super) async fn rereview(State(app): State<Shared>, Path(p): Path<(String, String, u64)>) -> StatusCode {
+    let pr = pr_of(p);
+    let _ = std::fs::remove_file(app.home.review_dir(&pr).join("ai-review.json"));
+    app.second_opinion(&pr);
     StatusCode::ACCEPTED
 }
 
@@ -146,7 +155,13 @@ pub(super) async fn file(
 ) -> ApiResult<impl IntoResponse> {
     if !matches!(
         name.as_str(),
-        "review.json" | "pr.json" | "summaries.json" | "diff.patch" | "owners.json" | "diagnostics.json"
+        "review.json"
+            | "pr.json"
+            | "summaries.json"
+            | "diff.patch"
+            | "owners.json"
+            | "diagnostics.json"
+            | "ai-review.json"
     ) {
         return Err(ApiError::not_found("unknown file"));
     }

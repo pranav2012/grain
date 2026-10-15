@@ -15,4 +15,8 @@ headSha: string | null,
 /**
  * Type errors and lint findings are being computed.
  */
-diagnosing: boolean, };
+diagnosing: boolean, 
+/**
+ * The reviewer's agent is reviewing the PR (or waiting for its turn).
+ */
+reviewing: boolean, };

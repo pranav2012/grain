@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { AiReview } from '@/types/generated/AiReview'
 import type { Diagnostics } from '@/types/generated/Diagnostics'
 import type { PrStatus } from '@/types/generated/PrStatus'
 import type { Status } from '@/types/generated/Status'
@@ -7,8 +8,8 @@ import { reviewApi } from '../api'
 const pending = (s: PrStatus | null) => s?.state === 'OPEN' && s.checks.some((c) => c.status !== 'completed')
 
 /**
- * Errors from the reviewer's own tools (refetched when a check run finishes) and the PR's GitHub
- * status, refreshed every minute while CI is still running.
+ * Errors from the reviewer's own tools and the agent's second opinion (each refetched when its run
+ * finishes), and the PR's GitHub status, refreshed every minute while CI is still running.
  */
 export function useChecks(id: string, local: boolean, status: Status | null) {
   const [report, setReport] = useState<Diagnostics | null>(null)
@@ -16,6 +17,20 @@ export function useChecks(id: string, local: boolean, status: Status | null) {
   const diagnosing = status?.diagnosing ?? true
   const head = status?.headSha
   const [version, setVersion] = useState(0)
+  const [ai, setAi] = useState<AiReview | null>(null)
+  const reviewing = status?.reviewing ?? true
+
+  useEffect(() => {
+    if (reviewing) return
+    let alive = true
+    reviewApi.aiReview(id).then(
+      (r) => alive && setAi(r),
+      () => {},
+    )
+    return () => {
+      alive = false
+    }
+  }, [id, reviewing, head, version])
 
   useEffect(() => {
     if (diagnosing) return
@@ -53,5 +68,9 @@ export function useChecks(id: string, local: boolean, status: Status | null) {
     setReport(null)
     reviewApi.rediagnose(id).then(() => setTimeout(() => setVersion((v) => v + 1), 1500), () => {})
   }
-  return { report, prStatus, diagnosing: !!status?.diagnosing, rerun }
+  const rereview = () => {
+    setAi(null)
+    reviewApi.rereview(id).then(() => setTimeout(() => setVersion((v) => v + 1), 1500), () => {})
+  }
+  return { report, prStatus, diagnosing: !!status?.diagnosing, rerun, ai, reviewing: !!status?.reviewing, rereview }
 }

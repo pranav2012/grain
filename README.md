@@ -34,6 +34,8 @@ For TypeScript and JavaScript, "used by" facts come from TypeScript 7's language
 
 Errors show up like in an editor: type errors (TypeScript 7) and your linter's findings (ESLint or oxlint) are underlined on the lines the PR changed, next to failing CI annotations. Grain needs your own clone of the repository with its packages installed for this; it borrows those packages and your clone's lint config, so nothing from the PR's branch runs on your machine.
 
+With an agent set, Grain can also give you a second opinion on each PR you open: your agent runs Grain's review skill (`crates/grain-agent/src/review/pr-review.md`) read-only on the PR, and its findings appear as quiet cards beside the lines they're about. Keep one and it becomes your draft comment; nothing is posted until you submit your review.
+
 AI summaries are optional. Press `,` in the app to pick Claude Code, Codex or OpenCode if you have one installed.
 
 ## Run from source

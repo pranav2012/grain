@@ -3,6 +3,7 @@ import type { FilePatch } from '../hooks/usePrDiff'
 import { isTestPath } from '../model/describe'
 import type { FileChapter } from '../model/files'
 import type { Problem } from '../model/problems'
+import type { Finding } from '@/types/generated/Finding'
 import type { LoadedPr } from '../model/types'
 import type { PrStatus } from '@/types/generated/PrStatus'
 import type { ReviewThread } from '@/types/generated/ReviewThread'
@@ -13,14 +14,17 @@ interface OverviewProps {
   chapters: FileChapter[]
   patches: Map<string, FilePatch> | null
   problems: Problem[]
+  /** The agent's findings scored 75 or more that the reviewer hasn't decided on. */
+  findings: Finding[]
   status: PrStatus | null
   threads: ReviewThread[]
   onJump(file: string): void
   onProblem(id: string): void
+  onFinding(f: Finding): void
 }
 
 /** Top of the review page: what the PR is and the order to read it in. */
-export function Overview({ data, chapters, patches, problems, status, threads, onJump, onProblem }: OverviewProps) {
+export function Overview({ data, chapters, patches, problems, findings, status, threads, onJump, onProblem, onFinding }: OverviewProps) {
   const pr = data.pr
   const files = chapters.flatMap((c) => [...c.sections.flatMap((s) => s.files), ...c.tests])
   const tests = files.filter(isTestPath).length
@@ -62,7 +66,7 @@ export function Overview({ data, chapters, patches, problems, status, threads, o
               })}
             </ol>
           </div>
-          {errors.length > 0 && (
+          {(errors.length > 0 || findings.length > 0) && (
             <div>
               <SectionLabel className="mb-1.5">Needs your attention</SectionLabel>
               <ul className="flex flex-col">
@@ -79,6 +83,19 @@ export function Overview({ data, chapters, patches, problems, status, threads, o
                 ))}
               </ul>
               {errors.length > 8 && <p className="mt-1 px-2 text-xs text-fg-faint">{errors.length - 8} more; press e to go through them.</p>}
+            <ul className="flex flex-col">
+              {findings.slice(0, 6).map((f) => (
+                <li key={`${f.file}:${f.line}:${f.title}`}>
+                  <button onClick={() => onFinding(f)} className="grid w-full grid-cols-[auto_minmax(0,1fr)] gap-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-raised">
+                    <span className="text-2xs font-semibold text-accent">AI</span>
+                    <span className="truncate text-fg-muted">{f.title}</span>
+                    <span className="col-start-2 font-mono text-xs text-fg-faint">
+                      {f.file.split('/').pop()}:{f.line} · {f.category}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
             </div>
           )}
         </div>
