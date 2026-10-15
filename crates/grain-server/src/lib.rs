@@ -113,8 +113,8 @@ fn stop_when_idle(app: state::Shared) {
     });
 }
 
-/// Resolves when the server should stop. Requests in flight (like progress saves) get a few seconds
-/// to finish before the process exits regardless.
+/// Resolves when the server should stop. Requests in flight (like progress saves, which take
+/// milliseconds) get two seconds to finish before the process exits regardless.
 async fn stop_requested(app: state::Shared) {
     #[cfg(unix)]
     let terminate = async {
@@ -134,7 +134,7 @@ async fn stop_requested(app: state::Shared) {
     }
     tracing::info!("stopping; finishing requests in flight");
     std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_secs(5));
+        std::thread::sleep(std::time::Duration::from_secs(2));
         std::process::exit(0);
     });
 }

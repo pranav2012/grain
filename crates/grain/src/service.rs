@@ -40,6 +40,43 @@ pub(crate) fn inherited_listener() -> Result<std::net::TcpListener> {
     bail!("starting on demand isn't supported on this system")
 }
 
+/// A launchd plist without its `EnvironmentVariables` dictionary.
+#[cfg(target_os = "macos")]
+fn without_env(plist: &str) -> String {
+    match plist.split_once("<key>EnvironmentVariables</key>") {
+        Some((head, rest)) => format!("{head}{}", rest.split_once("</dict>").map_or("", |(_, tail)| tail)),
+        None => plist.to_string(),
+    }
+}
+
+fn port_free(port: u16) -> bool {
+    std::net::TcpListener::bind(std::net::SocketAddr::from(([127, 0, 0, 1], port))).is_ok()
+}
+
+/// Whether the OS is listening on the port for Grain right now.
+#[cfg(target_os = "macos")]
+pub(crate) fn is_loaded(port: u16) -> bool {
+    uid().is_ok_and(|uid| {
+        Command::new("launchctl")
+            .args(["print", &format!("gui/{uid}/{}", label(port))])
+            .output()
+            .is_ok_and(|o| o.status.success())
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn is_loaded(port: u16) -> bool {
+    Command::new("systemctl")
+        .args(["--user", "is-active", "--quiet", &format!("grain-{port}.socket")])
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub(crate) fn is_loaded(_port: u16) -> bool {
+    false
+}
+
 /// What's registered for a port, if anything.
 pub(crate) fn installed(port: u16) -> Option<PathBuf> {
     let f = unit_file(port)?;
@@ -106,14 +143,21 @@ pub(crate) fn install(exe: &Path, port: u16, log: &Path) -> Result<bool> {
     let domain = format!("gui/{}", uid()?);
     let job = format!("{domain}/{}", label(port));
     let loaded = || Command::new("launchctl").args(["print", &job]).output().is_ok_and(|o| o.status.success());
-    if std::fs::read_to_string(&file).is_ok_and(|old| old == plist) && loaded() {
+    let old = std::fs::read_to_string(&file).unwrap_or_default();
+    if loaded() && without_env(&old) == without_env(&plist) {
+        // Only the environment (usually PATH, from another shell) changed: keep the running server and
+        // let the next start pick the new environment up.
+        if old != plist {
+            std::fs::write(&file, plist)?;
+        }
         return Ok(false);
     }
     std::fs::create_dir_all(file.parent().context("LaunchAgents folder")?)?;
     let _ = Command::new("launchctl").args(["bootout", &job]).output();
-    // Removing a job finishes in the background; registering again before it's gone fails.
-    for _ in 0..30 {
-        if !loaded() {
+    // Removing a job finishes in the background, and its server may take a few seconds to finish
+    // requests and exit; registering again while either still holds the port fails.
+    for _ in 0..80 {
+        if !loaded() && port_free(port) {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -232,5 +276,14 @@ mod tests {
     fn labels_are_per_port() {
         assert_ne!(label(7420), label(7421));
         assert_eq!(xml_escape("a&b<c>"), "a&amp;b&lt;c&gt;");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn environment_changes_alone_are_ignored() {
+        let a = "<dict><key>Label</key><key>EnvironmentVariables</key><dict><key>PATH</key><string>/a</string></dict><key>X</key></dict>";
+        let b = "<dict><key>Label</key><key>EnvironmentVariables</key><dict><key>PATH</key><string>/b</string></dict><key>X</key></dict>";
+        assert_eq!(without_env(a), without_env(b));
+        assert_ne!(without_env(a), without_env(&a.replace("Label", "Other")));
     }
 }

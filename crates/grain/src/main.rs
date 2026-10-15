@@ -256,8 +256,8 @@ fn on_demand(port: u16, build: &str) -> Result<bool> {
     {
         return Ok(false);
     }
-    // A Grain started the old way holds the port; stop it so the OS can listen there.
-    if first_time && doctor::grain_is_listening(port) && !doctor::replace_running(port) {
+    // A Grain started directly (not by the OS) holds the port; stop it so the OS can listen there.
+    if !service::is_loaded(port) && doctor::grain_is_listening(port) && !doctor::replace_running(port) {
         return Ok(false);
     }
     let exe = std::env::current_exe()?;
