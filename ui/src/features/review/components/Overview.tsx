@@ -10,7 +10,7 @@ import type { Finding } from '@/types/generated/Finding'
 import type { LoadedPr } from '../model/types'
 import type { PrStatus } from '@/types/generated/PrStatus'
 import type { ReviewThread } from '@/types/generated/ReviewThread'
-import { StatusStrip } from './StatusStrip'
+import { StateBadge, StatusChips } from './StatusChips'
 
 interface OverviewProps {
   data: LoadedPr
@@ -24,10 +24,11 @@ interface OverviewProps {
   onJump(file: string): void
   onProblem(id: string): void
   onFinding(f: Finding): void
+  onThread(file: string, line: number): void
 }
 
 /** Top of the review page: what the PR is and the order to read it in. */
-export function Overview({ data, chapters, patches, problems, findings, status, threads, onJump, onProblem, onFinding }: OverviewProps) {
+export function Overview({ data, chapters, patches, problems, findings, status, threads, onJump, onProblem, onFinding, onThread }: OverviewProps) {
   const pr = data.pr
   const files = chapters.flatMap((c) => [...c.sections.flatMap((s) => s.files), ...c.tests])
   const tests = files.filter(isTestPath).length
@@ -87,15 +88,20 @@ export function Overview({ data, chapters, patches, problems, findings, status, 
   )
   return (
     <section aria-label="Overview" className="rounded-xl border border-line bg-surface px-5.5 py-4.5">
+      <div className="flex items-center gap-2.5">
+        {pr && !pr.local && <StateBadge status={status} />}
+        <h1 className="min-w-0 text-lg font-semibold">{pr?.title ?? data.id}</h1>
+      </div>
       {pr && !pr.local && (
-        <p className="text-xs text-fg-faint">
-          {data.id.split('/').slice(0, 2).join('/')} #{pr.number} · by {pr.author.login} · <span className="font-mono">{pr.headRefName}</span> into{' '}
-          <span className="font-mono">{pr.baseRefName}</span>
+        <p className="mt-1 text-sm text-fg-subtle">
+          {data.id.split('/').slice(0, 2).join('/')} #{pr.number} · {pr.author.login} · <span className="font-mono text-xs">{pr.headRefName}</span> →{' '}
+          <span className="font-mono text-xs">{pr.baseRefName}</span> · {files.length} files <span className="text-success">+{added.toLocaleString()}</span>{' '}
+          <span className="text-danger">−{removed.toLocaleString()}</span>
+          {tests > 0 && ` · ${tests} tests`}
         </p>
       )}
-      <h1 className="mt-1 text-lg font-semibold">{pr?.title ?? data.id}</h1>
       {pr && !pr.local ? (
-        <StatusStrip status={status} files={files.length} tests={tests} added={added} removed={removed} threads={threads} />
+        <StatusChips status={status} threads={threads} onThread={onThread} />
       ) : (
         <p className="mt-0.5 text-sm text-fg-subtle">
           {files.length} files · <span className="text-success">+{added}</span> <span className="text-danger">−{removed}</span>

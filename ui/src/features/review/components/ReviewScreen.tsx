@@ -24,6 +24,7 @@ import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
 import { FileCard, type NewComment, type ThreadAnchor } from './FileCard'
 import { FindingsRail } from './FindingsRail'
+import { CodeModal, type CodeLocation } from './CodeModal'
 import { FinishDialog } from './FinishDialog'
 import { KeyHints } from './KeyHints'
 import { NewCommitsNotice } from './NewCommitsNotice'
@@ -71,6 +72,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const agentName = agentNameOf(data)
   const { report, prStatus, diagnosing, rerun, ai, reviewing, rereview } = useChecks(data.id, !!base.pr?.local, status)
   const [railHidden, setRailHidden] = useState(false)
+  const [code, setCode] = useState<CodeLocation | null>(null)
 
   const allFiles = useMemo(() => (patches ? [...patches.keys()] : [...byFile.keys()]), [patches, byFile])
   const chapters = useMemo(() => fileChapters(data, chaptersFor(data, prefs.mineFirst), allFiles), [data, prefs.mineFirst, allFiles])
@@ -329,6 +331,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
         onViewed={(on) => setViewed([f], on)}
         onJump={(to, line) => (line ? revealLine(to, line) : jump(to))}
         onOutsideUses={() => reviewApi.outsideUses(data.id, f)}
+        onOpenCode={setCode}
         githubUrl={githubUrl}
         onLookup={(t, references) => reviewApi.navigate(data.id, { file: f, line: t.line, character: t.character, name: t.name, references })}
         onComment={addComment}
@@ -384,7 +387,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             ref={page}
             data={data}
             chapters={chapters}
-            overview={<Overview data={data} chapters={chapters} patches={patches} problems={shownProblems} findings={findings.filter((f) => f.score >= 75 && !state.ai?.[findingKey(f)])} status={prStatus} threads={conversation?.threads ?? []} onJump={(f) => jump(f)} onProblem={revealProblem} onFinding={revealFinding} />}
+            overview={<Overview data={data} chapters={chapters} patches={patches} problems={shownProblems} findings={findings.filter((f) => f.score >= 75 && !state.ai?.[findingKey(f)])} status={prStatus} threads={conversation?.threads ?? []} onJump={(f) => jump(f)} onProblem={revealProblem} onFinding={revealFinding} onThread={revealLine} />}
             renderFile={renderFile}
             onCurrent={onCurrent}
             onBackChange={setCanGoBack}
@@ -420,6 +423,16 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           <Button variant="primary" onClick={back} className="fixed bottom-11 left-1/2 z-30 -translate-x-1/2 rounded-full shadow-overlay">
             ← Back <Kbd>b</Kbd>
           </Button>
+        )}
+        {code && (
+          <CodeModal
+            prId={data.id}
+            start={code}
+            githubUrl={githubUrl}
+            changedLines={(file) => (patches?.get(file) ? changedLines(patches.get(file)!.diff) : null)}
+            onGoToReview={(file, line) => (setCode(null), revealLine(file, line))}
+            onClose={() => setCode(null)}
+          />
         )}
         {overlay === 'palette' && <CommandPalette commands={commands} onClose={() => setOverlay(null)} />}
         {overlay === 'finish' && (
