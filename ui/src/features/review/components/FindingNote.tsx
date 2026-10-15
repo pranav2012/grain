@@ -15,12 +15,12 @@ export function FindingNote({ finding: f, onKeep, onEdit, onDismiss }: FindingNo
   const [open, setOpen] = useState(false)
   return (
     <div className={cn('rounded-md border border-l-[3px] border-line bg-surface px-2.5 py-1.5 text-sm', f.score >= 100 ? 'border-l-danger' : f.score >= 75 ? 'border-l-warning' : 'border-l-accent')}>
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-baseline gap-1.5 text-left">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full flex-wrap items-baseline gap-x-1.5 text-left">
         <span className="shrink-0 rounded-sm border border-accent/40 px-1 text-2xs font-semibold text-accent">AI</span>
         <span className={cn('shrink-0 text-2xs font-semibold tracking-wide uppercase', f.score >= 100 ? 'text-danger' : 'text-warning')}>{f.category}</span>
         <span className="shrink-0 text-2xs text-fg-faint">{f.score}</span>
-        <span className="min-w-0 flex-1 text-fg-muted">{f.title}</span>
-        <span className="shrink-0 text-2xs text-fg-faint">{open ? 'less ▴' : 'why ▾'}</span>
+        <span className="ml-auto shrink-0 text-2xs text-fg-faint">{open ? 'less ▴' : 'why ▾'}</span>
+        <span className="w-full text-fg-muted">{f.title}</span>
       </button>
       {open && (
         <div className="mt-1.5 flex flex-col gap-1 text-xs text-fg-subtle">
@@ -32,7 +32,7 @@ export function FindingNote({ finding: f, onKeep, onEdit, onDismiss }: FindingNo
           <p className="rounded-sm bg-canvas px-1.5 py-1 font-mono text-fg-muted">{f.comment}</p>
         </div>
       )}
-      <div className="mt-1.5 flex items-center gap-1.5">
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <Button size="sm" variant="primary" onClick={onKeep}>
           Keep
         </Button>

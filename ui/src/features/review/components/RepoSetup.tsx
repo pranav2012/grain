@@ -72,7 +72,7 @@ export function RepoSetup({ fullRepo, onDone }: { fullRepo: string; onDone(): vo
           </div>
         )
       )}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button onClick={choose} disabled={busy !== null}>
           {busy === 'picking' ? 'Waiting for you to pick a folder…' : 'Choose folder…'}
         </Button>

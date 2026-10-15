@@ -6,21 +6,21 @@ import type { ReviewComment } from '../model/types'
 
 export function CommentCard({ c, onEdit, onDelete }: { c: ReviewComment; onEdit(): void; onDelete(): void }) {
   return (
-    <Card className="px-3 py-2 leading-normal">
-      <div className="mb-1 flex items-center gap-2 text-xs text-fg-subtle">
+    <Card className="min-w-0 px-3 py-2 leading-normal break-words">
+      <div className="mb-1 flex min-w-0 items-center gap-2 text-xs text-fg-subtle">
         <span className={cn('font-medium', (c.kind === 'change' || c.kind === 'fix') && 'text-danger', c.kind === 'question' && 'text-warning')}>
           {kindLabel[c.kind]}
         </span>
         {c.file && (
-          <span>
+          <span className="min-w-0 truncate">
             {c.file.split('/').pop()}:{c.line}
             {c.endLine && c.endLine !== c.line ? `–${c.endLine}` : ''}
           </span>
         )}
         {c.postedAt ? (
-          <span className="ml-auto text-success">Posted</span>
+          <span className="ml-auto shrink-0 text-success">Posted</span>
         ) : (
-          <span className="ml-auto flex gap-3">
+          <span className="ml-auto flex shrink-0 gap-3">
             <LinkButton onClick={onEdit}>Edit</LinkButton>
             <LinkButton onClick={onDelete}>Delete</LinkButton>
           </span>

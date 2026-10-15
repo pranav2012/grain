@@ -110,6 +110,9 @@ const fileName = (p: string) => p.split('/').pop()!
 const dirName = (p: string) => p.split('/').slice(0, -1).join('/')
 const stem = (p: string) => fileName(p).replace(/\.[^.]+$/, '')
 
+/** Touch screens: no hover, so a plain tap on a name looks it up instead of ⌘-click. */
+const touch = () => matchMedia('(hover: none)').matches
+
 const KEYWORDS = new Set(
   'import export from default as const let var function return if else for while do switch case break continue new this typeof instanceof in of async await class extends interface type enum true false null undefined void try catch finally throw yield static public private protected readonly implements declare namespace keyof satisfies'.split(' '),
 )
@@ -136,7 +139,7 @@ export function FileCard(p: FileCardProps) {
   // After resting on a name for half a second, show where it's defined and used.
   const hoverName = (t: { lineNumber: number; lineCharStart: number; tokenText: string; side: Side; tokenElement: HTMLElement }) => {
     clearTimeout(hoverTimer.current)
-    if (!/^[A-Za-z_$][\w$]*$/.test(t.tokenText) || t.tokenText.length < 2 || KEYWORDS.has(t.tokenText)) return
+    if (touch() || !/^[A-Za-z_$][\w$]*$/.test(t.tokenText) || t.tokenText.length < 2 || KEYWORDS.has(t.tokenText)) return
     hoverTimer.current = setTimeout(() => {
       const rect = t.tokenElement.getBoundingClientRect()
       const base: HoverState = { name: t.tokenText, token: { line: t.lineNumber, character: t.lineCharStart, side: t.side }, left: rect.left, top: rect.bottom + 6 }
@@ -186,9 +189,9 @@ export function FileCard(p: FileCardProps) {
         markProblems(node.shadowRoot ?? node, problemsRef.current)
         markFindings(node.shadowRoot ?? node, findingsRef.current)
       },
-      // ⌘/Ctrl-click a name shows its definition, like in an editor; with Shift, its references.
+      // ⌘/Ctrl-click a name shows its definition, like in an editor; with Shift, its references. On touch, a tap does.
       onTokenClick: (t, e) => {
-        if (!(e.metaKey || e.ctrlKey) || !/^[A-Za-z_$][\w$]*$/.test(t.tokenText)) return
+        if (!(e.metaKey || e.ctrlKey || touch()) || !/^[A-Za-z_$][\w$]*$/.test(t.tokenText) || KEYWORDS.has(t.tokenText)) return
         e.preventDefault()
         lookupRef.current({ line: t.lineNumber, character: t.lineCharStart, name: t.tokenText, side: t.side }, e.shiftKey)
       },
@@ -240,10 +243,10 @@ export function FileCard(p: FileCardProps) {
   const renderAnnotation = (a: DiffLineAnnotation<Note>) => {
     const meta = a.metadata
     if (!meta) return null
-    const wrap = (node: React.ReactNode) => <div className="flex max-w-[860px] flex-col gap-1.5 py-2 pr-3 pl-16 font-sans">{node}</div>
+    const wrap = (node: React.ReactNode) => <div className="flex max-w-[860px] min-w-0 flex-col gap-1.5 py-2 pr-3 pl-[clamp(0.75rem,8%,4rem)] font-sans">{node}</div>
     if (meta.kind === 'problem') {
       const x = p.problems.shown.find((y) => y.id === meta.id)
-      return x ? <ProblemRow problem={x} className="my-0.5 ml-12 max-w-[900px]" /> : null
+      return x ? <ProblemRow problem={x} className="my-0.5 ml-[clamp(0.5rem,6%,3rem)] max-w-[900px]" /> : null
     }
     if (meta.kind === 'peek' && peek)
       return wrap(
@@ -272,7 +275,7 @@ export function FileCard(p: FileCardProps) {
               onComment={(body) => setDraft({ side: t.side, line: t.line, endLine: t.line, body })}
               onHover={(rect) => {
                 const box = sectionRef.current?.getBoundingClientRect()
-                setHover(rect && box ? { id: t.id, left: Math.max(8, Math.min(rect.left - box.left, box.width - 520)), top: rect.bottom - box.top + 6 } : null)
+                setHover(rect && box ? { id: t.id, left: Math.max(8, Math.min(rect.left - box.left, box.width - Math.min(500, box.width * 0.9) - 8)), top: rect.bottom - box.top + 6 } : null)
               }}
             />,
           )
@@ -352,14 +355,14 @@ export function FileCard(p: FileCardProps) {
           ▾
         </button>
         {p.stuck && (
-          <span className="max-w-[28%] shrink-0 truncate text-xs text-fg-subtle" title={p.chapterTitle}>
+          <span className="max-w-[28%] shrink-0 truncate text-xs text-fg-subtle max-md:hidden" title={p.chapterTitle}>
             {p.chapterTitle}
             <span className="mx-1.5 text-fg-faint">›</span>
           </span>
         )}
         <button onClick={() => p.onCollapse(!p.collapsed)} title={p.path} className="flex min-w-0 items-baseline font-mono text-xs">
-          <span className="truncate text-fg-faint">{dirName(p.path)}/</span>
-          <span className="shrink-0 font-semibold text-fg">{fileName(p.path)}</span>
+          <span className="truncate text-fg-faint max-sm:hidden">{dirName(p.path)}/</span>
+          <span className="min-w-0 shrink-0 font-semibold text-fg max-sm:shrink max-sm:truncate">{fileName(p.path)}</span>
         </button>
         {p.patch?.diff.type === 'new' && <Badge tone="success">new</Badge>}
         {p.patch?.diff.type === 'deleted' && <Badge tone="danger">deleted</Badge>}
@@ -373,7 +376,7 @@ export function FileCard(p: FileCardProps) {
         )}
         {errors > 0 && (
           <Badge tone="danger" title="Errors on lines this PR changed">
-            ✕ {errors} {errors === 1 ? 'error' : 'errors'}
+            ✕ {errors}<span className="max-sm:hidden"> {errors === 1 ? 'error' : 'errors'}</span>
           </Badge>
         )}
         {warningCount > 0 && (
@@ -381,7 +384,7 @@ export function FileCard(p: FileCardProps) {
             ⚠ {warningCount}
           </Badge>
         )}
-        {p.changedSinceViewed && <Badge tone="warning">changed since you viewed</Badge>}
+        {p.changedSinceViewed && <Badge tone="warning" title="Changed since you viewed">changed<span className="max-sm:hidden"> since you viewed</span></Badge>}
         <span className="ml-auto shrink-0 pl-2 text-xs tabular-nums">
           {p.patch && (
             <>
@@ -389,10 +392,10 @@ export function FileCard(p: FileCardProps) {
             </>
           )}
         </span>
-        <LinkButton className="ml-2 shrink-0 text-xs" onClick={() => setFileNote(true)}>
+        <LinkButton className="ml-2 shrink-0 text-xs max-sm:ml-1" onClick={() => setFileNote(true)}>
           Comment
         </LinkButton>
-        <label className={cn('ml-2 flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs', p.viewed ? 'border-success/50 text-success' : 'border-line-strong text-fg-subtle')}>
+        <label className={cn('ml-2 flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs max-sm:ml-1 max-sm:px-1.5', p.viewed ? 'border-success/50 text-success' : 'border-line-strong text-fg-subtle')}>
           <input type="checkbox" checked={p.viewed} onChange={(e) => p.onViewed(e.target.checked)} className="accent-success" />
           Viewed
         </label>

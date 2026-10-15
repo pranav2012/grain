@@ -126,7 +126,7 @@ export function PrPage({ ref, data, chapters, overview, renderFile, onCurrent, o
   return (
     <VirtualizerContext value={virtualizer}>
       <div ref={attach} className="min-h-0 overflow-auto [grid-area:main]">
-        <div className="mx-auto max-w-[1400px] px-5 pt-5 pb-[60vh]">
+        <div className="mx-auto max-w-[1400px] px-5 pt-5 pb-[60vh] max-md:px-3 max-sm:px-1.5 max-sm:pt-2">
           {overview}
           {chapters.map((c) => {
             const intro = chapterSummaryOf(data, c.chapter)

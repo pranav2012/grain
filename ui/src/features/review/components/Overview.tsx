@@ -89,7 +89,7 @@ export function Overview({ data, chapters, patches, problems, findings, status, 
     </div>
   )
   return (
-    <section aria-label="Overview" className="rounded-xl border border-line bg-surface px-5.5 py-4.5">
+    <section aria-label="Overview" className="rounded-xl border border-line bg-surface px-5.5 py-4.5 max-sm:px-3.5 max-sm:py-3.5">
       <div className="flex items-center gap-2.5">
         {pr && !pr.local && <StateBadge status={status} />}
         <h1 className="min-w-0 text-lg font-semibold">{pr?.title ?? data.id}</h1>

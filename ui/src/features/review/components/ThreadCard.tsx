@@ -60,7 +60,7 @@ export function ThreadCard({ thread, compact }: { thread: ReviewThread; compact?
     <Card>
       {thread.comments.map((c, i) => (
         <div key={c.url} className={i ? 'border-t border-line px-3 py-2' : 'px-3 py-2'}>
-          <div className="mb-1 flex items-center gap-2 text-xs text-fg-subtle">
+          <div className="mb-1 flex flex-wrap items-center gap-x-2 text-xs text-fg-subtle">
             <span className="font-medium text-fg">{c.author}</span>
             <span>{ago(c.createdAt)}</span>
             {i === 0 && tags && <span className="text-fg-faint">{tags}</span>}
@@ -70,7 +70,7 @@ export function ThreadCard({ thread, compact }: { thread: ReviewThread; compact?
               </a>
             )}
           </div>
-          <p className={`whitespace-pre-wrap leading-normal ${compact ? 'line-clamp-4' : ''}`}>{c.body}</p>
+          <p className={`break-words whitespace-pre-wrap leading-normal ${compact ? 'line-clamp-4' : ''}`}>{c.body}</p>
         </div>
       ))}
       {replying ? (
@@ -90,7 +90,7 @@ export function ThreadCard({ thread, compact }: { thread: ReviewThread; compact?
           <div className="flex items-center justify-end gap-1.5">
             <Button onClick={() => setReplying(false)}>Cancel</Button>
             <Button variant="primary" onClick={send} disabled={busy || !body.trim()}>
-              {busy ? 'Sending…' : 'Reply'} <Kbd>⌘↵</Kbd>
+              {busy ? 'Sending…' : 'Reply'} <Kbd className="max-sm:hidden">⌘↵</Kbd>
             </Button>
           </div>
         </div>

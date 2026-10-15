@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FileDiffLoadedFiles, FileDiffMetadata } from '@pierre/diffs'
 import { CommandPalette, type Command } from '@/components/CommandPalette'
 import { Button } from '@/components/ui/Button'
+import { Drawer } from '@/components/ui/Drawer'
 import { Kbd } from '@/components/ui/Kbd'
 import { cn } from '@/lib/cn'
 import { pickFolder } from '@/lib/pick-folder'
 import { useHotkeys } from '@/lib/useHotkeys'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 import { reviewApi } from '../api'
 import { ThreadActionsContext, useConversation } from '../hooks/useConversation'
 import { useChecks } from '../hooks/useChecks'
@@ -79,6 +81,13 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const agentName = agentNameOf(data)
   const { report, prStatus, freshness, diagnosing, rerun, ai, reviewing, rereview, uses } = useChecks(data.id, !!base.pr?.local, status)
   const [railHidden, setRailHidden] = useState(false)
+  // Below these widths the outline and comments become drawers, and diffs are always unified.
+  const railInline = useMediaQuery('(min-width: 1100px)')
+  const outlineInline = useMediaQuery('(min-width: 900px)')
+  const canSplit = useMediaQuery('(min-width: 768px)')
+  const [drawer, setDrawer] = useState<'outline' | 'rail' | null>(null)
+  const closeDrawer = useCallback(() => setDrawer(null), [])
+  const diffStyle = canSplit ? prefs.diffStyle : 'unified'
   const [code, setCode] = useState<CodeLocation | null>(null)
 
   const allFiles = useMemo(() => (patches ? [...patches.keys()] : [...byFile.keys()]), [patches, byFile])
@@ -216,7 +225,8 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const commentCount = (conversation?.threads.length ?? 0) + drafts
   const aiOff = !!settings && !settings.agent
   const railAvailable = aiShown || commentCount > 0 || aiOff
-  const showRail = !railHidden && railAvailable
+  const showRail = railInline && !railHidden && railAvailable
+  const toggleRail = () => (railInline ? setRailHidden((h) => !h) : setDrawer((d) => (d === 'rail' ? null : 'rail')))
   const findingAt = useRef(-1)
   const revealFinding = (f: Finding) => {
     findingAt.current = findings.indexOf(f)
@@ -312,8 +322,8 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     e: nextProblem,
     n: () => stepFinding(1),
     p: () => stepFinding(-1),
-    a: () => railAvailable && setRailHidden((h) => !h),
-    s: toggleDiffStyle,
+    a: () => railAvailable && toggleRail(),
+    s: () => canSplit && toggleDiffStyle(),
     m: () => ownedFiles.size && toggleMineFirst(),
     '1': () => setMode('self'),
     '2': () => setMode('peer'),
@@ -333,7 +343,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     { id: 'settings', label: 'Settings: AI', hint: ',', run: onSettings },
     ...modeOrder.map((m, i) => ({ id: `mode-${m}`, label: `Switch to ${modes[m].label.toLowerCase()}`, hint: String(i + 1), run: () => setMode(m) })),
     { id: 'next-open', label: 'Go to the next file not viewed', run: () => jump(order.slice(index + 1).find((f) => !isViewed(f)) ?? order.find((f) => !isViewed(f))) },
-    { id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show split diff', hint: 's', run: toggleDiffStyle },
+    ...(canSplit ? [{ id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show split diff', hint: 's', run: toggleDiffStyle }] : []),
     ...(ownedFiles.size ? [{ id: 'mine-first', label: prefs.mineFirst ? 'Show your code in its flows' : 'Show your code first (CODEOWNERS)', hint: 'm', run: toggleMineFirst }] : []),
     ...chapters.map((c) => ({ id: `ch-${c.chapter.key}`, label: c.chapter.title, hint: 'chapter', run: () => jump([...c.sections.flatMap((s) => s.files), ...c.tests][0]) })),
     ...order.map((f) => ({ id: `f-${f}`, label: f, run: () => jump(f) })),
@@ -355,7 +365,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
         changedSinceViewed={!!v && !isViewed(f)}
         test={isTestPath(f)}
         lastChange={data.owners.lastChange?.[f]}
-        diffStyle={p?.diff.type === 'new' || p?.diff.type === 'deleted' ? 'unified' : prefs.diffStyle}
+        diffStyle={p?.diff.type === 'new' || p?.diff.type === 'deleted' ? 'unified' : diffStyle}
         usedBy={usedBy(data, f)}
         checks={blocks.flatMap((b) => b.checks)}
         comments={state.comments.filter((c) => c.file === f)}
@@ -390,14 +400,41 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     )
   }
 
+  const rail = (
+    <CommentsRail
+      review={agentName ? ai : undefined}
+      reviewing={reviewing}
+      agentName={agentName ?? ''}
+      calls={state.ai ?? {}}
+      order={order}
+      threads={conversation?.threads ?? []}
+      comments={state.comments}
+      scroller={scroller}
+      onKeep={keepFinding}
+      onDismiss={(f) => dispatch({ type: 'ai', key: findingKey(f), call: 'dismissed' })}
+      onUndo={undoFinding}
+      onEdit={(id, file, line, side) => {
+        setDrawer(null)
+        setEditing(id)
+        revealComment(file, line, side)
+      }}
+      onReveal={(file, line, side) => (setDrawer(null), revealComment(file, line, side))}
+      aiOff={aiOff}
+      onTurnOnAi={onSettings}
+      onRetry={rereview}
+    />
+  )
+
   return (
     <ThreadActionsContext value={threadActions}>
       <div
         className={cn(
-          'grid h-screen grid-rows-[48px_minmax(0,1fr)_30px]',
-          showRail
-            ? "grid-cols-[272px_minmax(0,1fr)_300px] [grid-template-areas:'top_top_top'_'toc_main_rail'_'keys_keys_keys'] max-[1100px]:grid-cols-[0_minmax(0,1fr)_280px]"
-            : "grid-cols-[272px_minmax(0,1fr)] [grid-template-areas:'top_top'_'toc_main'_'keys_keys'] max-[900px]:grid-cols-[0_minmax(0,1fr)]",
+          'grid h-dvh grid-rows-[48px_minmax(0,1fr)_30px] max-md:grid-rows-[48px_minmax(0,1fr)]',
+          !outlineInline
+            ? "grid-cols-[minmax(0,1fr)] [grid-template-areas:'top'_'main'_'keys']"
+            : showRail
+              ? "grid-cols-[272px_minmax(0,1fr)_300px] [grid-template-areas:'top_top_top'_'toc_main_rail'_'keys_keys_keys']"
+              : "grid-cols-[272px_minmax(0,1fr)] [grid-template-areas:'top_top'_'toc_main'_'keys_keys']",
         )}
       >
         <TopBar
@@ -408,6 +445,8 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           total={order.length}
           diffStyle={prefs.diffStyle}
           onDiffStyle={(diffStyle) => setPrefs((p) => ({ ...p, diffStyle }))}
+          canSplit={canSplit}
+          onOutline={outlineInline ? undefined : () => setDrawer('outline')}
           problems={
             <>
               <ProblemsPill
@@ -424,24 +463,42 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
                   <span className="text-2xs font-semibold text-accent">AI</span> off · turn on
                 </Button>
               )}
-              {railAvailable && (
-                <Button size="sm" variant="ghost" aria-pressed={!railHidden} title="Show or hide the comments column (a)" onClick={() => setRailHidden((h) => !h)} className="whitespace-nowrap">
-                  {aiShown && <span className="text-2xs font-semibold text-accent">AI</span>}
-                  {aiShown && (reviewing && !ai ? 'reviewing…' : `${findings.filter((f) => !state.ai?.[findingKey(f)]).length} to check`)}
-                  {aiShown && commentCount > 0 && <span className="text-fg-faint">·</span>}
-                  {commentCount > 0 && `${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}`}
-                  {!aiShown && commentCount === 0 && 'Comments'}
-                </Button>
-              )}
               {agentName && status && <SpendChip spend={status.spend} />}
             </>
+          }
+          comments={
+            railAvailable && (
+              <Button size="sm" variant="ghost" aria-pressed={railInline ? !railHidden : drawer === 'rail'} title="Show or hide the comments column (a)" onClick={toggleRail} className="whitespace-nowrap">
+                {aiShown && <span className="text-2xs font-semibold text-accent">AI</span>}
+                {aiShown && (reviewing && !ai ? 'reviewing…' : `${findings.filter((f) => !state.ai?.[findingKey(f)]).length} to check`)}
+                {aiShown && commentCount > 0 && <span className="text-fg-faint">·</span>}
+                {commentCount > 0 && <span>{commentCount}<span className="max-sm:hidden"> {commentCount === 1 ? 'comment' : 'comments'}</span></span>}
+                {!aiShown && commentCount === 0 && 'Comments'}
+              </Button>
+            )
           }
           onSwitch={onSwitch}
           onPalette={() => setOverlay('palette')}
           onSettings={onSettings}
           onFinish={() => setOverlay('finish')}
         />
-        <Outline chapters={chapters} patches={patches} current={state.currentFile} isViewed={isViewed} marks={problemMarks} onJump={(f) => jump(f)} onOverview={() => page.current?.top()} />
+        {outlineInline ? (
+          <Outline chapters={chapters} patches={patches} current={state.currentFile} isViewed={isViewed} marks={problemMarks} onJump={(f) => jump(f)} onOverview={() => page.current?.top()} />
+        ) : (
+          drawer === 'outline' && (
+            <Drawer side="left" label="Files in reading order" onClose={closeDrawer}>
+              <Outline
+                chapters={chapters}
+                patches={patches}
+                current={state.currentFile}
+                isViewed={isViewed}
+                marks={problemMarks}
+                onJump={(f) => (setDrawer(null), jump(f))}
+                onOverview={() => (setDrawer(null), page.current?.top())}
+              />
+            </Drawer>
+          )
+        )}
         {diffError ? (
           <p className="m-auto text-danger [grid-area:main]">{diffError}</p>
         ) : (
@@ -456,28 +513,11 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             onViewAll={(files) => setViewed(files, true)}
           />
         )}
-        {showRail && (
-          <CommentsRail
-            review={agentName ? ai : undefined}
-            reviewing={reviewing}
-            agentName={agentName ?? ''}
-            calls={state.ai ?? {}}
-            order={order}
-            threads={conversation?.threads ?? []}
-            comments={state.comments}
-            scroller={scroller}
-            onKeep={keepFinding}
-            onDismiss={(f) => dispatch({ type: 'ai', key: findingKey(f), call: 'dismissed' })}
-            onUndo={undoFinding}
-            onEdit={(id, file, line, side) => {
-              setEditing(id)
-              revealComment(file, line, side)
-            }}
-            onReveal={revealComment}
-            aiOff={aiOff}
-            onTurnOnAi={onSettings}
-            onRetry={rereview}
-          />
+        {showRail && rail}
+        {!railInline && railAvailable && drawer === 'rail' && (
+          <Drawer side="right" label="Comments" onClose={closeDrawer}>
+            {rail}
+          </Drawer>
         )}
         <KeyHints
           note={[
@@ -491,7 +531,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
             .concat('.')}
         />
         {canGoBack && (
-          <Button variant="primary" onClick={back} className="fixed bottom-11 left-1/2 z-30 -translate-x-1/2 rounded-full shadow-overlay">
+          <Button variant="primary" onClick={back} className="fixed bottom-11 left-1/2 z-30 -translate-x-1/2 rounded-full shadow-overlay max-md:bottom-4">
             ← Back <Kbd>b</Kbd>
           </Button>
         )}

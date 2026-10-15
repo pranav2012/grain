@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn'
 /** Dimmed full-page backdrop; closes on a click outside its content. */
 export function Scrim({ onClose, children }: { onClose?(): void; children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center bg-scrim pt-[12vh]" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-40 flex items-start justify-center bg-scrim pt-[12vh] max-sm:pt-3" onMouseDown={onClose}>
       {children}
     </div>
   )
@@ -26,7 +26,7 @@ export function Dialog({ label, onClose, children, className }: DialogProps) {
         aria-label={label}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === 'Escape' && onClose()}
-        className={cn('w-[min(560px,92vw)] rounded-xl border border-line bg-surface shadow-overlay motion-safe:animate-rise', className)}
+        className={cn('max-h-[calc(100dvh-1.5rem)] w-[min(560px,92vw)] overflow-auto rounded-xl border border-line bg-surface shadow-overlay motion-safe:animate-rise', className)}
       >
         {children}
       </div>

@@ -29,7 +29,7 @@ export function Composer({ kinds, initialKind, initialBody, initialSuggestion, p
     if (e.key === 'Escape') onCancel()
   }
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-accent bg-surface p-2 shadow-float">
+    <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-accent bg-surface p-2 shadow-float">
       <textarea
         autoFocus
         value={body}
@@ -57,13 +57,13 @@ export function Composer({ kinds, initialKind, initialBody, initialSuggestion, p
           />
         </div>
       )}
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {kinds.map(([k, label]) => (
           <button
             key={k}
             aria-pressed={kind === k}
             onClick={() => setKind(k)}
-            className="rounded-full border border-line px-2 py-0.5 text-xs text-fg-subtle hover:text-fg aria-pressed:border-fg-subtle aria-pressed:bg-raised aria-pressed:text-fg"
+            className="rounded-full border border-line px-2 py-0.5 text-xs whitespace-nowrap text-fg-subtle hover:text-fg aria-pressed:border-fg-subtle aria-pressed:bg-raised aria-pressed:text-fg"
           >
             {label}
           </button>
@@ -72,16 +72,17 @@ export function Composer({ kinds, initialKind, initialBody, initialSuggestion, p
           <button
             onClick={() => setSuggestion(suggestionSeed)}
             title="Propose replacement code the author can apply in one click"
-            className="rounded-full border border-dashed border-line px-2 py-0.5 text-xs text-fg-subtle hover:text-fg"
+            className="rounded-full border border-dashed border-line px-2 py-0.5 text-xs whitespace-nowrap text-fg-subtle hover:text-fg"
           >
             ± Suggest change
           </button>
         )}
-        <span className="ml-auto" />
-        <Button onClick={onCancel}>Cancel</Button>
-        <Button variant="primary" onClick={save} disabled={!canSave}>
-          Save <Kbd>⌘↵</Kbd>
-        </Button>
+        <span className="ml-auto flex gap-1.5">
+          <Button onClick={onCancel}>Cancel</Button>
+          <Button variant="primary" onClick={save} disabled={!canSave}>
+            Save <Kbd className="max-sm:hidden">⌘↵</Kbd>
+          </Button>
+        </span>
       </div>
     </div>
   )

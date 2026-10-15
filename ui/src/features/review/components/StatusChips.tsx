@@ -38,7 +38,7 @@ export function StateBadge({ status }: { status: PrStatus | null }) {
 }
 
 function Chip({ tone, children, open, onClick, title }: { tone: Tone; children: ReactNode; open?: boolean; onClick?(): void; title?: string }) {
-  const cls = cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap', toneClass[tone], onClick && 'hover:bg-raised')
+  const cls = cn('inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-left text-xs sm:whitespace-nowrap', toneClass[tone], onClick && 'hover:bg-raised')
   return onClick ? (
     <button aria-expanded={open} onClick={onClick} title={title} className={cls}>
       {children}
@@ -110,7 +110,7 @@ export function StatusChips({ status, freshness, threads, onThread }: StatusChip
         {requested.length > 0 && <Chip tone="neutral">◐ review requested: {list(requested)}</Chip>}
         {commented.length > 0 && <Chip tone="neutral">● {list(commented)} commented</Chip>}
         {approved.length > 0 && <Chip tone="success">✓ approved by {list(approved)}</Chip>}
-        <span className="ml-auto flex items-center gap-2 text-xs text-fg-faint">
+        <span className="ml-auto flex flex-wrap items-center gap-x-2 text-xs text-fg-faint">
           {counted > 0 && (
             <button onClick={() => setOpen((o) => (o ? null : 'checks'))} className="hover:text-fg">
               ✓ {count('passed')} of {counted} checks passed
@@ -124,7 +124,7 @@ export function StatusChips({ status, freshness, threads, onThread }: StatusChip
         </span>
       </div>
       {open === 'checks' && (
-        <ul className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-x-4 rounded-lg border border-line bg-canvas/40 px-3 py-2 text-sm">
+        <ul className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(min(260px,100%),1fr))] gap-x-4 rounded-lg border border-line bg-canvas/40 px-3 py-2 text-sm">
           {[...checks]
             .sort((a, b) => ['failed', 'running', 'passed', 'skipped'].indexOf(a.state) - ['failed', 'running', 'passed', 'skipped'].indexOf(b.state))
             .map(({ c, state }) => (

@@ -33,7 +33,7 @@ export function CodePeek({ peek, onJump, onSwitch, onOpen, githubUrl, onClose }:
   const what = peek.references ? 'References to' : 'Definition of'
   return (
     <div className="my-1 overflow-hidden rounded-lg border border-accent bg-surface font-sans shadow-float">
-      <div className="flex items-center gap-2 border-b border-line px-3 py-1.5 text-xs text-fg-subtle">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-3 py-1.5 text-xs text-fg-subtle">
         <span>
           {what} <b className="font-mono text-fg">{peek.name}</b>
           {r && ` · ${r.results.length}${r.truncated ? '+' : ''} ${r.results.length === 1 ? 'place' : 'places'}`}
@@ -64,8 +64,8 @@ export function CodePeek({ peek, onJump, onSwitch, onOpen, githubUrl, onClose }:
             const first = peek.references ? loc.line : loc.snippetStart
             return (
               <li key={`${loc.file}:${loc.line}`} className="border-b border-line last:border-0">
-                <div className="flex items-center gap-2 px-3 pt-1.5 text-xs">
-                  <button onClick={() => onOpen(loc.file, loc.line)} className="truncate font-mono text-fg-muted hover:text-fg hover:underline" title={`Open ${loc.file} in full`}>
+                <div className="flex min-w-0 items-center gap-2 px-3 pt-1.5 text-xs">
+                  <button onClick={() => onOpen(loc.file, loc.line)} className="min-w-0 truncate font-mono text-fg-muted hover:text-fg hover:underline" title={`Open ${loc.file} in full`}>
                     {loc.file}:{loc.line}
                   </button>
                   {loc.block != null ? (
@@ -74,7 +74,7 @@ export function CodePeek({ peek, onJump, onSwitch, onOpen, githubUrl, onClose }:
                     </LinkButton>
                   ) : githubUrl ? (
                     <a href={githubUrl(loc.file, loc.line)} target="_blank" rel="noreferrer" className="ml-auto shrink-0 text-fg-faint hover:text-fg">
-                      not changed in this PR · GitHub ↗
+                      <span className="max-sm:hidden">not changed in this PR · </span>GitHub ↗
                     </a>
                   ) : (
                     <span className="ml-auto shrink-0 text-fg-faint">not changed in this PR</span>

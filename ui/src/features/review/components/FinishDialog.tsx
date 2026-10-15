@@ -115,7 +115,7 @@ export function FinishDialog({ data, mode, viewed, total, comments, onPosted, on
   return (
     <Dialog label={modes[mode].finish} onClose={onClose} className="p-5">
       <DialogTitle>{modes[mode].finish}</DialogTitle>
-      <div className="mt-2.5 mb-1 flex gap-4.5">
+      <div className="mt-2.5 mb-1 flex flex-wrap gap-x-4.5 gap-y-2">
         {tally.map(([n, label, alert]) => (
           <div key={label} className="flex flex-col">
             <b className={`text-xl font-semibold tabular-nums ${alert ? 'text-danger' : ''}`}>{n}</b>

@@ -153,7 +153,7 @@ export function CodeModal({ prId, start, changedLines, githubUrl, onGoToReview, 
         role="dialog"
         aria-label={`${here.file}:${line}`}
         onMouseDown={(e) => e.stopPropagation()}
-        className="flex h-[86vh] w-[min(1200px,94vw)] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-overlay"
+        className="flex h-[86vh] w-[min(1200px,94vw)] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-overlay max-md:h-dvh max-md:w-full max-md:rounded-none max-md:border-0"
       >
         <header className="flex items-center gap-2 border-b border-line px-3 py-2 text-sm">
           {trail.length > 1 && (
@@ -180,7 +180,7 @@ export function CodeModal({ prId, start, changedLines, githubUrl, onGoToReview, 
             <LinkButton onClick={onClose}>Close</LinkButton>
           </span>
         </header>
-        <div className="flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1">
           <div ref={bodyRef} className="min-w-0 flex-1 overflow-auto">
             {error && <p className="p-4 text-danger">{error}</p>}
             {!shown && !error && <p className="p-4 text-fg-faint">Opening {here.file}…</p>}
@@ -194,7 +194,7 @@ export function CodeModal({ prId, start, changedLines, githubUrl, onGoToReview, 
             )}
           </div>
           {refs && (
-            <aside className="flex w-80 shrink-0 flex-col border-l border-line">
+            <aside className="flex w-80 shrink-0 flex-col border-l border-line max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:w-[min(320px,85%)] max-md:bg-surface max-md:shadow-overlay">
               <p className="flex items-center gap-2 border-b border-line px-3 py-2 text-xs text-fg-subtle">
                 {refs.result?.results.length === 1 ? 'Definition of' : 'Places for'} <b className="font-mono text-fg">{refs.name}</b>
                 <LinkButton className="ml-auto" onClick={() => setRefs(null)}>

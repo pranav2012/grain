@@ -57,9 +57,9 @@ export function ReviewPage({ id, settingsVersion, onSwitch, onSettings }: Review
   if (data)
     return <ReviewScreen base={data} settingsVersion={settingsVersion} onSwitch={onSwitch} onSettings={onSettings} onReload={reload} />
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-2.5 text-fg-subtle">
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-2.5 px-4 text-center text-fg-subtle">
       <GrainGlyph />
-      <h1 className="mt-1 text-lg font-semibold text-fg">{formatPrRef(id)}</h1>
+      <h1 className="mt-1 text-lg font-semibold break-all text-fg">{formatPrRef(id)}</h1>
       {needsRepo ? (
         <RepoSetup
           fullRepo={id.split('/').slice(0, 2).join('/')}
