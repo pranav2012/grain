@@ -36,7 +36,26 @@ interface Row {
 type PrLike = Pick<PrSummary, 'repo' | 'number' | 'title' | 'author'> &
   Partial<Pick<PrSummary, 'updatedAt' | 'isDraft'>> & { localPath?: string | null }
 
-const cache: { inbox?: Inbox; recent?: RecentReview[]; local?: LocalCandidate[] } = {}
+const cache: { inbox?: Inbox; recent?: RecentReview[]; local?: LocalCandidate[] } = { inbox: load('inbox'), recent: load('recent') }
+
+/** A list saved by an earlier visit, so the picker shows something while GitHub is asked again. */
+function load<T>(key: string): T | undefined {
+  try {
+    const raw = localStorage.getItem(`grain:picker:${key}`)
+    return raw ? (JSON.parse(raw) as T) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function save<T>(key: 'inbox' | 'recent', value: T): T {
+  try {
+    localStorage.setItem(`grain:picker:${key}`, JSON.stringify(value))
+  } catch {
+    // Storage full or blocked: the in-memory cache still works for this tab.
+  }
+  return value
+}
 
 interface PrPickerProps {
   variant: 'page' | 'dialog'
@@ -57,10 +76,29 @@ export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: 
   const [pullsResult, setPullsResult] = useState<{ repo: string; rows: PrSummary[] } | null>(null)
   const [local, setLocal] = useState<LocalCandidate[] | null>(cache.local ?? null)
   const [error, setError] = useState<string | null>(null)
+  const [refresh, setRefresh] = useState<{ state: 'updating' | 'updated' } | { state: 'failed'; error: string } | null>(() =>
+    cache.inbox ? { state: 'updating' } : null,
+  )
 
+  // Shows the saved lists at once, then swaps in what GitHub says now.
   useEffect(() => {
-    pickerApi.inbox().then((v) => setInbox((cache.inbox = v)), (e: Error) => setError(e.message))
-    pickerApi.recent().then((v) => setRecent((cache.recent = v)), () => setRecent([]))
+    const hadInbox = !!cache.inbox
+    let done: ReturnType<typeof setTimeout>
+    pickerApi.inbox().then(
+      (v) => {
+        setInbox((cache.inbox = save('inbox', v)))
+        if (hadInbox) {
+          setRefresh({ state: 'updated' })
+          done = setTimeout(() => setRefresh(null), 2500)
+        }
+      },
+      (e: Error) => (hadInbox ? setRefresh({ state: 'failed', error: e.message }) : setError(e.message)),
+    )
+    pickerApi.recent().then(
+      (v) => setRecent((cache.recent = save('recent', v))),
+      () => setRecent((r) => r ?? []),
+    )
+    return () => clearTimeout(done)
   }, [])
   useEffect(() => {
     if (tab !== 'browse' || repo) return
@@ -155,6 +193,7 @@ export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: 
       onMouseDown={(e) => e.stopPropagation()}
       className={cn(
         'flex w-[min(760px,94vw)] flex-col overflow-hidden rounded-xl border border-line bg-surface',
+        variant === 'page' && 'w-full max-w-[760px]',
         variant === 'page' ? 'max-h-[80vh]' : 'shadow-overlay motion-safe:animate-rise',
       )}
     >
@@ -188,21 +227,29 @@ export function PrPicker({ variant, onOpen, onClose, initialTab = 'requests' }: 
           }
         }}
       />
-      <div role="tablist" className="flex items-center gap-0.5 border-b border-line px-2 py-1.5">
+      <div role="tablist" className="flex items-center gap-0.5 overflow-x-auto border-b border-line px-2 py-1.5 [scrollbar-width:none]">
         {tabs.map(([t, label]) => (
           <button
             key={t}
             role="tab"
             aria-selected={tab === t}
             onClick={() => switchTab(t)}
-            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-fg-subtle hover:text-fg aria-selected:bg-raised aria-selected:text-fg"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 whitespace-nowrap text-fg-subtle hover:text-fg aria-selected:bg-raised aria-selected:text-fg"
           >
             {label}
             {t === 'requests' && inbox && <span className="text-2xs text-fg-faint tabular-nums">{inbox.reviewRequests.length}</span>}
           </button>
         ))}
-        <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-fg-faint">
-          <Kbd>Tab</Kbd> next list
+        <span className="ml-auto flex shrink-0 items-center gap-3 pl-2 text-xs whitespace-nowrap text-fg-faint">
+          {refresh && (tab === 'requests' || tab === 'mine') && (
+            <span role="status" title={refresh.state === 'failed' ? refresh.error : undefined} className={cn('inline-flex items-center gap-1.5', refresh.state === 'failed' && 'text-warning')}>
+              {refresh.state === 'updating' && <span aria-hidden className="size-2.5 animate-spin rounded-full border border-fg-faint border-t-transparent" />}
+              {refresh.state === 'updating' ? 'Updating…' : refresh.state === 'updated' ? 'Updated just now' : "Couldn't refresh"}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1.5 max-md:hidden">
+            <Kbd>Tab</Kbd> next list
+          </span>
         </span>
       </div>
       {repo && (
