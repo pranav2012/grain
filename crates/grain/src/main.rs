@@ -246,20 +246,23 @@ fn stop_activated(port: u16) -> bool {
 }
 
 /// Makes sure the OS starts this build of Grain on demand, then wakes it. False when on-demand start
-/// isn't available here (Windows, or `GRAIN_NO_SERVICE` set), so the caller starts Grain itself.
+/// isn't set up and can't or shouldn't be (Windows, or `GRAIN_NO_SERVICE`), so the caller starts Grain itself.
 #[allow(clippy::print_stdout, reason = "the CLI's output")]
 fn on_demand(port: u16, build: &str) -> Result<bool> {
-    if std::env::var_os("GRAIN_NO_SERVICE").is_some() || !cfg!(any(target_os = "macos", target_os = "linux")) {
+    let first_time = service::installed(port).is_none();
+    // Once the OS holds the port, Grain must go through it; GRAIN_NO_SERVICE only prevents setting it up.
+    if first_time
+        && (std::env::var_os("GRAIN_NO_SERVICE").is_some() || !cfg!(any(target_os = "macos", target_os = "linux")))
+    {
         return Ok(false);
     }
-    let first_time = service::installed(port).is_none();
     // A Grain started the old way holds the port; stop it so the OS can listen there.
     if first_time && doctor::grain_is_listening(port) && !doctor::replace_running(port) {
         return Ok(false);
     }
     let exe = std::env::current_exe()?;
     if let Err(e) = service::install(&exe, port, &daemon::log_path()) {
-        tracing::warn!(error = %format!("{e:#}"), "couldn't set up on-demand start");
+        println!("Couldn't set up on-demand start ({e:#}); starting Grain directly.");
         return Ok(false);
     }
     if first_time {

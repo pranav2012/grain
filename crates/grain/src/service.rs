@@ -103,14 +103,31 @@ pub(crate) fn install(exe: &Path, port: u16, log: &Path) -> Result<bool> {
         label = label(port),
         exe = xml_escape(&exe.display().to_string()),
     );
-    if std::fs::read_to_string(&file).is_ok_and(|old| old == plist) {
+    let domain = format!("gui/{}", uid()?);
+    let job = format!("{domain}/{}", label(port));
+    let loaded = || Command::new("launchctl").args(["print", &job]).output().is_ok_and(|o| o.status.success());
+    if std::fs::read_to_string(&file).is_ok_and(|old| old == plist) && loaded() {
         return Ok(false);
     }
     std::fs::create_dir_all(file.parent().context("LaunchAgents folder")?)?;
-    let domain = format!("gui/{}", uid()?);
-    let _ = Command::new("launchctl").args(["bootout", &format!("{domain}/{}", label(port))]).output();
+    let _ = Command::new("launchctl").args(["bootout", &job]).output();
+    // Removing a job finishes in the background; registering again before it's gone fails.
+    for _ in 0..30 {
+        if !loaded() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
     std::fs::write(&file, plist)?;
-    run(Command::new("launchctl").args(["bootstrap", &domain]).arg(&file))?;
+    let mut last = Ok(());
+    for _ in 0..5 {
+        last = run(Command::new("launchctl").args(["bootstrap", &domain]).arg(&file));
+        if last.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    last?;
     Ok(true)
 }
 
