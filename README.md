@@ -26,7 +26,10 @@ grain doctor
 grain                       # opens http://localhost:7420
 grain owner/repo#123        # straight to a PR
 grain .                     # self-review your branch plus uncommitted and new files
+grain stop                  # stop it (also: grain status, grain logs -f)
 ```
+
+`grain` starts Grain in the background and gives your terminal back; its log is in `~/.grain/logs/grain.log`.
 
 Self-review reads your repository without changing it: Grain records your working tree as a commit object using its own index, so your branch, staging area and files stay untouched. When you edit files, the review offers to refresh and keeps the blocks you already checked.
 
@@ -48,7 +51,7 @@ cargo run --release -p grain                   # opens http://localhost:7420
 ### Developing the UI
 
 ```bash
-cargo run -p grain -- --no-open      # API on :7420
+cargo run -p grain -- serve         # API on :7420, logging in this terminal
 pnpm --dir ui dev --port 5174        # UI with hot reload, proxies /api to :7420
 ```
 

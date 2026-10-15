@@ -56,8 +56,6 @@ pub struct Options {
     pub port: u16,
     /// Serve the UI from this folder instead of the embedded copy (UI development).
     pub ui_dir: Option<PathBuf>,
-    /// Start preparing this PR right away.
-    pub open_pr: Option<PrRef>,
     /// Identifies this binary (see `/api/version`).
     pub build: String,
 }
@@ -69,9 +67,6 @@ pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
     tokio::task::spawn_blocking(|| {
         let _ = grain_github::repos(None);
     });
-    if let Some(pr) = &opts.open_pr {
-        app.open(pr.clone(), true, false);
-    }
     spawn_background(app.clone());
     let router = match &opts.ui_dir {
         Some(dir) => {
