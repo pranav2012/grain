@@ -16,6 +16,8 @@ Version bumps (before 1.0): `fix`/`perf` → patch (0.1.0 → 0.1.1); `feat` or 
 
 Targets: macOS (Apple Silicon, Intel), Linux (x64, arm64, glibc), Windows (x64).
 
+Each release also attaches `grain-<version>-source.tar.gz` (built by `.github/workflows/source-tarball.yml`): the source plus the built UI, so building it needs only Rust, no Node. It is what the homebrew-core formula builds; see `packaging/homebrew-core/README.md`.
+
 ## One-time setup (done on 2026-10-13)
 
 - Repository public; history checked for internal names before going public.

@@ -1,0 +1,29 @@
+class Grain < Formula
+  desc "Local-first code review: read a pull request as a story of user flows"
+  homepage "https://github.com/pranav2012/grain"
+  url "https://github.com/pranav2012/grain/releases/download/v@VERSION@/grain-@VERSION@-source.tar.gz"
+  sha256 "@SHA256@"
+  license "Apache-2.0"
+
+  depends_on "rust" => :build
+  depends_on "gh"
+
+  on_linux do
+    depends_on "git"
+  end
+
+  def install
+    system "cargo", "install", *std_cargo_args(path: "crates/grain")
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/grain --version")
+
+    port = free_port
+    pid = spawn({ "GRAIN_HOME" => testpath/".grain" }, bin/"grain", "serve", "--port", port.to_s)
+    sleep 3
+    assert_match "<title>Grain</title>", shell_output("curl -s http://127.0.0.1:#{port}/")
+  ensure
+    Process.kill("TERM", pid) if pid
+  end
+end
