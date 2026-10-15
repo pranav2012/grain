@@ -25,6 +25,10 @@ prefetch: boolean,
  */
 secondOpinion: boolean, 
 /**
+ * Estimated AI spend allowed per day (USD at API prices); 0 means no cap.
+ */
+dailyBudgetUsd: number, 
+/**
  * Folders the reviewer keeps their clones in; searched (two levels deep) along with the
  * usual code folders when a repository opens for the first time.
  */

@@ -6,6 +6,7 @@ mod policy;
 mod prompt;
 pub mod review;
 mod transport;
+mod usage;
 
 use std::path::Path;
 
@@ -13,6 +14,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 pub use agent::Agent;
+pub use usage::Usage;
 
 /// Finds a program on PATH, including Windows `.cmd`/`.exe` shims that npm installs.
 pub fn resolve_program(name: &str) -> std::path::PathBuf {
@@ -29,6 +31,8 @@ pub enum Outcome {
     Done {
         summary: serde_json::Value,
         cached: bool,
+        /// What the request used; none for cached answers.
+        usage: Option<Usage>,
     },
     /// Not allowed by provider terms in this environment; never retried.
     Refused {
@@ -80,7 +84,7 @@ fn ask(agent: Agent, model: Option<&str>, head: &str, schema: &str, diff: &str, 
     if let Ok(hit) = std::fs::read_to_string(&cache_file)
         && let Ok(summary) = serde_json::from_str(&hit)
     {
-        return Outcome::Done { summary, cached: true };
+        return Outcome::Done { summary, cached: true, usage: None };
     }
     let res = match agent {
         Agent::Claude => cli::claude(&prompt, schema, model),
@@ -88,10 +92,10 @@ fn ask(agent: Agent, model: Option<&str>, head: &str, schema: &str, diff: &str, 
         Agent::Opencode => cli::opencode(&format!("{prompt}\n\nReply with ONLY JSON matching: {schema}"), model),
     };
     match res {
-        Ok((Some(summary), _)) => {
+        Ok((Some(summary), out)) => {
             std::fs::create_dir_all(cache_dir).ok();
             std::fs::write(&cache_file, summary.to_string()).ok();
-            Outcome::Done { summary, cached: false }
+            Outcome::Done { summary, cached: false, usage: out.usage }
         }
         Ok((None, out)) => {
             let raw = format!("{}\n{}", out.stdout, out.stderr);

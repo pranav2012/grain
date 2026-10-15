@@ -29,6 +29,11 @@ pub(crate) fn run(home: &Home, settings: &Settings, pr: &PrRef) -> Result<()> {
         return Ok(());
     }
     let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(why) = home.over_budget() {
+        let review = AiReview { head, agent, skill_hash, findings: Vec::new(), error: Some(why), ms: 0, usage: None };
+        write_atomic(&target, serde_json::to_string(&review)?.as_bytes())?;
+        return Ok(());
+    }
     let checkout = if pr.is_local() { super::local::repo_path(home, pr)? } else { home.worktree_dir(pr) };
     let files = grain_git::changed_paths(&super::prepare::git_dir(home, pr)?, &merge_base, &head)?;
     let prior: Vec<String> = if pr.is_local() {
@@ -59,7 +64,10 @@ pub(crate) fn run(home: &Home, settings: &Settings, pr: &PrRef) -> Result<()> {
         prior_comments: &prior,
     };
     let started = std::time::Instant::now();
-    let result = grain_agent::review::review(agent, settings.model.as_deref(), &checkout, &context);
+    let (result, usage) = grain_agent::review::review(agent, settings.model.as_deref(), &checkout, &context);
+    if let Some(u) = &usage {
+        home.record_usage(&format!("{repo}/{}", pr.number), "review", agent, u);
+    }
     let ms = started.elapsed().as_millis() as u64;
     let (findings, error) = match result {
         Ok(f) => (f, None),
@@ -67,7 +75,7 @@ pub(crate) fn run(home: &Home, settings: &Settings, pr: &PrRef) -> Result<()> {
     };
     let current = read_json(&out_dir.join("pr.json")).and_then(|v| v["headSha"].as_str().map(str::to_string));
     if current.as_deref() == Some(head.as_str()) {
-        let review = AiReview { head, agent, skill_hash, findings, error, ms };
+        let review = AiReview { head, agent, skill_hash, findings, error, ms, usage };
         write_atomic(&target, serde_json::to_string(&review)?.as_bytes())?;
     }
     Ok(())

@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button, LinkButton } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Kbd'
 import { cn } from '@/lib/cn'
+import { usd } from '@/lib/format'
 import type { AiReview } from '@/types/generated/AiReview'
 import type { Finding } from '@/types/generated/Finding'
 import { findingKey, rowFor } from '../model/findings'
@@ -103,8 +104,8 @@ export function FindingsRail({ review, reviewing, agentName, calls, scroller, on
         {review && !review.error && (
           <>
             <p className="mt-1 text-fg-subtle">
-              {findings.length ? `${findings.length} ${findings.length === 1 ? 'finding' : 'findings'} · ${toCheck} to check` : 'Nothing found.'} {agentName}, {skill}. Nothing is posted
-              unless you keep it.
+              {findings.length ? `${findings.length} ${findings.length === 1 ? 'finding' : 'findings'} · ${toCheck} to check` : 'Nothing found.'} {agentName}, {skill}
+              {review.usage && `, about ${usd(review.usage.costUsd)}${review.usage.estimated ? ' (est.)' : ''}`}. Nothing is posted unless you keep it.
             </p>
             {findings.length > 0 && (
               <div className="mt-1.5 flex items-center gap-2">

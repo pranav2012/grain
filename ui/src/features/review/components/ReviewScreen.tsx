@@ -31,6 +31,7 @@ import { Outline } from './Outline'
 import { Overview } from './Overview'
 import { PrPage, type PrPageHandle } from './PrPage'
 import { ProblemsPill } from './ProblemsPill'
+import { SpendChip } from './SpendChip'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { TopBar } from './TopBar'
 
@@ -355,6 +356,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
                   {reviewing && !ai ? 'reviewing…' : `${findings.filter((f) => !state.ai?.[findingKey(f)]).length} to check`}
                 </Button>
               )}
+              {agentName && status && <SpendChip spend={status.spend} />}
             </>
           }
           onSwitch={onSwitch}

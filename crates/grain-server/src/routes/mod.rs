@@ -69,6 +69,7 @@ pub(crate) fn router(app: Shared) -> Router {
         .route("/api/reviews/{owner}/{repo}/{number}/threads/{thread}/resolved", put(reviews::resolve_thread))
         .route("/api/reviews/{owner}/{repo}/{number}/progress", get(reviews::get_progress).put(reviews::put_progress))
         .route("/api/settings", get(settings::get).put(settings::put))
+        .route("/api/usage", get(settings::usage))
         .route("/api/version", get(version))
         .route("/api/heartbeat", post(heartbeat))
         .route("/api/shutdown", post(shutdown))

@@ -54,6 +54,8 @@ pub struct AiReview {
     pub skill_hash: String,
     pub findings: Vec<Finding>,
     pub error: Option<String>,
+    /// What the review used, when the agent reported it.
+    pub usage: Option<crate::Usage>,
     #[ts(type = "number")]
     pub ms: u64,
 }
@@ -92,10 +94,16 @@ fn prompt(skill: &str, pr: &PrContext) -> String {
     )
 }
 
-/// Runs Grain's review skill on the PR checked out at `checkout`. Takes minutes; errors explain what went wrong.
-pub fn review(agent: Agent, model: Option<&str>, checkout: &Path, pr: &PrContext) -> Result<Vec<Finding>, String> {
+/// Runs Grain's review skill on the PR checked out at `checkout`. Takes minutes; errors explain what
+/// went wrong. Usage is returned either way, since a failed run can still have used tokens.
+pub fn review(
+    agent: Agent,
+    model: Option<&str>,
+    checkout: &Path,
+    pr: &PrContext,
+) -> (Result<Vec<Finding>, String>, Option<crate::Usage>) {
     if let Some(reason) = policy_check(agent, model) {
-        return Err(reason);
+        return (Err(reason), None);
     }
     let prompt = prompt(BUNDLED_SKILL, pr);
     let res = match agent {
@@ -109,15 +117,17 @@ pub fn review(agent: Agent, model: Option<&str>, checkout: &Path, pr: &PrContext
         ),
     };
     match res {
-        Ok((Some(v), _)) => {
-            serde_json::from_value::<Vec<Finding>>(v["findings"].clone()).map_err(|e| format!("unexpected answer: {e}"))
-        }
+        Ok((Some(v), out)) => (
+            serde_json::from_value::<Vec<Finding>>(v["findings"].clone())
+                .map_err(|e| format!("unexpected answer: {e}")),
+            out.usage,
+        ),
         Ok((None, out)) => {
             let raw = format!("{}\n{}", out.stdout, out.stderr);
             let raw = raw.trim();
-            Err(raw[raw.floor_char_boundary(raw.len().saturating_sub(800))..].to_string())
+            (Err(raw[raw.floor_char_boundary(raw.len().saturating_sub(800))..].to_string()), out.usage)
         }
-        Err(e) => Err(e.to_string()),
+        Err(e) => (Err(e.to_string()), None),
     }
 }
 

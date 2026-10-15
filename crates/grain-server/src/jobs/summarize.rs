@@ -98,6 +98,14 @@ impl App {
     fn summarize_loop(&self, pr: &PrRef, agent: Agent) {
         let dir = self.home.review_dir(pr);
         while let Some(key) = self.next_key(pr) {
+            if let Some(why) = self.home.over_budget() {
+                if let Some(s) = self.summarizers.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get_mut(pr)
+                {
+                    s.status.stopped = Some(why);
+                    s.queue.clear();
+                }
+                return;
+            }
             let model = self.settings.lock().unwrap_or_else(std::sync::PoisonError::into_inner).model.clone();
             let chapter = key.strip_prefix(CHAPTER_PREFIX);
             let Some(files) = read_json(&dir.join("review.json")).and_then(|r| files_for(&r, &key)) else { continue };
@@ -114,9 +122,13 @@ impl App {
             let mut sums = self.summarizers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let Some(s) = sums.get_mut(pr) else { return };
             match outcome {
-                Outcome::Done { summary, cached } => {
+                Outcome::Done { summary, cached, usage } => {
                     if !cached {
                         s.status.fresh_requests += 1;
+                    }
+                    if let Some(u) = usage {
+                        let kind = if chapter.is_some() { "chapter" } else { "summary" };
+                        self.home.record_usage(&format!("{}/{}", pr.full_repo(), pr.number), kind, agent, &u);
                     }
                     let path = dir.join("summaries.json");
                     let mut all = read_json(&path).unwrap_or_else(|| serde_json::json!({}));

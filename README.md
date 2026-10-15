@@ -39,6 +39,8 @@ Errors show up like in an editor: type errors (TypeScript 7) and your linter's f
 
 With an agent set, Grain can also give you a second opinion on each PR you open: your agent runs Grain's review skill (`crates/grain-agent/src/review/pr-review.md`) read-only on the PR, and its findings appear as quiet cards beside the lines they're about. Keep one and it becomes your draft comment; nothing is posted until you submit your review.
 
+Grain records what each AI request uses and shows it: today's spend in the top bar, the cost of each second opinion, and this month per PR in Settings. Claude Code reports its own cost; Codex and OpenCode costs are estimated from token counts at list prices. On a subscription this is usage, not a bill. A daily budget (default $5, set in Settings) pauses AI for the day once it's reached.
+
 AI summaries are optional. Press `,` in the app to pick Claude Code, Codex or OpenCode if you have one installed.
 
 ## Run from source

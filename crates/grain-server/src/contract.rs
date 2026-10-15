@@ -117,6 +117,8 @@ pub(crate) struct Status {
     pub diagnosing: bool,
     /// The reviewer's agent is reviewing the PR (or waiting for its turn).
     pub reviewing: bool,
+    /// AI spend today, this month and on this PR, with the daily cap.
+    pub spend: grain_store::Spend,
 }
 
 /// Go to definition or find references for the name at a position in the new version of a file.
@@ -262,4 +264,22 @@ pub(crate) struct SubmitResponse {
     pub payload: ReviewPayload,
     /// Line comments outside the diff, moved into the review text so GitHub accepts the review.
     pub moved_to_body: usize,
+}
+
+/// AI spend for the Settings page: totals and this month's spend per PR, highest first.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct UsageReport {
+    pub spend: grain_store::Spend,
+    pub prs: Vec<PrSpend>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct PrSpend {
+    pub pr: String,
+    pub cost: f64,
+    pub requests: usize,
 }

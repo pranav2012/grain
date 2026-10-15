@@ -114,6 +114,7 @@ pub(super) async fn status(State(app): State<Shared>, Path(p): Path<(String, Str
         enriching,
         head_sha,
         diagnosing: app.diagnosing.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&pr),
+        spend: app.home.spend(Some(&format!("{}/{}", pr.full_repo(), pr.number))),
         reviewing: app.second_opinions.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&pr),
     })
 }
@@ -207,6 +208,9 @@ pub(super) async fn ask(
             .and_then(|b| b["files"].as_array())
             .map(|fs| fs.iter().filter_map(|f| f.as_str().map(str::to_string)).collect())
             .ok_or_else(|| anyhow::anyhow!("That change is no longer in this review."))?;
+        if let Some(why) = app.home.over_budget() {
+            anyhow::bail!(why);
+        }
         let mut context = crate::jobs::prepare::block_diff(&app.home, &pr, &files)?;
         context.truncate(context.floor_char_boundary(60_000));
         if let Some(code) = body.code.filter(|c| !c.trim().is_empty()) {
@@ -219,7 +223,10 @@ pub(super) async fn ask(
             body.question.trim(),
             &app.home.cache_dir(),
         ) {
-            grain_agent::Outcome::Done { summary, .. } => {
+            grain_agent::Outcome::Done { summary, usage, .. } => {
+                if let Some(u) = usage {
+                    app.home.record_usage(&format!("{}/{}", pr.full_repo(), pr.number), "ask", agent, &u);
+                }
                 Ok(Json(AskResponse { answer: summary["answer"].as_str().unwrap_or_default().to_string() }))
             }
             grain_agent::Outcome::Refused { reason } => Err(anyhow::anyhow!(reason)),

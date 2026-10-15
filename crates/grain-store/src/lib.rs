@@ -8,6 +8,9 @@ use grain_github::PrRef;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+mod usage;
+pub use usage::{Spend, UsageRecord, local_day};
+
 #[derive(Clone)]
 pub struct Home {
     pub root: PathBuf,
@@ -120,6 +123,8 @@ pub struct Settings {
     /// With an agent set, review each PR the reviewer opens with the review skill (read-only, in
     /// Grain's checkout) and show its findings beside the code. Nothing is posted.
     pub second_opinion: bool,
+    /// Estimated AI spend allowed per day (USD at API prices); 0 means no cap.
+    pub daily_budget_usd: f64,
     /// Folders the reviewer keeps their clones in; searched (two levels deep) along with the
     /// usual code folders when a repository opens for the first time.
     pub work_folders: Vec<String>,
@@ -134,6 +139,7 @@ impl Default for Settings {
             auto_summarize: false,
             prefetch: true,
             second_opinion: true,
+            daily_budget_usd: 5.0,
             work_folders: Vec::new(),
         }
     }

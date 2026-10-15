@@ -8,6 +8,8 @@ use std::process::{Command, Stdio};
 pub(crate) struct CliOutput {
     pub stdout: String,
     pub stderr: String,
+    /// Tokens and cost, when the CLI reported them.
+    pub usage: Option<crate::usage::Usage>,
 }
 
 static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -30,6 +32,7 @@ fn run(mut cmd: Command, input: &str, dir: &std::path::Path) -> std::io::Result<
     Ok(CliOutput {
         stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        usage: None,
     })
 }
 
@@ -49,8 +52,10 @@ pub(crate) fn claude(
         cmd.args(["--model", m]);
     }
     let out = run(cmd, prompt, &scratch_dir())?;
-    let parsed =
-        serde_json::from_str::<serde_json::Value>(&out.stdout).ok().and_then(|v| v.get("structured_output").cloned());
+    let mut out = out;
+    let reply = serde_json::from_str::<serde_json::Value>(&out.stdout).ok();
+    out.usage = reply.as_ref().and_then(crate::usage::from_claude);
+    let parsed = reply.and_then(|v| v.get("structured_output").cloned());
     Ok((parsed, out))
 }
 
@@ -65,7 +70,7 @@ pub(crate) fn codex(
     std::fs::write(&schema_path, schema)?;
     let _ = std::fs::remove_file(&out_path);
     let mut cmd = Command::new(crate::resolve_program("codex"));
-    cmd.args(["exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "--color", "never"])
+    cmd.args(["exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "--color", "never", "--json"])
         .arg("--output-schema")
         .arg(&schema_path)
         .arg("-o")
@@ -74,6 +79,11 @@ pub(crate) fn codex(
         cmd.args(["-m", m]);
     }
     let out = run(cmd, prompt, &dir)?;
+    let mut out = out;
+    out.usage = crate::usage::from_codex(
+        &out.stdout,
+        model.map(str::to_string).or_else(crate::usage::codex_default_model).as_deref(),
+    );
     let parsed = std::fs::read_to_string(&out_path).ok().and_then(|s| serde_json::from_str(&s).ok());
     Ok((parsed, out))
 }
@@ -92,6 +102,8 @@ pub(crate) fn opencode(prompt: &str, model: Option<&str>) -> std::io::Result<(Op
         .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
         .filter_map(|e| e.pointer("/part/text").and_then(|t| t.as_str()).map(str::to_string))
         .collect();
+    let mut out = out;
+    out.usage = crate::usage::from_opencode(&out.stdout, model.map(str::to_string));
     Ok((crate::prompt::extract_json(&text), out))
 }
 
@@ -145,6 +157,7 @@ fn run_limited(
     Ok(CliOutput {
         stdout: out.and_then(|h| h.join().ok()).unwrap_or_default(),
         stderr: err.and_then(|h| h.join().ok()).unwrap_or_default(),
+        usage: None,
     })
 }
 
@@ -170,8 +183,10 @@ pub(crate) fn claude_review(
         cmd.args(["--model", m]);
     }
     let out = run_limited(cmd, prompt, dir, limit)?;
-    let parsed =
-        serde_json::from_str::<serde_json::Value>(&out.stdout).ok().and_then(|v| v.get("structured_output").cloned());
+    let mut out = out;
+    let reply = serde_json::from_str::<serde_json::Value>(&out.stdout).ok();
+    out.usage = reply.as_ref().and_then(crate::usage::from_claude);
+    let parsed = reply.and_then(|v| v.get("structured_output").cloned());
     Ok((parsed, out))
 }
 
@@ -187,7 +202,7 @@ pub(crate) fn codex_review(
     let (schema_path, out_path) = (scratch.join("schema.json"), scratch.join("last.txt"));
     std::fs::write(&schema_path, schema)?;
     let mut cmd = Command::new(crate::resolve_program("codex"));
-    cmd.args(["exec", "--ephemeral", "-s", "read-only", "--color", "never"])
+    cmd.args(["exec", "--ephemeral", "-s", "read-only", "--color", "never", "--json"])
         .arg("--output-schema")
         .arg(&schema_path)
         .arg("-o")
@@ -196,6 +211,11 @@ pub(crate) fn codex_review(
         cmd.args(["-m", m]);
     }
     let out = run_limited(cmd, prompt, dir, limit)?;
+    let mut out = out;
+    out.usage = crate::usage::from_codex(
+        &out.stdout,
+        model.map(str::to_string).or_else(crate::usage::codex_default_model).as_deref(),
+    );
     let parsed = std::fs::read_to_string(&out_path).ok().and_then(|s| serde_json::from_str(&s).ok());
     Ok((parsed, out))
 }
@@ -219,5 +239,7 @@ pub(crate) fn opencode_review(
         .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
         .filter_map(|e| e.pointer("/part/text").and_then(|t| t.as_str()).map(str::to_string))
         .collect();
+    let mut out = out;
+    out.usage = crate::usage::from_opencode(&out.stdout, model.map(str::to_string));
     Ok((crate::prompt::extract_json(&text), out))
 }
