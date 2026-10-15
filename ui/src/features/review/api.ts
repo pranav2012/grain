@@ -44,7 +44,7 @@ export const reviewApi = {
     put<ThreadResolved>(`/api/reviews/${id}/threads/${thread}/resolved`, { resolved }),
   saveProgress: (id: string, progress: unknown) => put<null>(`/api/reviews/${id}/progress`, progress),
   review: (id: string) => request<Review>(`/api/reviews/${id}/files/review.json`),
-  /** Unified diff sections for just these files. */
+  /** Unified diff sections for these files, or the whole PR when `files` is empty. */
   diff: (id: string, files: string[], since?: string) =>
     serverFetch(`/api/reviews/${id}/diff`, {
       method: 'POST',
@@ -75,6 +75,6 @@ export function withReview(base: Omit<LoadedPr, 'review' | 'blocks'>, review: Re
     const chapter = (id: number, kind: 'area' | 'routine', title: string, ids: number[]) => ({ id, key: title, kind, title, entry: null, about: title, sections: [{ title: '', blocks: ids }] })
     return { flows: false, chapters: [blocks.length && chapter(1, 'area', 'All changes', blocks), review.skim.length && chapter(2, 'routine', 'Routine', review.skim)].filter((c) => !!c) }
   }
-  const r: Review = { ...review, links: review.links ?? [], story: review.story ?? legacy() }
+  const r: Review = { ...review, links: review.links ?? [], uses: review.uses ?? [], story: review.story ?? legacy() }
   return { ...base, review: r, blocks: new Map(r.blocks.map((b) => [b.id, b])) }
 }

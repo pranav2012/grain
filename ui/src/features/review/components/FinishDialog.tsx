@@ -6,27 +6,26 @@ import { Textarea } from '@/components/ui/Field'
 import type { ReviewEvent } from '@/types/generated/ReviewEvent'
 import type { SubmitResponse } from '@/types/generated/SubmitResponse'
 import { reviewApi } from '../api'
-import { blockTitle } from '../model/describe'
 import { kindLabel, modes } from '../model/modes'
 import { buildSubmission } from '../model/submission'
-import type { BlockState, LoadedPr, Mode, ReviewComment } from '../model/types'
+import type { LoadedPr, Mode, ReviewComment } from '../model/types'
 
 interface FinishDialogProps {
   data: LoadedPr
   mode: Mode
-  states: Record<number, BlockState>
+  viewed: number
+  total: number
   comments: ReviewComment[]
-  reviewable: number[]
   onPosted(ids: string[]): void
   onClose(): void
 }
 
 /** Builds the markdown handed to the author's coding agent from self-review notes. */
-function agentPrompt(data: LoadedPr, comments: ReviewComment[]): string {
+function agentPrompt(comments: ReviewComment[]): string {
   const lines = ['Please address these review notes on my current changes:', '']
   for (const c of comments) {
     const range = c.endLine && c.endLine !== c.line ? `-${c.endLine}` : ''
-    const where = c.file ? `${c.file}:${c.line}${range}` : blockTitle(data, data.blocks.get(c.blockId)!)
+    const where = c.file ? (c.line ? `${c.file}:${c.line}${range}` : c.file) : 'Whole change'
     lines.push(`- [${kindLabel[c.kind]}] ${where}: ${c.body || 'Replace these lines.'}`)
     if (c.suggestion !== undefined) lines.push('  Replace with:', '  ```', ...c.suggestion.split('\n').map((l) => `  ${l}`), '  ```')
   }
@@ -45,18 +44,17 @@ const postLabel: Record<ReviewEvent, string> = {
   REQUEST_CHANGES: 'Request changes on GitHub',
 }
 
-export function FinishDialog({ data, mode, states, comments, reviewable, onPosted, onClose }: FinishDialogProps) {
-  const reviewed = reviewable.filter((id) => states[id]).length
-  const changes = reviewable.filter((id) => states[id] === 'change').length
+export function FinishDialog({ data, mode, viewed, total, comments, onPosted, onClose }: FinishDialogProps) {
   const unposted = comments.filter((c) => !c.postedAt)
-  const [event, setEvent] = useState<ReviewEvent>(changes ? 'REQUEST_CHANGES' : reviewed === reviewable.length ? 'APPROVE' : 'COMMENT')
+  const changes = unposted.filter((c) => c.kind === 'change' || c.kind === 'fix').length
+  const [event, setEvent] = useState<ReviewEvent>(changes ? 'REQUEST_CHANGES' : viewed === total ? 'APPROVE' : 'COMMENT')
   const [overall, setOverall] = useState('')
   const [preview, setPreview] = useState<SubmitResponse | null>(null)
   const [posting, setPosting] = useState(false)
   const [posted, setPosted] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const left = reviewable.length - reviewed
+  const left = total - viewed
   const selfReview = mode === 'self'
   const effectiveEvent: ReviewEvent = selfReview ? 'COMMENT' : event
   const nothingToPost = !unposted.length && !overall.trim() && effectiveEvent === 'COMMENT'
@@ -91,9 +89,9 @@ export function FinishDialog({ data, mode, states, comments, reviewable, onPoste
   }
 
   const tally: [string | number, string, boolean?][] = [
-    [`${reviewed}/${reviewable.length}`, 'blocks reviewed'],
+    [`${viewed}/${total}`, 'files viewed'],
     [unposted.length, selfReview ? 'notes' : 'comments to post'],
-    [changes, selfReview ? 'blocks to fix' : 'changes requested', changes > 0],
+    [changes, selfReview ? 'fixes asked' : 'changes requested', changes > 0],
   ]
 
   if (posted !== null)
@@ -125,15 +123,15 @@ export function FinishDialog({ data, mode, states, comments, reviewable, onPoste
           </div>
         ))}
       </div>
-      {left > 0 && <p className="mb-3 leading-relaxed text-fg-subtle">{left} blocks are still unreviewed. You can finish now and come back to them later.</p>}
+      {left > 0 && <p className="mb-3 leading-relaxed text-fg-subtle">{left} {left === 1 ? 'file is' : 'files are'} not viewed yet. You can finish now and come back to them later.</p>}
       {selfReview ? (
         <>
           <p className="mb-3 leading-relaxed text-fg-subtle">
             {local
-              ? 'Hand your notes to your coding agent as one prompt. Once you fix them, Grain offers to refresh and keeps the blocks you already checked.'
+              ? 'Hand your notes to your coding agent as one prompt. Once you fix them, Grain offers to refresh and keeps the files you already viewed.'
               : 'Hand your notes to your coding agent as one prompt, or post them on the pull request as a comment.'}
           </p>
-          <Textarea readOnly value={unposted.length ? agentPrompt(data, unposted) : 'No notes yet. Add notes with c, or select lines in the diff.'} />
+          <Textarea readOnly value={unposted.length ? agentPrompt(unposted) : 'No notes yet. Add notes with c, or select lines in the diff.'} />
         </>
       ) : (
         <>
@@ -159,7 +157,7 @@ export function FinishDialog({ data, mode, states, comments, reviewable, onPoste
           <Button
             variant={local ? 'primary' : undefined}
             disabled={!unposted.length}
-            onClick={() => navigator.clipboard.writeText(agentPrompt(data, unposted)).then(() => setCopied(true))}
+            onClick={() => navigator.clipboard.writeText(agentPrompt(unposted)).then(() => setCopied(true))}
           >
             {copied ? 'Copied' : 'Copy prompt for agent'}
           </Button>

@@ -1,7 +1,6 @@
 import type { LineComment } from '@/types/generated/LineComment'
 import type { ReviewEvent } from '@/types/generated/ReviewEvent'
 import type { SubmitRequest } from '@/types/generated/SubmitRequest'
-import { blockTitle } from './describe'
 import { kindLabel } from './modes'
 import { suggestionBlock } from './suggestion'
 import type { LoadedPr, ReviewComment } from './types'
@@ -10,7 +9,7 @@ const prefix = (c: ReviewComment) => (c.kind === 'comment' || c.kind === 'note' 
 
 /**
  * One GitHub review from the reviewer's unposted comments: line comments are anchored to the
- * diff; notes on whole blocks go into the review text, grouped by block.
+ * diff; notes on whole files go into the review text, grouped by file.
  */
 export function buildSubmission(data: LoadedPr, comments: ReviewComment[], event: ReviewEvent, overall: string, dryRun: boolean): SubmitRequest {
   const unposted = comments.filter((c) => !c.postedAt)
@@ -25,11 +24,10 @@ export function buildSubmission(data: LoadedPr, comments: ReviewComment[], event
         .filter(Boolean)
         .join('\n\n'),
     }))
-  const byBlock = new Map<number, ReviewComment[]>()
-  for (const c of unposted.filter((c) => !c.file)) byBlock.set(c.blockId, [...(byBlock.get(c.blockId) ?? []), c])
-  const sections = [...byBlock].map(([id, cs]) => {
-    const b = data.blocks.get(id)
-    const title = b ? blockTitle(data, b) : 'Earlier version of this PR'
+  const byFile = new Map<string, ReviewComment[]>()
+  for (const c of unposted.filter((c) => !c.line)) byFile.set(c.file ?? '', [...(byFile.get(c.file ?? '') ?? []), c])
+  const sections = [...byFile].map(([file, cs]) => {
+    const title = file ? `\`${file}\`` : 'Whole change'
     return `**${title}**\n${cs.map((c) => `- ${prefix(c)}${c.body}`).join('\n')}`
   })
   const body = [overall.trim(), ...sections].filter(Boolean).join('\n\n')

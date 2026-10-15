@@ -14,14 +14,13 @@ export interface Peek {
 
 interface CodePeekProps {
   peek: Peek
-  /** Title of the change in this review that holds a block id, for "in this review" links. */
-  titleOf(blockId: number): string | undefined
-  onGo(blockId: number): void
+  /** Scrolls to a file changed in this PR. */
+  onJump(file: string): void
   onClose(): void
 }
 
 /** Inline box under a line: where a name is defined, or every place that uses it. */
-export function CodePeek({ peek, titleOf, onGo, onClose }: CodePeekProps) {
+export function CodePeek({ peek, onJump, onClose }: CodePeekProps) {
   const r = peek.result
   const what = peek.references ? 'References to' : 'Definition of'
   return (
@@ -48,7 +47,6 @@ export function CodePeek({ peek, titleOf, onGo, onClose }: CodePeekProps) {
           {r.results.map((loc) => {
             const lines = peek.references ? [loc.snippet[loc.line - loc.snippetStart] ?? ''] : loc.snippet
             const first = peek.references ? loc.line : loc.snippetStart
-            const title = loc.block != null ? titleOf(loc.block) : undefined
             return (
               <li key={`${loc.file}:${loc.line}`} className="border-b border-line last:border-0">
                 <div className="flex items-center gap-2 px-3 pt-1.5 text-xs">
@@ -56,7 +54,7 @@ export function CodePeek({ peek, titleOf, onGo, onClose }: CodePeekProps) {
                     {loc.file}:{loc.line}
                   </span>
                   {loc.block != null ? (
-                    <LinkButton className="ml-auto shrink-0 text-accent" onClick={() => onGo(loc.block!)} title={title}>
+                    <LinkButton className="ml-auto shrink-0 text-accent" onClick={() => onJump(loc.file)}>
                       in this review →
                     </LinkButton>
                   ) : (

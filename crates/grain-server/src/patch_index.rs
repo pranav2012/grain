@@ -46,8 +46,11 @@ impl PatchIndex {
         })
     }
 
-    /// Concatenated sections for `paths`, each file once, in the given order.
+    /// Concatenated sections for `paths`, each file once, in the given order; no paths means the whole patch.
     pub(crate) fn sections(&self, paths: &[String]) -> String {
+        if paths.is_empty() {
+            return self.text.clone();
+        }
         let mut seen = Vec::new();
         let mut out = String::new();
         for p in paths {

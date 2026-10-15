@@ -3,24 +3,24 @@ import { Button } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Kbd'
 import { Progress } from '@/components/ui/Progress'
 import { Segmented } from '@/components/ui/Segmented'
-import { formatMinutes, minutesFor } from '@/lib/format'
 import { modeOrder, modes } from '../model/modes'
-import type { LoadedPr, Mode } from '../model/types'
+import type { DiffStyle, LoadedPr, Mode } from '../model/types'
 
 interface TopBarProps {
   data: LoadedPr
   mode: Mode
   onMode(mode: Mode): void
-  progress: { done: number; total: number; okLines: number; changeLines: number; reviewLines: number }
+  viewed: number
+  total: number
+  diffStyle: DiffStyle
+  onDiffStyle(style: DiffStyle): void
   onSwitch(): void
   onPalette(): void
   onSettings(): void
   onFinish(): void
 }
 
-export function TopBar({ data, mode, onMode, progress, onSwitch, onPalette, onSettings, onFinish }: TopBarProps) {
-  const left = progress.reviewLines - progress.okLines - progress.changeLines
-  const frac = (n: number) => n / Math.max(progress.reviewLines, 1)
+export function TopBar({ data, mode, onMode, viewed, total, diffStyle, onDiffStyle, onSwitch, onPalette, onSettings, onFinish }: TopBarProps) {
   return (
     <header className="flex items-center gap-4 border-b border-line bg-canvas px-3.5 [grid-area:top]">
       <div className="flex items-center gap-1.5 text-md font-semibold tracking-[-0.01em]">
@@ -51,11 +51,20 @@ export function TopBar({ data, mode, onMode, progress, onSwitch, onPalette, onSe
         onChange={onMode}
         options={modeOrder.map((m) => [m, modes[m].label])}
       />
-      <div className="flex min-w-[150px] flex-col gap-1 text-xs text-fg-subtle">
+      <Segmented
+        label="Diff layout (s)"
+        value={diffStyle}
+        onChange={onDiffStyle}
+        options={[
+          ['unified', 'Unified'],
+          ['split', 'Split'],
+        ]}
+      />
+      <div className="flex min-w-[130px] flex-col gap-1 text-xs text-fg-subtle">
         <span>
-          {progress.done} of {progress.total} changes, {left > 0 ? `about ${formatMinutes(minutesFor(left))} left` : 'all read'}
+          {viewed} of {total} files viewed
         </span>
-        <Progress ok={frac(progress.okLines)} change={frac(progress.changeLines)} />
+        <Progress ok={viewed / Math.max(total, 1)} />
       </div>
       <Button onClick={onPalette}>
         Commands <Kbd>⌘K</Kbd>
