@@ -1,0 +1,34 @@
+---
+title: AI (optional)
+description: Use your own coding agent to explain changes and give a read-only second opinion, with a daily budget.
+---
+
+grain works fully without AI. Grouping, facts, checks and errors are all computed on your machine, and none of them use an AI model.
+
+If you have a coding agent installed, grain can use it as a helper. **You stay the reviewer:** the agent never marks a file viewed and never posts anything.
+
+## Turn it on
+
+Press `,` to open Settings, then pick **Claude Code**, **Codex** or **OpenCode**. grain runs your own installed CLI with your own login. It never reads, copies or stores your credentials.
+
+## What it does
+
+- **Chapter intros.** A short summary at the top of each flow, cached so the same code is never summarized twice.
+- **Explain and ask.** Select a few lines or a name and ask about it. The answer appears at that line, where you can ask follow-up questions. Any answer can become a comment.
+- **Second opinion.** When you open a PR, your agent can review it with grain's bundled review skill. It runs read-only in grain's own checkout of the PR. Its findings appear as quiet cards next to the lines they're about. Keep one and it becomes a draft comment, or dismiss it.
+
+## Cost and budget
+
+grain records what each AI request uses and shows it in a few places: today's spend in the top bar, the cost of each second opinion, and this month's spend per PR in Settings.
+
+- Claude Code reports its own cost. Costs for Codex and OpenCode are estimated from token counts and public prices from [models.dev](https://models.dev), fetched once a day. Nothing about you or your code is sent.
+- On a subscription, this number is usage, not a bill.
+- A **daily budget** (default $5) pauses AI for the rest of the day once you reach it.
+- To spend less, second opinions skip PRs that only have routine changes. They also ask first when a PR's estimated cost is a large share of your budget, and after new commits they only review the files that changed.
+
+## Models
+
+Settings has two model choices per agent. grain lists them live from the agent itself, so new models show up without a grain update:
+
+- **Second opinions and questions.** By default, the agent's own default model.
+- **Summaries.** By default, the newest of the cheapest models the agent offers, run at low effort.

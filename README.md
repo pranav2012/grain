@@ -111,6 +111,6 @@ pnpm --dir ui dev --port 5174        # UI with hot reload, proxies /api to :7420
 
 ## Layout
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the crate map, UI structure and the rules the checks enforce, and [CONTRIBUTING.md](CONTRIBUTING.md) for setup and conventions.
+The website and docs live in [`website/`](website/). See [ARCHITECTURE.md](ARCHITECTURE.md) for the crate map, UI structure and the rules the checks enforce, and [CONTRIBUTING.md](CONTRIBUTING.md) for setup and conventions.
 
 Data lives in `~/.grain` (set `GRAIN_HOME` to change it): read-only partial clones, worktrees, prepared reviews, summary cache and settings.

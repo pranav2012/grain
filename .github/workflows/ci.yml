@@ -1,9 +1,12 @@
 name: CI
 
+# Website-only changes skip all of this (website.yml handles them).
 on:
   push:
     branches: [main]
+    paths-ignore: ['website/**', '.github/workflows/website.yml']
   pull_request:
+    paths-ignore: ['website/**', '.github/workflows/website.yml']
 
 permissions:
   contents: read
@@ -96,7 +99,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           scripts/set-version.sh "$VERSION"
-          git cliff --unreleased --tag "v$VERSION" --prepend CHANGELOG.md
+          git cliff --unreleased --exclude-path "website/**" --tag "v$VERSION" --prepend CHANGELOG.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "chore(release): v$VERSION"

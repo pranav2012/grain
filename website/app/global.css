@@ -1,0 +1,114 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@theme {
+  --color-fd-primary: #047857;
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-ring: #047857;
+}
+
+.dark {
+  --color-fd-background: #0e1311;
+  --color-fd-card: #141a17;
+  --color-fd-popover: #111714;
+  --color-fd-muted: #18201c;
+  --color-fd-secondary: #18201c;
+  --color-fd-accent: #1c2622;
+  --color-fd-border: #26302c;
+  --color-fd-primary: #10b981;
+  --color-fd-primary-foreground: #04140e;
+  --color-fd-ring: #10b981;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.logo-bar {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: grow-x 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.logo-spine {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: draw 0.6s ease-out 0.15s forwards;
+}
+
+.animate-glow {
+  animation: glow-pulse 5s ease-in-out infinite;
+}
+
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+[data-reveal='visible'] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+  .logo-spine {
+    stroke-dashoffset: 0;
+  }
+}

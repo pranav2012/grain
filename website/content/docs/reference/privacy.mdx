@@ -1,0 +1,26 @@
+---
+title: Privacy and data
+description: What grain stores, what it sends, and what it never touches.
+---
+
+grain runs entirely on your machine. There is no grain server and no account.
+
+## What grain talks to
+
+- **GitHub,** through your own `gh` login, to read PRs and post the reviews you submit.
+- **npm,** once, to download TypeScript 7's language server (checksum-verified), and only if you review TypeScript or JavaScript.
+- **models.dev,** once a day, for public model prices, and only if you've turned on AI. Nothing about you or your code is sent.
+- **Your coding agent,** only if you've turned on AI. grain runs your own installed CLI (Claude Code, Codex or OpenCode) read-only.
+
+## What grain never does
+
+- Read, copy, store or forward credentials. That includes GitHub tokens, `~/.claude*`, `~/.codex/auth.json` and your keychain.
+- Run code from the PR's branch. Type checks and lint use your own clone's installed packages and config.
+- Change your repository. Self-review snapshots your working tree with its own private index.
+- Post anything you didn't submit. AI findings stay as cards until you keep one and submit your review.
+
+## What grain stores
+
+Everything is under `~/.grain` (or `GRAIN_HOME`): read-only partial clones, worktrees, prepared reviews, your progress and draft comments, the summary cache, settings, and the AI usage ledger. `grain clean` removes old checkouts.
+
+For the details of how grain uses AI subscriptions within each provider's terms, see [COMPLIANCE.md](https://github.com/pranav2012/grain/blob/main/docs/COMPLIANCE.md).

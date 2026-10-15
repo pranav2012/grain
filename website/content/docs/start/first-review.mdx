@@ -1,0 +1,44 @@
+---
+title: Your first review
+description: Open a pull request in grain, self-review your branch, and stop grain when you're done.
+---
+
+## Open grain
+
+```bash
+grain                       # opens http://grain.localhost:7420
+grain owner/repo#123        # straight to a PR
+grain .                     # self-review your branch plus uncommitted and new files
+```
+
+You can also pass a PR link or `owner/repo/123`. The home page lists the PRs waiting for your review, and `⌘O` opens any other one.
+
+`grain` starts in the background and gives you your terminal back. Its log is in `~/.grain/logs/grain.log`.
+
+## Read the PR
+
+The PR opens on one page, in story order:
+
+1. **Flows.** One chapter per page or screen the PR changes, starting from the entry point and following the calls.
+2. **Also changed.** Changed code that no flow reaches, grouped by area.
+3. **Routine.** Lockfiles, generated files and moves, for a quick skim.
+
+Use `j` and `k` to move between files, and `v` to mark a file viewed and jump to the next one. [How grain orders a PR](/docs/guides/ordering) explains the grouping in detail.
+
+## Comment and submit
+
+Click or drag across line numbers to comment. Comments stay as drafts until you finish the review with `Shift Enter`, which posts them to GitHub in a single review.
+
+## Self-review
+
+`grain .` reviews your current branch against the default branch, including uncommitted and new files. It doesn't change your repository: grain records your working tree as a commit object using its own index, so your branch, staging area and files stay untouched. When you edit files, the review offers to refresh and keeps the blocks you already checked.
+
+## Stopping
+
+```bash
+grain status     # is it running, and where
+grain logs -f    # follow the log
+grain stop       # stop it
+```
+
+grain stops by itself 30 minutes after the last tab closes, once no background work is running. Unsent comments and progress are saved first. On macOS and Linux, the first run also lets the system start grain on demand, so opening a grain tab starts it again. See [Commands](/docs/reference/commands) to change or turn off either behavior.

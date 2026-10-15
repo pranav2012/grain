@@ -1,0 +1,33 @@
+---
+title: Commands
+description: Every grain command and environment variable.
+---
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `grain` | Start grain in the background and open it |
+| `grain <pr>` | Open a PR: a link, `owner/repo#123` or `owner/repo/123` |
+| `grain .` | Self-review the current branch, including uncommitted and new files |
+| `grain doctor` | Check that everything grain needs is installed and signed in (`--json` for machine output) |
+| `grain status` | Whether grain is running, and where |
+| `grain logs` | Show the background server's log (`-f` to follow) |
+| `grain stop` | Stop the background server |
+| `grain serve` | Run the server in this terminal, logging here |
+| `grain service install` / `uninstall` | Start grain on demand when a grain tab opens (macOS launchd, Linux systemd) |
+| `grain domain` | Serve grain at `http://grain.localhost` without a port (asks for your password once; `--remove` undoes it) |
+| `grain clean` | Remove checkouts of merged or closed PRs, and of PRs not opened for 14 days (`--all` removes every checkout and clone, but keeps notes and settings) |
+| `grain analyze <repo> <base> <head>` | Print the engine's grouping for a git range (`--json`, `--fast`, `--typescript`) |
+
+Global flags: `--port <n>` (default `7420`) and `--no-open` (don't open the browser).
+
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `GRAIN_HOME` | Where grain keeps its data (default `~/.grain`) |
+| `GRAIN_PORT` | Port for the local server (default `7420`) |
+| `GRAIN_IDLE_MINUTES` | Minutes to wait after the last tab closes before stopping (default `30`; `0` keeps grain running) |
+| `GRAIN_NO_SERVICE` | Set to `1` to skip registering grain to start on demand |
+| `GRAIN_LOG` | Log level (default `info`) |

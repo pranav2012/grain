@@ -1,0 +1,18 @@
+---
+title: Errors and lint
+description: Type errors and lint findings underlined on the lines a PR changed, like in your editor.
+---
+
+grain shows errors the way an editor does, so you don't miss any:
+
+- **Type errors** from TypeScript 7.
+- **Lint findings** from your project's ESLint or oxlint, using the project's own config.
+- **Failing CI annotations** from the PR's checks.
+
+Each one is underlined on the line and explained in a row just below it. Files with errors get a badge, and the outline shows a dot next to them.
+
+## What grain needs
+
+Type and lint checks need your own clone of the repository, with its packages installed. grain borrows those packages and your clone's lint config. Nothing from the PR's branch runs on your machine.
+
+Add the folders where you keep your projects under **Work folders** in Settings, and grain finds the clone for you. You can also pick the folder yourself. Without a clone, you still see CI annotations.

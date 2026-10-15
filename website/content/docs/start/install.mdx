@@ -1,0 +1,93 @@
+---
+title: Install
+description: Install grain with Homebrew, the shell installer, or any JavaScript package manager.
+---
+
+grain is a single binary. Pick whichever installer you already use.
+
+<Tabs groupId="pm" persist items={['Homebrew', 'curl', 'npm', 'pnpm', 'yarn', 'bun', 'Windows']}>
+<Tab value="Homebrew">
+
+```bash
+brew install pranav2012/tap/grain
+```
+
+</Tab>
+<Tab value="curl">
+
+macOS and Linux:
+
+```bash
+curl -LsSf https://github.com/pranav2012/grain/releases/latest/download/grain-installer.sh | sh
+```
+
+</Tab>
+<Tab value="npm">
+
+```bash
+npm i -g grain-ci
+```
+
+</Tab>
+<Tab value="pnpm">
+
+```bash
+pnpm add -g grain-ci
+```
+
+</Tab>
+<Tab value="yarn">
+
+Yarn 1 (on Yarn 2+, use `yarn dlx grain-ci`):
+
+```bash
+yarn global add grain-ci
+```
+
+</Tab>
+<Tab value="bun">
+
+```bash
+bun add -g grain-ci
+```
+
+</Tab>
+<Tab value="Windows">
+
+Not tested yet:
+
+```powershell
+powershell -c "irm https://github.com/pranav2012/grain/releases/latest/download/grain-installer.ps1 | iex"
+```
+
+</Tab>
+</Tabs>
+
+The npm package is called `grain-ci`, and the command it installs is `grain`.
+
+<Callout title="pnpm and bun">
+pnpm and bun skip install scripts, so grain downloads its binary the first time you run `grain`. To download it at install time instead, use `pnpm add -g --allow-build=grain-ci grain-ci` or `bun add -g --trust grain-ci`.
+</Callout>
+
+## Try it without installing
+
+```bash
+npx grain-ci        # or: pnpm dlx grain-ci, yarn dlx grain-ci, bunx grain-ci
+```
+
+## Check your setup
+
+grain needs `git` and the GitHub CLI, signed in (`gh auth login`). `grain doctor` tells you exactly what's missing and how to fix it:
+
+```bash
+grain doctor
+```
+
+## Build from source
+
+```bash
+pnpm --dir ui install && pnpm --dir ui build   # build the UI (it's embedded into the binary)
+cargo run --release -p grain                   # opens http://grain.localhost:7420
+```
+
+Next: [your first review](/docs/start/first-review).

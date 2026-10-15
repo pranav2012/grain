@@ -1,0 +1,26 @@
+---
+title: How grain orders a PR
+description: How grain turns a diff into user-flow chapters, and why the order is always the same.
+---
+
+GitHub lists a pull request's files alphabetically. That order says nothing about how the code runs, so you end up jumping around to piece the change together. grain orders the PR by how a user would hit it instead.
+
+## Chapters
+
+- **One chapter per user flow.** grain finds the entry points the PR touches, such as routes, pages and screens. For each one, it follows calls and component usage to the changed code that entry point runs. That code is shown in call order, split into sections by component.
+- **Each file is shown once,** in the first flow that uses it, so you never review the same file twice.
+- **Other screens** and **preview and dev pages** get their own chapters, so they don't crowd out the main flows.
+- **Also changed** collects changed code that no flow reaches, grouped by area of the codebase.
+- **Routine** comes last: lockfiles, generated files and pure moves.
+
+The outline on the left lists every chapter and file, stays fully expanded and follows your scroll.
+
+## Languages
+
+Flows are most precise for TypeScript and JavaScript. grain uses TypeScript 7's language server, which it downloads once from npm (about 27 MB, checksum-verified) the first time it's needed. It recognizes routes and pages in frameworks like Next.js and React Router.
+
+For other languages, grain uses its own code graph and groups changes by dependency instead.
+
+## The same PR always gives the same review
+
+The grouping is deterministic: it doesn't use AI, and opening the same commit twice gives exactly the same order. That way, your Viewed marks and notes stay where you left them.
