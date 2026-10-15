@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://grain.pages.dev'),
+  metadataBase: new URL('https://grain.pranav-agarwal.com'),
   title: { default: 'grain: review PRs as user flows', template: '%s | grain' },
   description: 'Review pull requests as user flows, not file lists. Runs on your machine.',
   icons: { icon: '/favicon.svg', apple: '/apple-touch-icon.png' },

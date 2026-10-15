@@ -1,0 +1,9 @@
+# The grain website: the static Next.js export in out/, served as Worker static assets. Deployed by Workers Builds (root directory: website). See README.md.
+name = "grain-site"
+compatibility_date = "2026-10-01"
+workers_dev = false
+routes = [{ pattern = "grain.pranav-agarwal.com", custom_domain = true }]
+
+[assets]
+directory = "./out"
+not_found_handling = "404-page"

@@ -1,11 +1,8 @@
-# Builds the website on PRs that touch website/, and deploys it to Cloudflare Pages on pushes to main.
-# Grain code changes alone never run this; ci.yml skips website-only changes.
+# Builds the website on PRs that touch website/, so a broken site is caught before merge.
+# Deploys happen on Cloudflare (Workers Builds, from main); see website/README.md.
 name: Website
 
 on:
-  push:
-    branches: [main]
-    paths: ['website/**', '.github/workflows/website.yml']
   pull_request:
     paths: ['website/**', '.github/workflows/website.yml']
 
@@ -18,8 +15,8 @@ concurrency:
 
 jobs:
   website:
-    # Only this repository's own pushes and PRs run; forks and PRs from forks never do.
-    if: github.repository == 'pranav2012/grain' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    # Only this repository's own PRs run; PRs from forks never do.
+    if: github.repository == 'pranav2012/grain' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -35,10 +32,5 @@ jobs:
           cache: pnpm
           cache-dependency-path: website/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      - run: pnpm types:check
       - run: pnpm build
-      - name: Deploy to Cloudflare Pages
-        if: github.event_name == 'push'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm dlx wrangler@4 pages deploy out --project-name=grain --branch=main --commit-hash="$GITHUB_SHA"

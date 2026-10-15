@@ -1,2 +1,5 @@
+# Own install root: keeps the site out of the rest of the repo and gives it its own lockfile.
+minimumReleaseAge: 2880
 allowBuilds:
-  esbuild: false
+  esbuild: true
+  workerd: true
