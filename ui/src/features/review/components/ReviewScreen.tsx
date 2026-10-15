@@ -19,12 +19,12 @@ import { modeOrder, modes } from '../model/modes'
 import { allProblems, changedLines, problemsByFile, type FileProblems } from '../model/problems'
 import { findingKey, rowFor } from '../model/findings'
 import { chaptersFor, ownedBlocks } from '../model/story'
-import type { Ask, LineThread, LoadedPr, Mode, ReviewComment } from '../model/types'
+import type { Ask, LineThread, LoadedPr, Mode, ReviewComment, Side } from '../model/types'
 import type { Finding } from '@/types/generated/Finding'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
 import { FileCard, type NewComment, type ThreadAnchor } from './FileCard'
-import { FindingsRail } from './FindingsRail'
+import { CommentsRail } from './CommentsRail'
 import { CodeModal, type CodeLocation } from './CodeModal'
 import { FinishDialog } from './FinishDialog'
 import { KeyHints } from './KeyHints'
@@ -193,7 +193,10 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     for (const f of findings) map.set(f.file, [...(map.get(f.file) ?? []), f.line])
     return map
   }, [findings])
-  const showRail = !!agentName && (reviewing || !!ai) && !railHidden
+  const aiShown = !!agentName && (reviewing || !!ai)
+  const drafts = state.comments.filter((c) => c.file && !c.postedAt).length
+  const commentCount = (conversation?.threads.length ?? 0) + drafts
+  const showRail = !railHidden && (aiShown || commentCount > 0)
   const findingAt = useRef(-1)
   const revealFinding = (f: Finding) => {
     findingAt.current = findings.indexOf(f)
@@ -220,6 +223,11 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const revealLine = (file: string, line: number) => {
     setCollapsed((c) => ({ ...c, [file]: false }))
     requestAnimationFrame(() => page.current?.reveal(file, (section) => rowFor(section, line)))
+  }
+  const revealComment = (file: string, line: number | null, side: Side) => {
+    setCollapsed((c) => ({ ...c, [file]: false }))
+    const row = (section: Element) => (line === null ? section.querySelector<HTMLElement>('header') : rowFor(section, line, side))
+    requestAnimationFrame(() => page.current?.reveal(file, row))
   }
   const githubUrl = useMemo(() => {
     if (!data.pr || data.pr.local) return undefined
@@ -283,7 +291,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     e: nextProblem,
     n: () => stepFinding(1),
     p: () => stepFinding(-1),
-    a: () => agentName && setRailHidden((h) => !h),
+    a: () => (aiShown || commentCount > 0) && setRailHidden((h) => !h),
     s: toggleDiffStyle,
     m: () => ownedFiles.size && toggleMineFirst(),
     '1': () => setMode('self'),
@@ -376,10 +384,12 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           problems={
             <>
               <ProblemsPill problems={shownProblems} report={report} diagnosing={diagnosing} onNext={nextProblem} onChooseClone={chooseClone} />
-              {agentName && (reviewing || ai) && (
-                <Button size="sm" variant="ghost" aria-pressed={!railHidden} title="Show or hide the second opinion (a)" onClick={() => setRailHidden((h) => !h)} className="whitespace-nowrap">
-                  <span className="text-2xs font-semibold text-accent">AI</span>
-                  {reviewing && !ai ? 'reviewing…' : `${findings.filter((f) => !state.ai?.[findingKey(f)]).length} to check`}
+              {(aiShown || commentCount > 0) && (
+                <Button size="sm" variant="ghost" aria-pressed={!railHidden} title="Show or hide the comments column (a)" onClick={() => setRailHidden((h) => !h)} className="whitespace-nowrap">
+                  {aiShown && <span className="text-2xs font-semibold text-accent">AI</span>}
+                  {aiShown && (reviewing && !ai ? 'reviewing…' : `${findings.filter((f) => !state.ai?.[findingKey(f)]).length} to check`)}
+                  {aiShown && commentCount > 0 && <span className="text-fg-faint">·</span>}
+                  {commentCount > 0 && `${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}`}
                 </Button>
               )}
               {agentName && status && <SpendChip spend={status.spend} />}
@@ -406,16 +416,18 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
           />
         )}
         {showRail && (
-          <FindingsRail
-            review={ai}
+          <CommentsRail
+            review={agentName ? ai : undefined}
             reviewing={reviewing}
             agentName={agentName ?? ''}
             calls={state.ai ?? {}}
+            threads={conversation?.threads ?? []}
+            comments={state.comments}
             scroller={scroller}
             onKeep={keepFinding}
             onDismiss={(f) => dispatch({ type: 'ai', key: findingKey(f), call: 'dismissed' })}
             onUndo={undoFinding}
-            onReveal={revealFinding}
+            onReveal={revealComment}
             onRetry={rereview}
           />
         )}
