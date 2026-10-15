@@ -58,6 +58,8 @@ pub struct Options {
     pub ui_dir: Option<PathBuf>,
     /// Identifies this binary (see `/api/version`).
     pub build: String,
+    /// A socket already listening on `port`, handed over by the OS when it started Grain on demand.
+    pub listener: Option<std::net::TcpListener>,
 }
 
 /// Binds to localhost and serves until the process exits. `on_ready` receives the base URL.
@@ -74,7 +76,13 @@ pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
         }
         None => routes::router(app).fallback(ui::embedded),
     };
-    let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], opts.port))).await?;
+    let listener = match opts.listener {
+        Some(l) => {
+            l.set_nonblocking(true)?;
+            tokio::net::TcpListener::from_std(l)?
+        }
+        None => tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], opts.port))).await?,
+    };
     on_ready(&format!("http://localhost:{}", opts.port));
     axum::serve(listener, router).await?;
     Ok(())

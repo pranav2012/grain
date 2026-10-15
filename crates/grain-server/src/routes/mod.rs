@@ -17,13 +17,13 @@ async fn version(State(app): State<Shared>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "build": app.build }))
 }
 
-/// Exits the server right after answering; only for the `grain` CLI replacing an older build.
+/// Exits the server right after answering; only for the `grain` CLI (`grain stop`, or replacing an older build).
 /// Web pages can't send the custom header without a CORS preflight, which this server never grants.
 async fn shutdown(headers: HeaderMap) -> StatusCode {
     if headers.get("x-grain-cli").is_none() {
         return StatusCode::FORBIDDEN;
     }
-    tracing::info!("a newer grain is taking over this port; exiting");
+    tracing::info!("asked to stop by the grain command; exiting");
     std::thread::spawn(|| {
         std::thread::sleep(std::time::Duration::from_millis(200));
         std::process::exit(0);

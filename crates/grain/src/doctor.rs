@@ -198,10 +198,15 @@ pub(crate) fn running_build(port: u16) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(body).ok()?["build"].as_str().map(str::to_string)
 }
 
+/// Asks the Grain on `port` to stop; true when it agreed.
+pub(crate) fn ask_to_stop(port: u16) -> bool {
+    let request = "POST /api/shutdown HTTP/1.0\r\nHost: localhost\r\nx-grain-cli: 1\r\nContent-Length: 0\r\n\r\n";
+    local_http(port, request).is_some_and(|r| r.starts_with("HTTP/1.0 202") || r.starts_with("HTTP/1.1 202"))
+}
+
 /// Asks the Grain on `port` to stop and waits for the port to free up.
 pub(crate) fn replace_running(port: u16) -> bool {
-    let request = "POST /api/shutdown HTTP/1.0\r\nHost: localhost\r\nx-grain-cli: 1\r\nContent-Length: 0\r\n\r\n";
-    if !local_http(port, request).is_some_and(|r| r.starts_with("HTTP/1.0 202") || r.starts_with("HTTP/1.1 202")) {
+    if !ask_to_stop(port) {
         return false;
     }
     (0..50).any(|_| {

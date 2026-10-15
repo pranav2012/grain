@@ -2,6 +2,7 @@
 
 mod daemon;
 mod doctor;
+mod service;
 
 use std::path::PathBuf;
 
@@ -29,9 +30,26 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+enum ServiceAction {
+    /// Register with the OS (macOS launchd, Linux systemd) so opening a Grain tab starts Grain.
+    Install,
+    /// Stop starting on demand.
+    Uninstall,
+}
+
+#[derive(Subcommand)]
 enum Command {
     /// Run the server in this terminal, logging here (`grain` runs it in the background).
-    Serve,
+    Serve {
+        /// Started on demand by the OS, which passes the listening socket as standard input.
+        #[arg(long, hide = true)]
+        activated: bool,
+    },
+    /// Start Grain on demand: the OS listens on the port and starts Grain when a page opens.
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
     /// Stop the Grain running in the background.
     Stop,
     /// Show the background server's log.
@@ -87,11 +105,29 @@ fn build_id() -> String {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Some(Command::Serve) => return serve(cli.port).await,
+        Some(Command::Serve { activated }) => return serve(cli.port, activated).await,
+        Some(Command::Service { action }) => {
+            match action {
+                ServiceAction::Install => {
+                    service::install(&std::env::current_exe()?, cli.port, &daemon::log_path())?;
+                    println!("Grain now starts by itself when you open http://localhost:{}.", cli.port);
+                }
+                ServiceAction::Uninstall => {
+                    service::uninstall(cli.port)?;
+                    println!("Removed. Run `grain` to start Grain from now on.");
+                }
+            }
+            return Ok(());
+        }
         Some(Command::Stop) => {
-            if !doctor::grain_is_listening(cli.port) {
+            let asleep = service::installed(cli.port).is_some() && !service::is_running(cli.port);
+            if asleep || !doctor::grain_is_listening(cli.port) {
                 println!("Grain isn't running on port {}.", cli.port);
-            } else if doctor::replace_running(cli.port) {
+            } else if if service::installed(cli.port).is_some() {
+                stop_activated(cli.port)
+            } else {
+                doctor::replace_running(cli.port)
+            } {
                 println!("Stopped Grain. Your review progress is saved.");
             } else {
                 println!("Grain on port {} didn't stop. See `grain logs`.", cli.port);
@@ -101,14 +137,20 @@ async fn main() -> Result<()> {
         }
         Some(Command::Logs { follow }) => return daemon::print_logs(follow),
         Some(Command::Status) => {
-            match doctor::running_build(cli.port) {
+            let asleep = service::installed(cli.port).is_some() && !service::is_running(cli.port);
+            match if asleep { None } else { doctor::running_build(cli.port) } {
                 Some(build) => println!("Grain {build} is running at http://localhost:{}", cli.port),
-                None if doctor::grain_is_listening(cli.port) => {
+                None if !asleep && doctor::grain_is_listening(cli.port) => {
                     println!("An older Grain is running at http://localhost:{}", cli.port);
                 }
+                None if asleep => println!("Grain is stopped; it starts when you open http://localhost:{}", cli.port),
                 None => println!("Grain isn't running. Start it with `grain`."),
             }
             println!("Log: {}", daemon::log_path().display());
+            match service::installed(cli.port) {
+                Some(f) => println!("Starts on demand ({}); undo with `grain service uninstall`.", f.display()),
+                None => println!("Doesn't start on demand; `grain service install` turns that on."),
+            }
             return Ok(());
         }
         Some(Command::Analyze { repo, base, head, json, fast, typescript }) => {
@@ -165,46 +207,94 @@ async fn main() -> Result<()> {
         None => None,
     };
     let path = open_pr.as_ref().map(|p| format!("/?pr={}/{}", p.full_repo(), p.number)).unwrap_or_default();
-    // Grain is already running: hand it the review if it's this same build; replace an older
-    // build so its outdated server never serves this build's UI.
     let build = build_id();
-    if doctor::grain_is_listening(cli.port) {
-        if doctor::running_build(cli.port).as_deref() == Some(build.as_str()) {
-            let url = format!("http://localhost:{}{path}", cli.port);
-            println!("Grain is already running at {url}");
-            if !cli.no_open {
-                let _ = open::that_detached(&url);
-            }
-            return Ok(());
-        }
-        println!("Replacing the older Grain running on port {}…", cli.port);
-        if !doctor::replace_running(cli.port) {
-            println!(
-                "An older Grain is still running on port {} and can't be stopped from here. Stop it (Ctrl+C in its terminal), then run grain again.",
-                cli.port
-            );
-            std::process::exit(1);
-        }
-    }
-    daemon::start(cli.port)?;
     let url = format!("http://localhost:{}{path}", cli.port);
-    println!("Grain is running at {url}  (stop it with `grain stop`, logs: `grain logs`)");
+    if on_demand(cli.port, &build)? {
+        println!("Grain is running at {url}  (stop it with `grain stop`, logs: `grain logs`)");
+    } else {
+        // Grain is already running: hand it the review if it's this same build; replace an older
+        // build so its outdated server never serves this build's UI.
+        let running = doctor::grain_is_listening(cli.port);
+        if running && doctor::running_build(cli.port).as_deref() != Some(build.as_str()) {
+            println!("Replacing the older Grain running on port {}…", cli.port);
+            if !doctor::replace_running(cli.port) {
+                println!(
+                    "An older Grain is still running on port {} and can't be stopped from here. Stop it (Ctrl+C in its terminal), then run grain again.",
+                    cli.port
+                );
+                std::process::exit(1);
+            }
+        }
+        if !running || doctor::running_build(cli.port).as_deref() != Some(build.as_str()) {
+            daemon::start(cli.port)?;
+        }
+        println!("Grain is running at {url}  (stop it with `grain stop`, logs: `grain logs`)");
+    }
     if !cli.no_open {
         let _ = open::that_detached(&url);
     }
     Ok(())
 }
 
+/// Stops a Grain the OS started; the port stays with the OS, so this waits for the process to exit.
+fn stop_activated(port: u16) -> bool {
+    doctor::ask_to_stop(port)
+        && (0..60).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            !service::is_running(port)
+        })
+}
+
+/// Makes sure the OS starts this build of Grain on demand, then wakes it. False when on-demand start
+/// isn't available here (Windows, or `GRAIN_NO_SERVICE` set), so the caller starts Grain itself.
+#[allow(clippy::print_stdout, reason = "the CLI's output")]
+fn on_demand(port: u16, build: &str) -> Result<bool> {
+    if std::env::var_os("GRAIN_NO_SERVICE").is_some() || !cfg!(any(target_os = "macos", target_os = "linux")) {
+        return Ok(false);
+    }
+    let first_time = service::installed(port).is_none();
+    // A Grain started the old way holds the port; stop it so the OS can listen there.
+    if first_time && doctor::grain_is_listening(port) && !doctor::replace_running(port) {
+        return Ok(false);
+    }
+    let exe = std::env::current_exe()?;
+    if let Err(e) = service::install(&exe, port, &daemon::log_path()) {
+        tracing::warn!(error = %format!("{e:#}"), "couldn't set up on-demand start");
+        return Ok(false);
+    }
+    if first_time {
+        println!("Grain now starts by itself when you open it (undo with `grain service uninstall`).");
+    }
+    // Connecting starts it; an older build still running is asked to stop so the next connection starts this one.
+    let started = std::time::Instant::now();
+    let mut asked = false;
+    while started.elapsed() < std::time::Duration::from_secs(20) {
+        match doctor::running_build(port) {
+            Some(b) if b == build => return Ok(true),
+            Some(_) if !asked => {
+                doctor::ask_to_stop(port);
+                asked = true;
+            }
+            _ => {}
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+    anyhow::bail!("Grain didn't start within 20 seconds. Last log lines:\n{}", daemon::tail(&daemon::log_path(), 15))
+}
+
 /// Runs the server in this process until it's asked to stop.
 #[allow(clippy::print_stdout, reason = "the CLI's output")]
-async fn serve(port: u16) -> Result<()> {
+async fn serve(port: u16, activated: bool) -> Result<()> {
     use std::io::IsTerminal;
+    // When the OS starts Grain, standard output may be the socket itself: log to standard error only.
     tracing_subscriber::fmt()
-        .with_ansi(std::io::stdout().is_terminal())
+        .with_writer(std::io::stderr)
+        .with_ansi(std::io::stderr().is_terminal())
         .with_env_filter(std::env::var("GRAIN_LOG").unwrap_or_else(|_| "info".into()))
         .init();
+    let listener = if activated { Some(service::inherited_listener()?) } else { None };
     // GRAIN_UI_DIR serves a UI folder from disk instead of the embedded one (UI development).
     let ui_dir = std::env::var_os("GRAIN_UI_DIR").map(PathBuf::from);
-    let opts = grain_server::Options { port, ui_dir, build: build_id() };
-    grain_server::serve(opts, |base| println!("Grain is running at {base}")).await
+    let opts = grain_server::Options { port, ui_dir, build: build_id(), listener };
+    grain_server::serve(opts, |base| tracing::info!("Grain is running at {base}")).await
 }

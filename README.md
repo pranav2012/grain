@@ -29,7 +29,7 @@ grain .                     # self-review your branch plus uncommitted and new f
 grain stop                  # stop it (also: grain status, grain logs -f)
 ```
 
-`grain` starts Grain in the background and gives your terminal back; its log is in `~/.grain/logs/grain.log`.
+`grain` starts Grain in the background and gives your terminal back; its log is in `~/.grain/logs/grain.log`. On macOS and Linux the first run also lets the system start Grain on demand (a launchd agent or systemd user socket on port 7420): opening or refreshing a Grain tab starts it again, and a stopped Grain uses nothing. `grain service uninstall` turns that off; `GRAIN_NO_SERVICE=1` skips it.
 
 Self-review reads your repository without changing it: Grain records your working tree as a commit object using its own index, so your branch, staging area and files stay untouched. When you edit files, the review offers to refresh and keeps the blocks you already checked.
 
