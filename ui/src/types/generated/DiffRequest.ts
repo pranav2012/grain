@@ -2,7 +2,7 @@
 
 export type DiffRequest = { 
 /**
- * Paths (old or new) whose diff sections to return.
+ * Paths (old or new) whose diff sections to return; empty for the whole PR.
  */
 files: Array<string>, 
 /**

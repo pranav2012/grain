@@ -25,6 +25,8 @@ formula = "grain"
 # `grain` is taken on npm; the installed command is `grain` regardless.
 npm-package = "grain-ci"
 publish-jobs = ["homebrew", "npm"]
+# Also attach grain-<version>-source.tar.gz (source + built UI), which builds with only Rust.
+global-artifacts-jobs = ["./source-tarball"]
 # The UI is embedded in the binary, so build it before every target's Rust build.
 github-build-setup = "../build-setup.yml"
 # Never run the release workflow on pull requests (including from forks); only on pushed tags.

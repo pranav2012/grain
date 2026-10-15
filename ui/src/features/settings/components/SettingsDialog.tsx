@@ -4,10 +4,13 @@ import { Choice, ChoiceGroup } from '@/components/ui/Choice'
 import { Dialog, DialogActions, DialogTitle } from '@/components/ui/Dialog'
 import { Input } from '@/components/ui/Field'
 import { SectionLabel } from '@/components/ui/SectionLabel'
+import { usd } from '@/lib/format'
 import { pickFolder } from '@/lib/pick-folder'
 import type { Agent } from '@/types/generated/Agent'
 import type { Settings } from '@/types/generated/Settings'
+import type { UsageReport } from '@/types/generated/UsageReport'
 import { settingsApi } from '../api'
+import { ModelPicker } from './ModelPicker'
 
 const agents: [Agent | null, string, string][] = [
   [null, 'No AI', 'Grain describes each block from the code and runs its own checks. Nothing is sent anywhere.'],
@@ -19,10 +22,12 @@ const agents: [Agent | null, string, string][] = [
 export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(s: Settings): void }) {
   const [s, setS] = useState<Settings | null>(null)
   const [installed, setInstalled] = useState<Agent[]>([])
+  const [usage, setUsage] = useState<UsageReport | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     settingsApi.get().then(setS, (e: Error) => setError(e.message))
     settingsApi.me().then((m) => setInstalled(m.agentsInstalled), () => {})
+    settingsApi.usage().then(setUsage, () => {})
   }, [])
   const addWorkFolder = () =>
     pickFolder('Choose a folder where you keep your code').then(
@@ -55,13 +60,22 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
                   key={label}
                   checked={s.agent === id}
                   disabled={missing}
-                  onSelect={() => setS({ ...s, agent: id })}
+                  onSelect={() => setS(s.agent === id ? s : { ...s, agent: id, reviewModel: null, summaryModel: null })}
                   label={label}
                   help={missing ? 'Not installed on this machine.' : help}
                 />
               )
             })}
           </ChoiceGroup>
+          {s.agent && (
+            <ModelPicker
+              key={s.agent}
+              agent={s.agent}
+              reviewModel={s.reviewModel}
+              summaryModel={s.summaryModel}
+              onChange={(m) => setS({ ...s, ...m })}
+            />
+          )}
           <label className="mt-1.5 flex items-start gap-2.5 text-fg-subtle has-[:disabled]:opacity-50">
             <input
               type="checkbox"
@@ -73,6 +87,22 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
             <span>
               Also summarize the next blocks automatically while I read
               <small className="block text-sm text-fg-faint">Never runs when a pull request first opens. Off by default.</small>
+            </span>
+          </label>
+          <label className="mt-1.5 flex items-start gap-2.5 text-fg-subtle has-[:disabled]:opacity-50">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={s.secondOpinion}
+              disabled={!s.agent}
+              onChange={(e) => setS({ ...s, secondOpinion: e.target.checked })}
+            />
+            <span>
+              Give me a second opinion on every PR I open
+              <small className="block text-sm text-fg-faint">
+                Your agent runs Grain's review skill read-only on the PR and its findings appear beside the code. Takes a few minutes and uses
+                your plan. Nothing is posted unless you keep it.
+              </small>
             </span>
           </label>
           <label className="mt-3 flex items-start gap-2.5 text-fg-subtle">
@@ -93,6 +123,43 @@ export function SettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(
               className="w-20"
             />
           </label>
+          <SectionLabel className="mt-5">AI spend</SectionLabel>
+          <p className="mt-1 text-sm text-fg-faint">
+            What your agent's requests would cost at API prices. On a subscription this is usage, not a bill; Codex and OpenCode costs are estimated from
+            token counts.
+          </p>
+          <label className="mt-2 flex items-center justify-between gap-3 text-fg-subtle">
+            Daily budget (USD, 0 for none)
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              value={s.dailyBudgetUsd}
+              onChange={(e) => setS({ ...s, dailyBudgetUsd: Math.max(0, Number(e.target.value) || 0) })}
+              className="w-20"
+            />
+          </label>
+          {usage && (
+            <div className="mt-2 text-sm text-fg-subtle">
+              <p>
+                Today {usd(usage.spend.today)}
+                {usage.spend.dailyBudget > 0 && ` of ${usd(usage.spend.dailyBudget)}`} · this month {usd(usage.spend.month)}
+                {usage.spend.estimated && ' (some estimated)'}
+              </p>
+              {usage.prs.length > 0 && (
+                <ul className="mt-1.5 flex flex-col gap-0.5">
+                  {usage.prs.slice(0, 6).map((p) => (
+                    <li key={p.pr} className="flex justify-between gap-3 text-xs">
+                      <span className="truncate font-mono text-fg-muted">{p.pr.startsWith('~local/') ? 'Local changes' : p.pr}</span>
+                      <span className="shrink-0 text-fg-faint tabular-nums">
+                        {usd(p.cost)} · {p.requests} {p.requests === 1 ? 'request' : 'requests'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <SectionLabel className="mt-5">Work folders</SectionLabel>
           <p className="mt-1 text-sm text-fg-faint">
             Where you keep your code, e.g. ~/work. When a repository opens for the first time, Grain looks here (and in common folders like ~/code) and

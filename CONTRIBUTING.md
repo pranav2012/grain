@@ -10,7 +10,7 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) first: it explains where code goes and t
 
 ```bash
 pnpm --dir ui install
-cargo run -p grain -- --no-open      # API on :7420
+cargo run -p grain -- serve         # API on :7420, logging in this terminal
 pnpm --dir ui dev --port 5174        # UI with hot reload
 ```
 

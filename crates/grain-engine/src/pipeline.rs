@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Command;
@@ -22,7 +22,7 @@ use crate::grouping::blocks::{block_dir, block_key, stable_hash};
 use crate::grouping::cluster::group_v2;
 use crate::grouping::layers::build_layers;
 use crate::grouping::story::build_story;
-use crate::model::{Analysis, Block, BlockLink, EntityChange, Review, Risk, Slice};
+use crate::model::{Analysis, Block, BlockLink, EntityChange, InnerUse, Review, Risk, Slice};
 
 /// How much of the repository the analysis may read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,6 +151,7 @@ pub fn analyze_with_usage(
         b.id = i + 1;
     }
     let links = block_links(&blocks, &units, &changes, &graph);
+    let uses = inner_uses(&changes, &graph);
     let mut entity_block: HashMap<String, usize> = HashMap::new();
     for (b, members) in &blocks {
         for &u in *members {
@@ -169,7 +170,7 @@ pub fn analyze_with_usage(
     let summary = summarize(&timings, &units, &blocks, &layers, &skim, &graph_files, &changes, &graph);
     let complete = depth == Depth::Complete;
     Ok(Analysis {
-        review: Review { layers, story, skim, blocks, links, total_lines: units.total_lines, complete },
+        review: Review { layers, story, skim, blocks, links, uses, total_lines: units.total_lines, complete },
         summary,
     })
 }
@@ -202,6 +203,26 @@ fn block_links(
         }
     }
     weights.into_iter().map(|((from, to), weight)| BlockLink { from, to, weight }).collect()
+}
+
+/// Changed entities used from other non-test files of the PR (graph over changed files), sorted.
+fn inner_uses(changes: &[SemanticChange], graph: &EntityGraph) -> Vec<InnerUse> {
+    let dependents = graph.dependents();
+    let mut out = BTreeSet::new();
+    for c in changes.iter().filter(|c| !matches!(c.change_type, ChangeType::Deleted)) {
+        for dep in dependents.get(c.entity_id.as_str()).into_iter().flatten() {
+            let Some(info) = graph.entities.get(dep.as_str()) else { continue };
+            if info.file_path != c.file_path && !is_test_path(&info.file_path) {
+                out.insert(InnerUse {
+                    file: c.file_path.clone(),
+                    name: c.entity_name.clone(),
+                    user_file: info.file_path.clone(),
+                    user: info.name.clone(),
+                });
+            }
+        }
+    }
+    out.into_iter().collect()
 }
 
 /// `(split above, part size)` in changed lines. Code is cut finer than tests and fixtures,

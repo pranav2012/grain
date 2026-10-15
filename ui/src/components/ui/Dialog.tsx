@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn'
 /** Dimmed full-page backdrop; closes on a click outside its content. */
 export function Scrim({ onClose, children }: { onClose?(): void; children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-10 flex items-start justify-center bg-scrim pt-[12vh]" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-40 flex items-start justify-center bg-scrim pt-[12vh]" onMouseDown={onClose}>
       {children}
     </div>
   )

@@ -113,6 +113,12 @@ pub(crate) struct Status {
     pub enriching: bool,
     /// Head commit of the stored review; differs from the open one when new commits arrived.
     pub head_sha: Option<String>,
+    /// Type errors and lint findings are being computed.
+    pub diagnosing: bool,
+    /// The reviewer's agent is reviewing the PR (or waiting for its turn).
+    pub reviewing: bool,
+    /// AI spend today, this month and on this PR, with the daily cap.
+    pub spend: grain_store::Spend,
 }
 
 /// Go to definition or find references for the name at a position in the new version of a file.
@@ -127,12 +133,19 @@ pub(crate) struct NavigateRequest {
     pub character: u32,
     pub name: String,
     pub references: bool,
+    /// The name is on the old side of the diff (removed or replaced code); it's looked up in the new
+    /// version near the same line.
+    #[serde(default)]
+    #[ts(optional)]
+    pub old_side: Option<bool>,
 }
 
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub(crate) struct NavigateResponse {
+    /// Set when an old-side name no longer appears in the new version of the file.
+    pub removed: bool,
     /// False when found by name search (other languages, or the language server is unavailable).
     pub precise: bool,
     pub results: Vec<NavLocation>,
@@ -182,7 +195,7 @@ pub(crate) struct SummarizeRequest {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub(crate) struct DiffRequest {
-    /// Paths (old or new) whose diff sections to return.
+    /// Paths (old or new) whose diff sections to return; empty for the whole PR.
     pub files: Vec<String>,
     /// Diff from this earlier head instead of from the base: what changed since a past review.
     #[serde(default)]
@@ -258,4 +271,96 @@ pub(crate) struct SubmitResponse {
     pub payload: ReviewPayload,
     /// Line comments outside the diff, moved into the review text so GitHub accepts the review.
     pub moved_to_body: usize,
+}
+
+/// AI spend for the Settings page: totals and this month's spend per PR, highest first.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct UsageReport {
+    pub spend: grain_store::Spend,
+    pub prs: Vec<PrSpend>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct PrSpend {
+    pub pr: String,
+    pub cost: f64,
+    pub requests: usize,
+}
+
+/// Models an agent offers, for the Settings pickers.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct ModelsResponse {
+    pub models: Vec<grain_agent::models::ModelOption>,
+    /// What "Automatic" would use for summaries right now; none means the agent's default.
+    pub summary_auto: Option<grain_agent::models::ModelOption>,
+    /// False when the models.dev catalog couldn't be fetched (no prices or dates).
+    pub catalog: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ModelsQuery {
+    pub agent: String,
+}
+
+/// Where code outside the PR uses one changed name of a file.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct OutsideUse {
+    pub name: String,
+    pub locations: Vec<NavLocation>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct OutsideUsesResponse {
+    /// False when found by name search (other languages, or the language server is unavailable).
+    pub precise: bool,
+    pub uses: Vec<OutsideUse>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SourceQuery {
+    pub path: String,
+    /// `base` for the version the PR started from (the merge base); the PR's head otherwise.
+    pub rev: Option<String>,
+}
+
+/// Outside uses of every changed file, computed in the background for one head (`outside-uses.json`).
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct OutsideUsesFile {
+    pub head: String,
+    pub files: std::collections::BTreeMap<String, OutsideUsesResponse>,
+}
+
+/// The PR's GitHub status as last fetched (`pr-status.json`), shown at once while a fresh copy loads.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct SavedPrStatus {
+    pub head: String,
+    /// Unix seconds.
+    #[ts(type = "number")]
+    pub fetched_at: u64,
+    pub status: grain_github::PrStatus,
+}
+
+/// The PR's GitHub review threads as last fetched (`conversation.json`).
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct SavedConversation {
+    /// Unix seconds.
+    #[ts(type = "number")]
+    pub fetched_at: u64,
+    pub conversation: grain_github::Conversation,
 }

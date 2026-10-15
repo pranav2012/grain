@@ -32,6 +32,10 @@ pub(crate) struct App {
     busy: Mutex<HashSet<PrRef>>,
     /// PRs whose review is open but whose whole-repo facts are still being computed.
     pub(crate) enriching: Mutex<HashSet<PrRef>>,
+    /// PRs whose type errors and lint findings are being computed.
+    pub(crate) diagnosing: Mutex<HashSet<PrRef>>,
+    /// PRs being reviewed by the reviewer's agent (or waiting for their turn).
+    pub(crate) second_opinions: Mutex<HashSet<PrRef>>,
     pub(crate) patches: crate::patch_index::PatchCache,
     /// Identifies the running binary, so a newer `grain` can tell it's outdated.
     pub(crate) build: String,
@@ -39,6 +43,10 @@ pub(crate) struct App {
     local_heads: Mutex<HashMap<PrRef, (Instant, String)>>,
     /// TypeScript servers for go-to-definition, one per open review, started on first use.
     pub(crate) navigators: Mutex<HashMap<PrRef, Arc<grain_lsp::TsUsage>>>,
+    /// When the UI last made a request (open tabs check in every minute).
+    pub(crate) last_seen: Mutex<Instant>,
+    /// Signalled when the server should stop (`grain stop`, a newer build, or idle).
+    pub(crate) stop: tokio::sync::Notify,
 }
 
 pub(crate) type Shared = Arc<App>;
@@ -70,15 +78,29 @@ impl App {
             summarizers: Mutex::new(HashMap::new()),
             busy: Mutex::new(HashSet::new()),
             enriching: Mutex::new(HashSet::new()),
+            diagnosing: Mutex::new(HashSet::new()),
+            second_opinions: Mutex::new(HashSet::new()),
             patches: crate::patch_index::PatchCache::default(),
             local_heads: Mutex::new(HashMap::new()),
             navigators: Mutex::new(HashMap::new()),
+            last_seen: Mutex::new(Instant::now()),
+            stop: tokio::sync::Notify::new(),
             build,
         })
     }
 
     pub(crate) fn is_busy(&self, pr: &PrRef) -> bool {
         self.busy.lock().unwrap_or_else(PoisonError::into_inner).contains(pr)
+    }
+
+    /// True while any background work runs: preparing, enriching, checking for errors, reviewing or summarizing.
+    pub(crate) fn has_work(&self) -> bool {
+        let any = |set: &Mutex<HashSet<PrRef>>| !set.lock().unwrap_or_else(PoisonError::into_inner).is_empty();
+        any(&self.busy)
+            || any(&self.enriching)
+            || any(&self.diagnosing)
+            || any(&self.second_opinions)
+            || self.summarizers.lock().unwrap_or_else(PoisonError::into_inner).values().any(|s| s.status.running)
     }
 
     /// What a local review's head would be now, so the UI can offer a refresh after edits.
@@ -182,6 +204,60 @@ impl App {
                 app.enriching.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
             }
             app.busy.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
+            if app
+                .jobs
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .get(&pr)
+                .is_some_and(|j| matches!(j.stage, Stage::Ready))
+            {
+                app.diagnose(&pr, by_reviewer);
+            }
+        });
+    }
+
+    /// Computes type errors and lint findings for the PR's current head unless already done or running,
+    /// then (for PRs the reviewer opened) asks for the agent's second opinion.
+    pub(crate) fn diagnose(self: &Shared, pr: &PrRef, then_review: bool) {
+        if !self.diagnosing.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone()) {
+            return;
+        }
+        let app = self.clone();
+        let pr = pr.clone();
+        std::thread::spawn(move || {
+            let t = std::time::Instant::now();
+            match guarded("checking for errors", || crate::jobs::diagnostics::run(&app.home, &pr)) {
+                Ok(()) => tracing::info!(pr = %pr.number, ms = t.elapsed().as_millis(), "diagnostics done"),
+                Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "diagnostics failed"),
+            }
+            let t = std::time::Instant::now();
+            match guarded("finding outside uses", || crate::jobs::uses::run(&app, &pr)) {
+                Ok(()) => tracing::info!(pr = %pr.number, ms = t.elapsed().as_millis(), "outside uses done"),
+                Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "outside uses failed"),
+            }
+            app.diagnosing.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
+            if then_review {
+                app.second_opinion(&pr, false);
+            }
+        });
+    }
+
+    /// Reviews the PR with the reviewer's agent and review skill in the background (see `jobs::second_opinion`).
+    pub(crate) fn second_opinion(self: &Shared, pr: &PrRef, force: bool) {
+        if !self.second_opinions.lock().unwrap_or_else(PoisonError::into_inner).insert(pr.clone()) {
+            return;
+        }
+        let app = self.clone();
+        let pr = pr.clone();
+        std::thread::spawn(move || {
+            let t = std::time::Instant::now();
+            match guarded("reviewing with your agent", || {
+                crate::jobs::second_opinion::run(&app.home, &app.settings(), &pr, force)
+            }) {
+                Ok(()) => tracing::info!(pr = %pr.number, ms = t.elapsed().as_millis(), "second opinion done"),
+                Err(e) => tracing::warn!(pr = %pr.number, error = %format!("{e:#}"), "second opinion failed"),
+            }
+            app.second_opinions.lock().unwrap_or_else(PoisonError::into_inner).remove(&pr);
         });
     }
 }

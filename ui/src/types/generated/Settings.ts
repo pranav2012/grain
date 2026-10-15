@@ -5,7 +5,11 @@ export type Settings = {
 /**
  * `None` means review without AI (the default).
  */
-agent: Agent | null, model: string | null, 
+agent: Agent | null, 
+/**
+ * Model for second opinions and questions; `None` uses the agent's own default (kept current by its maker).
+ */
+reviewModel: string | null, 
 /**
  * Fresh (non-cached) agent requests allowed per PR review.
  */
@@ -19,6 +23,20 @@ autoSummarize: boolean,
  * Prepare the newest review requests in the background (git and grouping only, never AI).
  */
 prefetch: boolean, 
+/**
+ * With an agent set, review each PR the reviewer opens with the review skill (read-only, in
+ * Grain's checkout) and show its findings beside the code. Nothing is posted.
+ */
+secondOpinion: boolean, 
+/**
+ * Estimated AI spend allowed per day (USD at API prices); 0 means no cap.
+ */
+dailyBudgetUsd: number, 
+/**
+ * Model for block summaries and chapter intros; `None` picks the newest of the cheapest models
+ * the agent offers, run at low effort.
+ */
+summaryModel: string | null, 
 /**
  * Folders the reviewer keeps their clones in; searched (two levels deep) along with the
  * usual code folders when a repository opens for the first time.

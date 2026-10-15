@@ -7,7 +7,7 @@ export interface Prefs {
   mineFirst: boolean
 }
 
-const defaults: Prefs = { diffStyle: 'unified', mineFirst: false }
+const defaults: Prefs = { diffStyle: 'split', mineFirst: false }
 
 /** View preferences shared across PRs. */
 export function usePrefs() {

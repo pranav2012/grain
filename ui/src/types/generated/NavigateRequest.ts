@@ -11,4 +11,9 @@ line: number,
 /**
  * 0-based column of the name.
  */
-character: number, name: string, references: boolean, };
+character: number, name: string, references: boolean, 
+/**
+ * The name is on the old side of the diff (removed or replaced code); it's looked up in the new
+ * version near the same line.
+ */
+oldSide?: boolean, };

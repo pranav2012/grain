@@ -11,7 +11,7 @@ use grain_github::PrRef;
 use grain_lsp::{Lookup, TsUsage};
 use grain_store::read_json;
 
-use crate::contract::{NavLocation, NavigateRequest, NavigateResponse};
+use crate::contract::{NavLocation, NavigateRequest, NavigateResponse, OutsideUse, OutsideUsesResponse};
 use crate::error::{ApiResult, blocking};
 use crate::state::{App, Shared};
 
@@ -27,6 +27,18 @@ pub(super) async fn navigate(
     blocking(move || {
         let root = checkout(&app, &pr)?;
         let review = read_json(&app.home.review_dir(&pr).join("review.json")).context("PR not prepared")?;
+        let mut body = body;
+        if body.old_side == Some(true) {
+            let text = std::fs::read_to_string(root.join(&body.file)).unwrap_or_default();
+            let Some((line, character)) = nearest_use(&text, &body.name, body.line) else {
+                // Gone from the new code: show where the name is still mentioned, by search.
+                let found = by_name(&root, &body.name, body.references);
+                let truncated = found.len() > MAX_RESULTS;
+                let results = found.into_iter().take(MAX_RESULTS).map(|(f, l)| locate(&root, &review, f, l)).collect();
+                return Ok(Json(NavigateResponse { removed: true, precise: false, results, truncated }));
+            };
+            (body.line, body.character) = (line, character);
+        }
         let lookup = if body.references { Lookup::References } else { Lookup::Definition };
         let ext = body.file.rsplit_once('.').map_or("", |x| x.1);
         let precise = TS
@@ -41,7 +53,104 @@ pub(super) async fn navigate(
         let truncated = found.len() > MAX_RESULTS;
         let results =
             found.into_iter().take(MAX_RESULTS).map(|(file, line)| locate(&root, &review, file, line)).collect();
-        Ok(Json(NavigateResponse { precise, results, truncated }))
+        Ok(Json(NavigateResponse { removed: false, precise, results, truncated }))
+    })
+    .await
+}
+
+/// Changed files of the PR: code and tests alike, as the engine grouped them.
+pub(crate) fn pr_files(review: &serde_json::Value) -> std::collections::HashSet<String> {
+    review["blocks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|b| b["files"].as_array().into_iter().flatten())
+        .filter_map(|f| f.as_str().map(str::to_string))
+        .collect()
+}
+
+/// Every place outside the PR that uses the names `file` changes: each changed name's declaration is
+/// found in the file, then its references are looked up (TypeScript precisely, others by name).
+pub(crate) fn outside_uses_of(
+    app: &App,
+    pr: &PrRef,
+    review: &serde_json::Value,
+    file: &str,
+) -> anyhow::Result<OutsideUsesResponse> {
+    let root = checkout(app, pr)?;
+    let in_pr = pr_files(review);
+    let mut names: Vec<String> = review["blocks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|b| b["changes"].as_array().into_iter().flatten())
+        .filter(|c| c["file"] == file && c["change"] != "deleted")
+        .filter_map(|c| c["name"].as_str().map(str::to_string))
+        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$'))
+        .collect();
+    names.sort();
+    names.dedup();
+    let text = std::fs::read_to_string(root.join(file)).unwrap_or_default();
+    let ext = file.rsplit_once('.').map_or("", |x| x.1);
+    let nav = TS.contains(&ext).then(|| navigator(app, pr, &root)).flatten();
+    let mut precise = nav.is_some();
+    let mut uses = Vec::new();
+    for name in names {
+        let declared = text
+            .lines()
+            .enumerate()
+            .find_map(|(i, l)| if defines(l, &name) { l.find(&name).map(|c| (i, c)) } else { None });
+        let precise_found = nav.as_ref().zip(declared).and_then(|(nav, (line, col))| {
+            nav.locate(Lookup::References, file, u32::try_from(line).unwrap_or(0), u32::try_from(col).unwrap_or(0))
+        });
+        let found: Vec<(String, u32)> = if let Some(found) = precise_found {
+            found.into_iter().map(|l| (l.file, l.line + 1)).collect()
+        } else {
+            precise = false;
+            by_name(&root, &name, true)
+        };
+        let mut locations: Vec<NavLocation> = found
+            .into_iter()
+            .filter(|(f, _)| !in_pr.contains(f))
+            .take(MAX_RESULTS)
+            .map(|(f, l)| locate(&root, review, f, l))
+            .collect();
+        locations.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+        if !locations.is_empty() {
+            uses.push(OutsideUse { name, locations });
+        }
+    }
+    Ok(OutsideUsesResponse { precise, uses })
+}
+
+/// Files larger than this aren't shown in full.
+const MAX_SOURCE: u64 = 2 * 1024 * 1024;
+
+/// The whole of one file at the PR's head, for reading a reference in context. Only files inside the
+/// review's checkout are served.
+pub(super) async fn source(
+    State(app): State<Shared>,
+    Path((owner, repo, number)): Path<(String, String, u64)>,
+    axum::extract::Query(q): axum::extract::Query<crate::contract::SourceQuery>,
+) -> ApiResult<String> {
+    let pr = PrRef { owner, repo, number };
+    blocking(move || {
+        if q.rev.as_deref() == Some("base") {
+            let pr_json = read_json(&app.home.review_dir(&pr).join("pr.json")).context("PR not prepared")?;
+            let base = pr_json["mergeBase"].as_str().context("No base for this review")?;
+            anyhow::ensure!(
+                !q.path.starts_with('/') && !q.path.split('/').any(|s| s == ".."),
+                "That file isn't in this repository."
+            );
+            let text = grain_git::file_at(&crate::jobs::prepare::git_dir(&app.home, &pr)?, base, &q.path)?;
+            anyhow::ensure!(text.len() as u64 <= MAX_SOURCE, "This file is too large to show here.");
+            return Ok(text);
+        }
+        let root = checkout(&app, &pr)?.canonicalize()?;
+        let path = root.join(&q.path).canonicalize().context("That file isn't in this checkout.")?;
+        anyhow::ensure!(path.starts_with(&root) && path.is_file(), "That file isn't in this checkout.");
+        anyhow::ensure!(path.metadata()?.len() <= MAX_SOURCE, "This file is too large to show here.");
+        std::fs::read_to_string(&path).context("This file isn't text.")
     })
     .await
 }
@@ -69,6 +178,21 @@ fn navigator(app: &App, pr: &PrRef, root: &FsPath) -> Option<Arc<TsUsage>> {
             None
         }
     }
+}
+
+/// The whole-word use of `name` in `text` closest to 1-based `line`: its 1-based line and 0-based column.
+fn nearest_use(text: &str, name: &str, line: u32) -> Option<(u32, u32)> {
+    let is_word = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+    text.lines()
+        .enumerate()
+        .filter_map(|(i, l)| {
+            let col = l.match_indices(name).map(|(c, _)| c).find(|&c| {
+                !l[..c].chars().next_back().is_some_and(is_word)
+                    && !l[c + name.len()..].chars().next().is_some_and(is_word)
+            })?;
+            Some((u32::try_from(i + 1).ok()?, u32::try_from(col).ok()?))
+        })
+        .min_by_key(|(n, _)| n.abs_diff(line))
 }
 
 /// Whole-word matches of `name` in tracked files; for definitions, only lines that look like one.
@@ -141,7 +265,15 @@ fn defines(text: &str, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::defines;
+    use super::{defines, nearest_use};
+
+    #[test]
+    fn finds_the_closest_whole_word_use() {
+        let text = "const fetchVoucherX = 1\nfoo(fetchVoucher)\n\n\n\nbar(fetchVoucher, 2)";
+        assert_eq!(nearest_use(text, "fetchVoucher", 6), Some((6, 4)));
+        assert_eq!(nearest_use(text, "fetchVoucher", 1), Some((2, 4)));
+        assert_eq!(nearest_use(text, "gone", 1), None);
+    }
 
     #[test]
     fn spots_definitions_by_name() {

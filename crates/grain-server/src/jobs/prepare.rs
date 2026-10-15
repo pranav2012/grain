@@ -39,7 +39,10 @@ pub(crate) fn prepare(
     let prev_head = prev.as_ref().and_then(|v| v["headSha"].as_str().map(str::to_string));
     let same_format =
         prev.as_ref().and_then(|v| v["reviewFormat"].as_u64()) == Some(u64::from(grain_engine::REVIEW_FORMAT));
+    // Cleanup removes the checkout and diff of merged or idle PRs; reopening one rebuilds them.
+    let files_kept = out_dir.join("diff.patch").exists() && home.worktree_dir(pr).exists();
     if same_format
+        && files_kept
         && prev_head.as_deref() == Some(details.head_sha.as_str())
         && let Some(review) = read_json(&out_dir.join("review.json"))
     {

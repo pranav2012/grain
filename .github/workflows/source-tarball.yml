@@ -1,0 +1,45 @@
+# Attaches grain-<version>-source.tar.gz to each release: the source plus the built UI, so building
+# it needs only Rust (no Node). Called by release.yml (dist's `global-artifacts-jobs`).
+name: Source tarball
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  source-tarball:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: ui/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Build the UI
+        run: pnpm --dir ui install --frozen-lockfile && pnpm --dir ui build
+      - name: Pack the source with the built UI
+        env:
+          PLAN: ${{ inputs.plan }}
+        run: |
+          version=$(jq -r '.releases[] | select(.app_name == "grain") | .app_version' <<< "$PLAN")
+          name="grain-${version}-source"
+          mkdir -p target/distrib "$RUNNER_TEMP/$name/ui"
+          git archive --format=tar --prefix="$name/" -o "$RUNNER_TEMP/source.tar" HEAD
+          cp -R ui/dist "$RUNNER_TEMP/$name/ui/dist"
+          tar -rf "$RUNNER_TEMP/source.tar" -C "$RUNNER_TEMP" "$name/ui/dist"
+          gzip -9 -c "$RUNNER_TEMP/source.tar" > "target/distrib/$name.tar.gz"
+          (cd target/distrib && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+      - uses: actions/upload-artifact@v7
+        with:
+          name: artifacts-source-tarball
+          path: target/distrib/*

@@ -225,6 +225,11 @@ pub fn diff(clone: &Path, base: &str, head: &str, paths: &[String]) -> Result<St
     run(clone, &args)
 }
 
+/// The contents of `path` at `rev` (e.g. the merge base), as text.
+pub fn file_at(repo: &Path, rev: &str, path: &str) -> Result<String> {
+    run(repo, &["show", &format!("{rev}:{path}")])
+}
+
 #[cfg(test)]
 mod tests {
     use super::{config_has_github_remote, run, snapshot_worktree, sparse_pattern};

@@ -2,17 +2,16 @@ import { Dialog, DialogTitle } from '@/components/ui/Dialog'
 import { Kbd } from '@/components/ui/Kbd'
 
 const shortcuts: [string, string][] = [
-  ['j / k', 'Next or previous change'],
+  ['j / k', 'Next or previous file'],
   ['Shift J / K', 'Next or previous chapter (user flow)'],
-  ['space', 'Mark the change reviewed, then go to the next open one'],
-  ['x', 'Request a change or ask the agent to fix'],
-  ['c', 'Comment on the whole change'],
-  ['a', 'Explain this change with your AI agent (opt-in)'],
+  ['v', 'Mark the file viewed, then go to the next one not viewed'],
+  ['b', 'Back to where you were before a jump'],
   ['Line numbers', 'Click or drag to comment on lines'],
+  ['⌘ click a name', 'Go to its definition'],
   ['1 / 2 / 3', 'Self review, peer review, maintainer'],
-  ['s', 'Switch between unified and side-by-side diff'],
+  ['s', 'Switch between unified and split diff'],
   ['m', 'Show your code (CODEOWNERS) as the first chapter'],
-  ['⌘K', 'Jump anywhere or run a command'],
+  ['⌘K', 'Jump to any file or run a command'],
   ['⌘O', 'Open another pull request'],
   [',', 'Settings'],
   ['Shift Enter', 'Finish the review'],

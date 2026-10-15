@@ -19,6 +19,19 @@ pub struct Review {
     pub complete: bool,
     /// Which blocks use which, for the map.
     pub links: Vec<BlockLink>,
+    /// Changed code used from other changed files, for "used by" on each file.
+    pub uses: Vec<InnerUse>,
+}
+
+/// Changed `name` in `file` is used by `user` in `user_file`, another non-test file of this PR.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct InnerUse {
+    pub file: String,
+    pub name: String,
+    pub user_file: String,
+    pub user: String,
 }
 
 /// Code changed in block `from` uses code changed in block `to`.

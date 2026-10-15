@@ -1,9 +1,16 @@
 import { post, put, request, serverFetch } from '@/lib/http'
+import type { AiReview } from '@/types/generated/AiReview'
 import type { AskRequest } from '@/types/generated/AskRequest'
 import type { AskResponse } from '@/types/generated/AskResponse'
 import type { Conversation } from '@/types/generated/Conversation'
+import type { Diagnostics } from '@/types/generated/Diagnostics'
+import type { PrStatus } from '@/types/generated/PrStatus'
+import type { SavedConversation } from '@/types/generated/SavedConversation'
+import type { SavedPrStatus } from '@/types/generated/SavedPrStatus'
+import type { Settings } from '@/types/generated/Settings'
 import type { NavigateRequest } from '@/types/generated/NavigateRequest'
 import type { NavigateResponse } from '@/types/generated/NavigateResponse'
+import type { OutsideUsesFile } from '@/types/generated/OutsideUsesFile'
 import type { LocalRepo } from '@/types/generated/LocalRepo'
 import type { SubmitRequest } from '@/types/generated/SubmitRequest'
 import type { SubmitResponse } from '@/types/generated/SubmitResponse'
@@ -27,10 +34,18 @@ export const reviewApi = {
   /** `refresh` waits for new commits or local edits instead of returning the stored review. */
   open: (pr: string, refresh = false) => post<OpenResponse>('/api/open', { pr, refresh }),
   status: (id: string) => request<Status>(`/api/reviews/${id}/status`),
+  settings: () => request<Settings>('/api/settings'),
   summaries: (id: string) => request<Record<string, Summary | LayerSummary>>(`/api/reviews/${id}/files/summaries.json`),
   summarize: (id: string, keys: string[]) => post<null>(`/api/reviews/${id}/summarize`, { keys }),
   /** Definition or references of the name at a position in the new version of a file. */
   navigate: (id: string, req: NavigateRequest) => post<NavigateResponse>(`/api/reviews/${id}/navigate`, req),
+  /** One whole file at the PR's head. */
+  source: (id: string, path: string, rev?: 'base') =>
+    serverFetch(`/api/reviews/${id}/source?path=${encodeURIComponent(path)}${rev ? `&rev=${rev}` : ''}`).then(async (r) => {
+      if (r.ok) return r.text()
+      const body = await r.json().catch(() => null)
+      throw new Error(body?.error ?? `Couldn't open ${path} (${r.status})`)
+    }),
   /** Asks the reviewer's agent about one change; can take a while. */
   ask: (id: string, req: AskRequest) => post<AskResponse>(`/api/reviews/${id}/ask`, req),
   /** `fullRepo` is `owner/repo`. */
@@ -38,13 +53,25 @@ export const reviewApi = {
   setLocalRepo: (fullRepo: string, path: string | null) => put<LocalRepo>(`/api/repos/${fullRepo}/local`, { path }),
   submit: (id: string, req: SubmitRequest) => post<SubmitResponse>(`/api/reviews/${id}/submit`, req),
   conversation: (id: string) => request<Conversation>(`/api/reviews/${id}/conversation`),
+  /** Type errors and lint findings for the stored head; null until computed. */
+  diagnostics: (id: string) => file(id, 'diagnostics.json').then((r) => json<Diagnostics>(r)),
+  rediagnose: (id: string) => post<null>(`/api/reviews/${id}/diagnostics`, {}),
+  /** Outside uses of every changed file, once the background job has worked them out. */
+  outsideUsesFile: (id: string) => file(id, 'outside-uses.json').then((r) => json<OutsideUsesFile>(r)),
+  /** The agent's second opinion for the stored head; null until it has run. */
+  aiReview: (id: string) => file(id, 'ai-review.json').then((r) => json<AiReview>(r)),
+  rereview: (id: string) => post<null>(`/api/reviews/${id}/second-opinion`, {}),
+  prStatus: (id: string) => request<PrStatus>(`/api/reviews/${id}/pr-status`),
+  /** The PR's status and threads as last fetched from GitHub; null before the first fetch. */
+  savedPrStatus: (id: string) => file(id, 'pr-status.json').then((r) => json<SavedPrStatus>(r)),
+  savedConversation: (id: string) => file(id, 'conversation.json').then((r) => json<SavedConversation>(r)),
   replyToThread: (id: string, thread: string, body: string) =>
     post<ThreadComment>(`/api/reviews/${id}/threads/${thread}/replies`, { body }),
   resolveThread: (id: string, thread: string, resolved: boolean) =>
     put<ThreadResolved>(`/api/reviews/${id}/threads/${thread}/resolved`, { resolved }),
   saveProgress: (id: string, progress: unknown) => put<null>(`/api/reviews/${id}/progress`, progress),
   review: (id: string) => request<Review>(`/api/reviews/${id}/files/review.json`),
-  /** Unified diff sections for just these files. */
+  /** Unified diff sections for these files, or the whole PR when `files` is empty. */
   diff: (id: string, files: string[], since?: string) =>
     serverFetch(`/api/reviews/${id}/diff`, {
       method: 'POST',
@@ -75,6 +102,6 @@ export function withReview(base: Omit<LoadedPr, 'review' | 'blocks'>, review: Re
     const chapter = (id: number, kind: 'area' | 'routine', title: string, ids: number[]) => ({ id, key: title, kind, title, entry: null, about: title, sections: [{ title: '', blocks: ids }] })
     return { flows: false, chapters: [blocks.length && chapter(1, 'area', 'All changes', blocks), review.skim.length && chapter(2, 'routine', 'Routine', review.skim)].filter((c) => !!c) }
   }
-  const r: Review = { ...review, links: review.links ?? [], story: review.story ?? legacy() }
+  const r: Review = { ...review, links: review.links ?? [], uses: review.uses ?? [], story: review.story ?? legacy() }
   return { ...base, review: r, blocks: new Map(r.blocks.map((b) => [b.id, b])) }
 }

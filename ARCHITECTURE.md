@@ -1,6 +1,6 @@
 # Architecture
 
-Grain runs locally. The `grain` binary serves a React UI and an HTTP API on `localhost:7420`, prepares pull requests on demand, and keeps everything under `~/.grain`.
+Grain runs locally. The `grain` binary serves a React UI and an HTTP API on `grain.localhost:7420` (any `*.localhost` name points at this machine), prepares pull requests on demand, and keeps everything under `~/.grain`.
 
 ## Data flow
 
@@ -25,12 +25,13 @@ Each crate has one job. Dependencies only point down this list; nothing depends 
 | Crate | Job | Depends on |
 |---|---|---|
 | `grain` | CLI (clap): start the server or run `grain analyze` | server, engine, github, lsp |
-| `grain-server` | axum routes, shared state, background jobs, typed API contract | engine, lsp, git, github, agent, store |
+| `grain-server` | axum routes, shared state, background jobs, typed API contract | engine, lsp, diagnostics, git, github, agent, store |
 | `grain-lsp` | TypeScript 7 language server (downloaded once, checksum-verified): precise outside usage, go to definition, find references | engine |
+| `grain-diagnostics` | Type errors (TypeScript 7) and lint findings (the clone's ESLint or oxlint with the clone's config) for a PR's changed files, using the reviewer's own installed packages | — |
 | `grain-engine` | Git range → blocks, a story of user-flow chapters, skim, facts, checks, estimated risk; optional `UsageProvider` hook | sem-core |
 | `grain-git` | git CLI operations (fetch, merge-base, worktrees, diffs) | — |
 | `grain-github` | PR and repo lookups, clones, via the user's `gh` login | — |
-| `grain-agent` | Optional block summaries from the user's own agent CLI, with provider-terms guards | — |
+| `grain-agent` | Optional block summaries, answers and full PR reviews (the bundled review skill, read-only) from the user's own agent CLI, with provider-terms guards | — |
 | `grain-store` | `~/.grain` layout, settings, atomic writes | agent, github |
 
 ### Inside `grain-engine`

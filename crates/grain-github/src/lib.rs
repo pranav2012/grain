@@ -6,6 +6,7 @@ mod gh;
 mod pr_ref;
 mod pulls;
 mod repos;
+mod status;
 mod submit;
 mod threads;
 
@@ -17,6 +18,7 @@ pub use pulls::{
     viewer_teams,
 };
 pub use repos::{RepoSummary, repos};
+pub use status::{CheckAnnotation, CheckRun, PrStatus, Reviewer, pr_status};
 pub use submit::{LineComment, PayloadComment, ReviewEvent, ReviewPayload, submit_review};
 pub use threads::{
     Conversation, ReviewThread, SubmittedReview, ThreadComment, conversation, reply_to_thread, set_thread_resolved,

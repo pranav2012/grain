@@ -7,5 +7,5 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   worker: { format: 'es' },
-  server: { proxy: { '/api': 'http://localhost:7420' } },
+  server: { proxy: { '/api': process.env.GRAIN_API ?? 'http://localhost:7420' } },
 })

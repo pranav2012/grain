@@ -33,3 +33,9 @@ export function shortPath(path: string): string {
   const parts = path.split('/')
   return parts.length > 3 ? `…/${parts.slice(-3).join('/')}` : path
 }
+
+/** A dollar amount the way spend is shown: cents below $10, whole dollars above; "<$0.01" for tiny amounts. */
+export function usd(n: number): string {
+  if (n > 0 && n < 0.01) return '<$0.01'
+  return n >= 10 ? `$${Math.round(n)}` : `$${n.toFixed(2)}`
+}

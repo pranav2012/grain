@@ -47,6 +47,16 @@ export interface Owners {
   files: Record<string, string[]>
   /** Changed files the reviewer owns, directly or through a team. */
   mine: string[]
+  /** The last commit on the base branch touching each changed file; absent for new files. */
+  lastChange?: Record<string, LastChange>
+}
+
+export interface LastChange {
+  sha: string
+  author: string
+  /** Unix seconds. */
+  at: number
+  subject: string
 }
 
 export interface LoadedPr {

@@ -3,18 +3,31 @@ use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
 use grain_github::PrRef;
-use grain_store::read_json;
+use grain_store::{read_json, write_atomic};
 
 use crate::contract::{
     AskRequest, AskResponse, DiffRequest, Job, LocalCandidate, LocalOpenRequest, OpenRequest, OpenResponse,
-    PickFolderRequest, PickFolderResponse, RecentReview, Stage, Status, SubmitRequest, SubmitResponse,
-    SummarizeRequest, ThreadReplyRequest, ThreadResolved,
+    PickFolderRequest, PickFolderResponse, RecentReview, SavedConversation, SavedPrStatus, Stage, Status,
+    SubmitRequest, SubmitResponse, SummarizeRequest, ThreadReplyRequest, ThreadResolved,
 };
 use crate::error::{ApiError, ApiResult, blocking};
 use crate::state::Shared;
 
 fn pr_of((owner, repo, number): (String, String, u64)) -> PrRef {
     PrRef { owner, repo, number }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// Keeps the latest GitHub answer so the next page load can show it before asking again.
+fn save(path: &std::path::Path, value: &impl serde::Serialize) {
+    if let Ok(bytes) = serde_json::to_vec(value)
+        && let Err(e) = write_atomic(path, &bytes)
+    {
+        tracing::warn!("couldn't save {}: {e}", path.display());
+    }
 }
 
 pub(super) async fn open(State(app): State<Shared>, Json(body): Json<OpenRequest>) -> ApiResult<Json<OpenResponse>> {
@@ -113,14 +126,65 @@ pub(super) async fn status(State(app): State<Shared>, Path(p): Path<(String, Str
         auto_summarize: settings.auto_summarize,
         enriching,
         head_sha,
+        diagnosing: app.diagnosing.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&pr),
+        spend: app.home.spend(Some(&format!("{}/{}", pr.full_repo(), pr.number))),
+        reviewing: app.second_opinions.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&pr),
     })
+}
+
+/// Checks the PR for errors again, e.g. after the reviewer picked their clone.
+pub(super) async fn rediagnose(State(app): State<Shared>, Path(p): Path<(String, String, u64)>) -> StatusCode {
+    let pr = pr_of(p);
+    let _ = std::fs::remove_file(app.home.review_dir(&pr).join("diagnostics.json"));
+    app.diagnose(&pr, false);
+    StatusCode::ACCEPTED
+}
+
+/// Reviews the PR with the reviewer's agent now, even if it was held back (routine-only or large PR),
+/// e.g. after a failure, or when the reviewer chose to start it.
+pub(super) async fn rereview(State(app): State<Shared>, Path(p): Path<(String, String, u64)>) -> StatusCode {
+    app.second_opinion(&pr_of(p), true);
+    StatusCode::ACCEPTED
+}
+
+/// Reviews, comments, CI checks and merge state from GitHub, for the PR's current head.
+pub(super) async fn pr_status(
+    State(app): State<Shared>,
+    Path(p): Path<(String, String, u64)>,
+) -> ApiResult<Json<grain_github::PrStatus>> {
+    let pr = pr_of(p);
+    if pr.is_local() {
+        return Err(ApiError::bad_request("Local changes have no pull request on GitHub."));
+    }
+    let head = read_json(&app.home.review_dir(&pr).join("pr.json"))
+        .and_then(|v| v["headSha"].as_str().map(str::to_string))
+        .ok_or_else(|| ApiError::bad_request("PR not prepared"))?;
+    let path = app.home.review_dir(&pr).join("pr-status.json");
+    blocking(move || {
+        let status = grain_github::pr_status(&pr, &head)?;
+        save(&path, &SavedPrStatus { head, fetched_at: now_secs(), status: status.clone() });
+        Ok(Json(status))
+    })
+    .await
 }
 
 pub(super) async fn file(
     State(app): State<Shared>,
     Path((owner, repo, number, name)): Path<(String, String, u64, String)>,
 ) -> ApiResult<impl IntoResponse> {
-    if !matches!(name.as_str(), "review.json" | "pr.json" | "summaries.json" | "diff.patch" | "owners.json") {
+    if !matches!(
+        name.as_str(),
+        "review.json"
+            | "pr.json"
+            | "summaries.json"
+            | "diff.patch"
+            | "owners.json"
+            | "diagnostics.json"
+            | "ai-review.json"
+            | "outside-uses.json"
+            | "pr-status.json"
+            | "conversation.json"
+    ) {
         return Err(ApiError::not_found("unknown file"));
     }
     let path = app.home.review_dir(&pr_of((owner, repo, number))).join(&name);
@@ -165,6 +229,9 @@ pub(super) async fn ask(
             .and_then(|b| b["files"].as_array())
             .map(|fs| fs.iter().filter_map(|f| f.as_str().map(str::to_string)).collect())
             .ok_or_else(|| anyhow::anyhow!("That change is no longer in this review."))?;
+        if let Some(why) = app.home.over_budget() {
+            anyhow::bail!(why);
+        }
         let mut context = crate::jobs::prepare::block_diff(&app.home, &pr, &files)?;
         context.truncate(context.floor_char_boundary(60_000));
         if let Some(code) = body.code.filter(|c| !c.trim().is_empty()) {
@@ -172,12 +239,15 @@ pub(super) async fn ask(
         }
         match grain_agent::answer(
             agent,
-            settings.model.as_deref(),
+            settings.review_model.as_deref(),
             &context,
             body.question.trim(),
             &app.home.cache_dir(),
         ) {
-            grain_agent::Outcome::Done { summary, .. } => {
+            grain_agent::Outcome::Done { summary, usage, .. } => {
+                if let Some(u) = usage {
+                    app.home.record_usage(&format!("{}/{}", pr.full_repo(), pr.number), "ask", agent, &u);
+                }
                 Ok(Json(AskResponse { answer: summary["answer"].as_str().unwrap_or_default().to_string() }))
             }
             grain_agent::Outcome::Refused { reason } => Err(anyhow::anyhow!(reason)),
@@ -227,12 +297,21 @@ pub(super) async fn diff(
 }
 
 /// Existing GitHub review threads and submitted reviews for this PR.
-pub(super) async fn conversation(Path(p): Path<(String, String, u64)>) -> ApiResult<Json<grain_github::Conversation>> {
+pub(super) async fn conversation(
+    State(app): State<Shared>,
+    Path(p): Path<(String, String, u64)>,
+) -> ApiResult<Json<grain_github::Conversation>> {
     let pr = pr_of(p);
     if pr.is_local() {
         return Ok(Json(grain_github::Conversation::default()));
     }
-    blocking(move || Ok(Json(grain_github::conversation(&pr)?))).await
+    let path = app.home.review_dir(&pr).join("conversation.json");
+    blocking(move || {
+        let conversation = grain_github::conversation(&pr)?;
+        save(&path, &SavedConversation { fetched_at: now_secs(), conversation: conversation.clone() });
+        Ok(Json(conversation))
+    })
+    .await
 }
 
 /// Replies to a GitHub review thread right away.
