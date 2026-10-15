@@ -76,37 +76,43 @@ function fromBlocks(saved: { mode: Mode; verdicts?: Record<string, BlockVerdict>
 }
 
 /**
- * Review progress, saved in Grain's data folder so it survives browser changes and restarts.
- * Progress that only exists in this browser (from before) is imported once.
+ * Review progress, saved in Grain's data folder so it survives browser changes and restarts. Until
+ * the server confirms a save, the progress is also kept in this browser (and retried), so nothing is
+ * lost while Grain is stopped or restarting; that copy wins on the next load.
  */
 export function useReviewState(data: LoadedPr, defaultMode: Mode) {
-  const legacyKey = `grain:review:${data.id}`
+  const localKey = `grain:review:${data.id}`
   const [state, dispatch] = useReducer(reducer, undefined, (): ReviewState => {
-    const fromServer = data.progress as { v?: number } | null
-    let saved = fromServer
+    let saved = null as { v?: number } | null
     try {
-      saved ??= JSON.parse(localStorage.getItem(legacyKey) ?? 'null')
+      saved = JSON.parse(localStorage.getItem(localKey) ?? 'null')
     } catch {
-      // Unreadable saved state starts a fresh review.
+      // Unreadable browser copy: use the server's.
     }
+    saved ??= data.progress as { v?: number } | null
     if (saved?.v === 3) return saved as ReviewState
     if (saved?.v === 2) return fromBlocks(saved as Parameters<typeof fromBlocks>[0], data)
     return { v: 3, mode: (saved as { mode?: Mode } | null)?.mode ?? defaultMode, currentFile: null, viewed: {}, comments: [] }
   })
   const first = useRef(true)
   useEffect(() => {
-    // The first save also imports browser-only progress; later saves are debounced.
+    localStorage.setItem(localKey, JSON.stringify(state))
     const delay = first.current ? 0 : 400
     first.current = false
-    const t = setTimeout(
-      () =>
-        reviewApi.saveProgress(data.id, state).then(
-          () => localStorage.removeItem(legacyKey),
-          () => localStorage.setItem(legacyKey, JSON.stringify(state)),
-        ),
-      delay,
-    )
-    return () => clearTimeout(t)
-  }, [data.id, legacyKey, state])
+    let stale = false
+    let t: ReturnType<typeof setTimeout>
+    const save = () =>
+      reviewApi.saveProgress(data.id, state).then(
+        () => !stale && localStorage.removeItem(localKey),
+        () => {
+          if (!stale) t = setTimeout(save, 3000)
+        },
+      )
+    t = setTimeout(save, delay)
+    return () => {
+      stale = true
+      clearTimeout(t)
+    }
+  }, [data.id, localKey, state])
   return [state, dispatch] as const
 }

@@ -1,10 +1,19 @@
+import { setOnline } from './connection'
+
 const offline = "Can't reach the Grain server. Start it with `grain` in a terminal, then try again."
 
 /** `fetch` to the local Grain server; a network failure reads "can't reach the server", never "Failed to fetch". */
 export const serverFetch = (url: string, init?: RequestInit) =>
-  fetch(url, init).catch(() => {
-    throw new Error(offline)
-  })
+  fetch(url, init).then(
+    (r) => {
+      setOnline(r.status !== 502 && r.status !== 504)
+      return r
+    },
+    () => {
+      setOnline(false)
+      throw new Error(offline)
+    },
+  )
 
 /** JSON request to the local Grain server; errors carry the server's message. */
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {

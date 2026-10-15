@@ -210,7 +210,7 @@ async fn main() -> Result<()> {
     let build = build_id();
     let url = format!("http://localhost:{}{path}", cli.port);
     if on_demand(cli.port, &build)? {
-        println!("Grain is running at {url}  (stop it with `grain stop`, logs: `grain logs`)");
+        println!("Grain is running at {url}  (it stops by itself when unused; `grain stop`, `grain logs`)");
     } else {
         // Grain is already running: hand it the review if it's this same build; replace an older
         // build so its outdated server never serves this build's UI.
@@ -228,7 +228,7 @@ async fn main() -> Result<()> {
         if !running || doctor::running_build(cli.port).as_deref() != Some(build.as_str()) {
             daemon::start(cli.port)?;
         }
-        println!("Grain is running at {url}  (stop it with `grain stop`, logs: `grain logs`)");
+        println!("Grain is running at {url}  (it stops by itself when unused; `grain stop`, `grain logs`)");
     }
     if !cli.no_open {
         let _ = open::that_detached(&url);

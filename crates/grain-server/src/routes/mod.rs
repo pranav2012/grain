@@ -5,8 +5,11 @@ mod navigate;
 mod reviews;
 mod settings;
 
+use axum::extract::Request;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 
@@ -17,18 +20,27 @@ async fn version(State(app): State<Shared>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "build": app.build }))
 }
 
-/// Exits the server right after answering; only for the `grain` CLI (`grain stop`, or replacing an older build).
-/// Web pages can't send the custom header without a CORS preflight, which this server never grants.
-async fn shutdown(headers: HeaderMap) -> StatusCode {
+/// Stops the server gracefully (requests in flight, like progress saves, finish first); only for the
+/// `grain` CLI (`grain stop`, or replacing an older build). Web pages can't send the custom header
+/// without a CORS preflight, which this server never grants.
+async fn shutdown(State(app): State<Shared>, headers: HeaderMap) -> StatusCode {
     if headers.get("x-grain-cli").is_none() {
         return StatusCode::FORBIDDEN;
     }
-    tracing::info!("asked to stop by the grain command; exiting");
-    std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        std::process::exit(0);
-    });
+    tracing::info!("asked to stop by the grain command");
+    app.stop.notify_one();
     StatusCode::ACCEPTED
+}
+
+/// Open tabs call this every minute, so Grain knows it's in use (any API request counts too).
+async fn heartbeat() -> StatusCode {
+    StatusCode::NO_CONTENT
+}
+
+/// Notes the time of every API request, for stopping after a long idle stretch.
+async fn seen(State(app): State<Shared>, request: Request, next: Next) -> Response {
+    *app.last_seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = std::time::Instant::now();
+    next.run(request).await
 }
 
 pub(crate) fn router(app: Shared) -> Router {
@@ -58,6 +70,8 @@ pub(crate) fn router(app: Shared) -> Router {
         .route("/api/reviews/{owner}/{repo}/{number}/progress", get(reviews::get_progress).put(reviews::put_progress))
         .route("/api/settings", get(settings::get).put(settings::put))
         .route("/api/version", get(version))
+        .route("/api/heartbeat", post(heartbeat))
         .route("/api/shutdown", post(shutdown))
+        .route_layer(middleware::from_fn_with_state(app.clone(), seen))
         .with_state(app)
 }

@@ -62,7 +62,8 @@ pub struct Options {
     pub listener: Option<std::net::TcpListener>,
 }
 
-/// Binds to localhost and serves until the process exits. `on_ready` receives the base URL.
+/// Serves on localhost until asked to stop (`grain stop`, Ctrl+C, SIGTERM or idle), then exits the
+/// process. `on_ready` receives the base URL.
 pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
     let app = state::App::new(Home::locate(), opts.build.clone());
     // Warm GitHub lookups so the switcher's lists and repo search are instant.
@@ -71,10 +72,9 @@ pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
     });
     spawn_background(app.clone());
     let router = match &opts.ui_dir {
-        Some(dir) => {
-            routes::router(app).fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))))
-        }
-        None => routes::router(app).fallback(ui::embedded),
+        Some(dir) => routes::router(app.clone())
+            .fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html")))),
+        None => routes::router(app.clone()).fallback(ui::embedded),
     };
     let listener = match opts.listener {
         Some(l) => {
@@ -84,6 +84,57 @@ pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
         None => tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], opts.port))).await?,
     };
     on_ready(&format!("http://localhost:{}", opts.port));
-    axum::serve(listener, router).await?;
-    Ok(())
+    stop_when_idle(app.clone());
+    let stopping = app.clone();
+    axum::serve(listener, router).with_graceful_shutdown(stop_requested(stopping)).await?;
+    // Background jobs (clones, reviews) are dropped; they run again when the review is opened again.
+    std::process::exit(0)
+}
+
+/// Minutes without any request (open tabs check in every minute) after which Grain stops, unless
+/// background work is running. `GRAIN_IDLE_MINUTES=0` keeps it running.
+fn idle_limit() -> Option<std::time::Duration> {
+    let minutes = std::env::var("GRAIN_IDLE_MINUTES").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(30);
+    (minutes > 0).then(|| std::time::Duration::from_mins(minutes))
+}
+
+fn stop_when_idle(app: state::Shared) {
+    let Some(limit) = idle_limit() else { return };
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_mins(1).min(limit)).await;
+            let idle = app.last_seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner).elapsed();
+            if idle >= limit && !app.has_work() {
+                tracing::info!(minutes = idle.as_secs() / 60, "no open Grain tab for a while; stopping");
+                app.stop.notify_one();
+                return;
+            }
+        }
+    });
+}
+
+/// Resolves when the server should stop. Requests in flight (like progress saves) get a few seconds
+/// to finish before the process exits regardless.
+async fn stop_requested(app: state::Shared) {
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => {
+                s.recv().await;
+            }
+            Err(_) => std::future::pending().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        () = app.stop.notified() => {}
+        _ = tokio::signal::ctrl_c() => {}
+        () = terminate => {}
+    }
+    tracing::info!("stopping; finishing requests in flight");
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        std::process::exit(0);
+    });
 }

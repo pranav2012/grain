@@ -43,6 +43,10 @@ pub(crate) struct App {
     local_heads: Mutex<HashMap<PrRef, (Instant, String)>>,
     /// TypeScript servers for go-to-definition, one per open review, started on first use.
     pub(crate) navigators: Mutex<HashMap<PrRef, Arc<grain_lsp::TsUsage>>>,
+    /// When the UI last made a request (open tabs check in every minute).
+    pub(crate) last_seen: Mutex<Instant>,
+    /// Signalled when the server should stop (`grain stop`, a newer build, or idle).
+    pub(crate) stop: tokio::sync::Notify,
 }
 
 pub(crate) type Shared = Arc<App>;
@@ -79,12 +83,24 @@ impl App {
             patches: crate::patch_index::PatchCache::default(),
             local_heads: Mutex::new(HashMap::new()),
             navigators: Mutex::new(HashMap::new()),
+            last_seen: Mutex::new(Instant::now()),
+            stop: tokio::sync::Notify::new(),
             build,
         })
     }
 
     pub(crate) fn is_busy(&self, pr: &PrRef) -> bool {
         self.busy.lock().unwrap_or_else(PoisonError::into_inner).contains(pr)
+    }
+
+    /// True while any background work runs: preparing, enriching, checking for errors, reviewing or summarizing.
+    pub(crate) fn has_work(&self) -> bool {
+        let any = |set: &Mutex<HashSet<PrRef>>| !set.lock().unwrap_or_else(PoisonError::into_inner).is_empty();
+        any(&self.busy)
+            || any(&self.enriching)
+            || any(&self.diagnosing)
+            || any(&self.second_opinions)
+            || self.summarizers.lock().unwrap_or_else(PoisonError::into_inner).values().any(|s| s.status.running)
     }
 
     /// What a local review's head would be now, so the UI can offer a refresh after edits.
