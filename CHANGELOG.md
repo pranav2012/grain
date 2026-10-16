@@ -3,6 +3,13 @@
 All notable changes to Grain. Versions follow [Semantic Versioning](https://semver.org); entries are generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.6.0] - 2026-10-16
+
+### Features
+- Start an AI review of the whole PR from the top bar, comments rail or commands, and keep Settings' save button in view
+
+
+
 ## [0.5.0] - 2026-10-16
 
 ### Features
