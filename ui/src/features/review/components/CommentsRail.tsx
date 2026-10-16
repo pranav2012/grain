@@ -311,6 +311,18 @@ export function CommentsRail({ review, reviewing, agentName, calls, order, threa
             </Button>
           </div>
         )}
+        {aiOn && !reviewing && !review && (
+          <div className="mt-2 rounded-md border border-accent/40 bg-accent/10 px-2.5 py-2">
+            <p className="text-fg-muted">
+              <span className="mr-1 rounded-sm border border-accent/40 px-1 text-2xs font-semibold text-accent">AI</span>
+              Review the whole PR with {skill}
+            </p>
+            <p className="mt-0.5 text-fg-subtle">{agentName} reads the PR read-only on your machine and its findings show up here. Takes a few minutes and uses your plan; nothing is posted unless you keep it.</p>
+            <Button size="sm" variant="primary" className="mt-1.5" onClick={onRetry}>
+              Review with AI
+            </Button>
+          </div>
+        )}
         {aiOn && reviewing && !review && <p className="mt-1 text-fg-subtle">{agentName} is reviewing this PR with {skill}. This takes a few minutes; keep reading.</p>}
         {review?.error && (
           <p className="mt-1 text-danger">

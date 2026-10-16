@@ -26,7 +26,7 @@ export function Dialog({ label, onClose, children, className }: DialogProps) {
         aria-label={label}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === 'Escape' && onClose()}
-        className={cn('max-h-[calc(100dvh-1.5rem)] w-[min(560px,92vw)] overflow-auto rounded-xl border border-line bg-surface shadow-overlay motion-safe:animate-rise', className)}
+        className={cn('max-h-[calc(88dvh-1.5rem)] w-[min(560px,92vw)] max-sm:max-h-[calc(100dvh-1.5rem)] overflow-auto rounded-xl border border-line bg-surface shadow-overlay motion-safe:animate-rise', className)}
       >
         {children}
       </div>
@@ -38,6 +38,6 @@ export function DialogTitle({ children }: { children: ReactNode }) {
   return <h2 className="mb-1 text-lg font-semibold text-fg">{children}</h2>
 }
 
-export function DialogActions({ children }: { children: ReactNode }) {
-  return <div className="mt-4 flex justify-end gap-2">{children}</div>
+export function DialogActions({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('mt-4 flex justify-end gap-2', className)}>{children}</div>
 }

@@ -48,12 +48,12 @@ fn cost_per_line(home: &Home) -> f64 {
 }
 
 /// Runs Grain's review skill on the PR's head with the reviewer's agent and writes `ai-review.json`.
-/// Skipped without an agent, with the setting off, before the full checkout exists, or when this head
+/// Skipped without an agent, with the setting off (unless `force`d), before the full checkout exists, or when this head
 /// was already reviewed with the same agent and skill. Unless `force`d (the reviewer asked), it also
 /// holds back on routine-only PRs and on reviews estimated to cost a large share of the daily budget,
 /// and after new commits it reviews only the files changed since the last review.
 pub(crate) fn run(home: &Home, settings: &Settings, pr: &PrRef, force: bool) -> Result<()> {
-    let Some(agent) = settings.agent.filter(|_| settings.second_opinion) else { return Ok(()) };
+    let Some(agent) = settings.agent.filter(|_| force || settings.second_opinion) else { return Ok(()) };
     let out_dir = home.review_dir(pr);
     let pr_json = read_json(&out_dir.join("pr.json")).context("PR not prepared")?;
     let head = pr_json["headSha"].as_str().unwrap_or_default().to_string();

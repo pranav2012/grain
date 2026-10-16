@@ -225,7 +225,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const drafts = state.comments.filter((c) => c.file && !c.postedAt).length
   const commentCount = (conversation?.threads.length ?? 0) + drafts
   const aiOff = !!settings && !settings.agent
-  const railAvailable = aiShown || commentCount > 0 || aiOff
+  const railAvailable = !!agentName || commentCount > 0 || aiOff
   const showRail = railInline && !railHidden && railAvailable
   const toggleRail = () => (railInline ? setRailHidden((h) => !h) : setDrawer((d) => (d === 'rail' ? null : 'rail')))
   const findingAt = useRef(-1)
@@ -342,6 +342,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     { id: 'finish', label: copy.finish, hint: 'Shift Enter', run: () => setOverlay('finish') },
     { id: 'switch', label: 'Open another pull request', hint: '⌘O', run: onSwitch },
     { id: 'settings', label: 'Settings: AI', hint: ',', run: onSettings },
+    ...(agentName && !reviewing ? [{ id: 'ai-review', label: ai ? 'Review this PR with AI again' : 'Review this PR with AI', run: rereview }] : []),
     ...modeOrder.map((m, i) => ({ id: `mode-${m}`, label: `Switch to ${modes[m].label.toLowerCase()}`, hint: String(i + 1), run: () => setMode(m) })),
     { id: 'next-open', label: 'Go to the next file not viewed', run: () => jump(order.slice(index + 1).find((f) => !isViewed(f)) ?? order.find((f) => !isViewed(f))) },
     ...(canSplit ? [{ id: 'diff-style', label: prefs.diffStyle === 'split' ? 'Show unified diff' : 'Show split diff', hint: 's', run: toggleDiffStyle }] : []),
@@ -459,6 +460,18 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
                 noWorkFolders={!!settings && settings.workFolders.length === 0}
                 onAddWorkFolder={onSettings}
               />
+              {agentName && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={reviewing}
+                  title={`${agentName} reviews the whole PR read-only with Grain's review skill; findings appear in the comments rail`}
+                  onClick={rereview}
+                  className="whitespace-nowrap"
+                >
+                  <span className="text-2xs font-semibold text-accent">AI</span> {reviewing ? 'reviewing…' : ai ? 'review again' : 'review PR'}
+                </Button>
+              )}
               {settings && !settings.agent && (
                 <Button size="sm" variant="ghost" title="Get a second opinion on every PR from Claude Code, Codex or OpenCode, run read-only on your machine" onClick={onSettings} className="whitespace-nowrap">
                   <span className="text-2xs font-semibold text-accent">AI</span> off · turn on
