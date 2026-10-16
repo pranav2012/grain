@@ -244,6 +244,21 @@ fn check_domain(port: u16) -> Check {
     }
 }
 
+/// Whether Grain is shared on the tailnet, and still relayed if it is.
+fn check_share(port: u16) -> Check {
+    let home = grain_store::Home::locate();
+    match (home.load_share(), crate::share::active(&home, port)) {
+        (Some(_), Some(s)) => ok("Sharing", false, format!("{} (only {})", s.url(), s.login)),
+        (Some(s), None) => problem(
+            "Sharing",
+            false,
+            format!("Set up for {}, but Tailscale isn't relaying it to Grain", s.url()),
+            "grain share",
+        ),
+        (None, _) => ok("Sharing", false, "Off (`grain share` opens Grain on your other devices through Tailscale)"),
+    }
+}
+
 fn check_agents() -> Vec<Check> {
     let installs: [(&'static str, &str, &str); 3] = [
         ("Claude Code", "claude", "npm install -g @anthropic-ai/claude-code, then run: claude"),
@@ -276,6 +291,7 @@ pub(crate) fn full(port: u16) -> Vec<Check> {
     }
     checks.push(check_port(port));
     checks.push(check_domain(port));
+    checks.push(check_share(port));
     checks.extend(check_agents());
     checks.push(check_typescript());
     checks

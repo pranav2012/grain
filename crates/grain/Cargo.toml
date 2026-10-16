@@ -31,6 +31,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 open.workspace = true
 dirs.workspace = true
+qrcode.workspace = true
 
 [lints]
 workspace = true

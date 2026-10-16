@@ -1,0 +1,44 @@
+---
+title: Other devices
+description: Open grain on your phone, tablet or another computer with grain share.
+---
+
+grain runs on your computer and only answers there. `grain share` lets your other devices in through [Tailscale](https://tailscale.com), and nobody else.
+
+```sh
+grain share
+```
+
+grain prints an address like `https://my-mac.tail1234.ts.net` and a QR code. On your phone or tablet, install Tailscale, sign in with the same account, then scan the code.
+
+## First time with Tailscale
+
+`grain share` walks you through it and asks before each step:
+
+- **Not installed:** installs the Tailscale app (with Homebrew on macOS, or Tailscale's install script on Linux).
+- **Signed out:** opens your browser to sign in.
+- **Turned off:** turns it back on with its current settings.
+- **Linux:** lets your user manage Tailscale (`tailscale set --operator`), once, with your password.
+
+In the [Tailscale admin console](https://login.tailscale.com/admin/dns), keep **MagicDNS** on (it is by default), so your devices can find this computer by name. Turn on **HTTPS Certificates** for an `https://` address. Without them, grain shares over `http://`, and Tailscale still encrypts everything between your devices.
+
+## If you already use Tailscale
+
+grain leaves your setup as it is:
+
+- It takes a port nothing else is served on: 443, or 8443, 9443 or 10000 if you already serve something there.
+- `grain share --stop` removes only grain's own entry.
+- It never changes your Tailscale settings, and never uses Funnel, so nothing is public.
+- If Shields Up is on, grain tells you instead of turning it off. Your devices can't connect until you do.
+
+## Who gets in
+
+Only devices signed in to Tailscale as you. If your tailnet has other people, such as a company tailnet, they get a 403, even though Tailscale lets them reach this computer.
+
+Your computer has to be awake for your devices to reach grain. `grain status` and `grain doctor` show whether sharing is on.
+
+## Stop sharing
+
+```sh
+grain share --stop
+```

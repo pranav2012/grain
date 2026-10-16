@@ -5,6 +5,7 @@ import { Dialog, DialogActions, DialogTitle } from '@/components/ui/Dialog'
 import { Textarea } from '@/components/ui/Field'
 import type { ReviewEvent } from '@/types/generated/ReviewEvent'
 import type { SubmitResponse } from '@/types/generated/SubmitResponse'
+import { copyText } from '@/lib/browser'
 import { reviewApi } from '../api'
 import { kindLabel, modes } from '../model/modes'
 import { buildSubmission } from '../model/submission'
@@ -157,7 +158,7 @@ export function FinishDialog({ data, mode, viewed, total, comments, onPosted, on
           <Button
             variant={local ? 'primary' : undefined}
             disabled={!unposted.length}
-            onClick={() => navigator.clipboard.writeText(agentPrompt(unposted)).then(() => setCopied(true))}
+            onClick={() => copyText(agentPrompt(unposted)).then(() => setCopied(true))}
           >
             {copied ? 'Copied' : 'Copy prompt for agent'}
           </Button>

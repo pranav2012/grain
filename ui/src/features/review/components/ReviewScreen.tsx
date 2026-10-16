@@ -24,6 +24,7 @@ import { chaptersFor, ownedBlocks } from '../model/story'
 import type { Ask, CommentKind, LineThread, LoadedPr, Mode, ReviewComment, Side } from '../model/types'
 import type { Finding } from '@/types/generated/Finding'
 import type { Settings } from '@/types/generated/Settings'
+import { uid } from '@/lib/browser'
 import { usePrefs } from '../state/usePrefs'
 import { useReviewState } from '../state/useReviewState'
 import { FileCard, type NewComment, type ThreadAnchor } from './FileCard'
@@ -236,7 +237,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   }
   const stepFinding = (d: number) => findings.length && revealFinding(findings[(findingAt.current + d + findings.length) % findings.length])
   const keepFinding = (f: Finding, edited?: { body: string; kind: CommentKind; suggestion?: string }) => {
-    const id = crypto.randomUUID()
+    const id = uid()
     const body = edited ? { body: edited.body, kind: edited.kind, suggestion: edited.suggestion } : { body: f.comment, kind: 'comment' as const }
     dispatch({ type: 'comment', comment: { id, blockId: 0, blockKey: f.file, ...body, file: f.file, side: 'additions', line: f.line, endLine: f.endLine, createdAt: Date.now() } })
     dispatch({ type: 'ai', key: findingKey(f), call: { kept: id } })
@@ -289,14 +290,14 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
   const patchMessage = (threadId: string, messageId: string, patch: Partial<Ask>) =>
     setLineThreads((ts) => ts.map((t) => (t.id === threadId ? { ...t, messages: t.messages.map((m) => (m.id === messageId ? { ...m, ...patch } : m)) } : t)))
   const askAt = (anchor: ThreadAnchor, question: string) => {
-    const thread: LineThread = { ...anchor, id: crypto.randomUUID(), blockId: 0, messages: [{ id: crypto.randomUUID(), question }], open: true }
+    const thread: LineThread = { ...anchor, id: uid(), blockId: 0, messages: [{ id: uid(), question }], open: true }
     setLineThreads((ts) => [...ts, thread])
     askAgent(anchor.file, question, anchor.code, [], (patch) => patchMessage(thread.id, thread.messages[0].id, patch))
   }
   const followUp = (threadId: string, question: string) => {
     const thread = lineThreads.find((t) => t.id === threadId)
     if (!thread) return
-    const message = { id: crypto.randomUUID(), question }
+    const message = { id: uid(), question }
     setLineThreads((ts) => ts.map((t) => (t.id === threadId ? { ...t, messages: [...t.messages, message] } : t)))
     askAgent(thread.file, question, thread.code, thread.messages, (patch) => patchMessage(threadId, message.id, patch))
   }
@@ -308,7 +309,7 @@ export function ReviewScreen({ base, settingsVersion, onSwitch, onSettings, onRe
     askAgent(thread.file, thread.messages[at].question, thread.code, thread.messages.slice(0, at), (patch) => patchMessage(threadId, messageId, patch))
   }
   const addComment = (c: NewComment) => {
-    const comment: ReviewComment = { ...c, blockId: 0, blockKey: c.file ?? '', id: crypto.randomUUID(), createdAt: Date.now() }
+    const comment: ReviewComment = { ...c, blockId: 0, blockKey: c.file ?? '', id: uid(), createdAt: Date.now() }
     dispatch({ type: 'comment', comment })
   }
 

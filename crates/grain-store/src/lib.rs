@@ -113,6 +113,52 @@ impl Home {
     pub fn save_settings(&self, s: &Settings) -> std::io::Result<()> {
         std::fs::write(self.settings_path(), serde_json::to_string_pretty(s)?)
     }
+
+    fn share_path(&self) -> PathBuf {
+        self.root.join("share.json")
+    }
+
+    /// How Grain is shared with the reviewer's other devices, if it is (`grain share`).
+    pub fn load_share(&self) -> Option<Share> {
+        serde_json::from_str(&std::fs::read_to_string(self.share_path()).ok()?).ok()
+    }
+
+    pub fn save_share(&self, share: &Share) -> std::io::Result<()> {
+        write_atomic(&self.share_path(), serde_json::to_string_pretty(share)?.as_bytes())
+    }
+
+    pub fn clear_share(&self) -> std::io::Result<()> {
+        match std::fs::remove_file(self.share_path()) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// Grain opened from the reviewer's other devices through Tailscale (`grain share`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Share {
+    /// This computer's name on the tailnet, e.g. `my-mac.tail1234.ts.net`.
+    pub host: String,
+    /// The only Tailscale login let in; requests from anyone else on the tailnet are refused.
+    pub login: String,
+    /// Served over HTTPS; false when the tailnet has no HTTPS certificates, so it's plain HTTP
+    /// inside Tailscale's encrypted tunnel.
+    pub https: bool,
+    /// The tailnet port: 443 (or 80) unless the reviewer already serves something there.
+    pub port: u16,
+}
+
+impl Share {
+    pub fn url(&self) -> String {
+        let (scheme, default) = if self.https { ("https", 443) } else { ("http", 80) };
+        if self.port == default {
+            format!("{scheme}://{}", self.host)
+        } else {
+            format!("{scheme}://{}:{}", self.host, self.port)
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]

@@ -1,5 +1,6 @@
 //! Grain's local server: HTTP API for the UI, PR preparation and summary jobs.
 
+mod access;
 mod contract;
 mod error;
 mod folder_picker;
@@ -82,6 +83,7 @@ pub async fn serve(opts: Options, on_ready: impl FnOnce(&str)) -> Result<()> {
             .fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html")))),
         None => routes::router(app.clone()).fallback(ui::embedded),
     };
+    let router = router.layer(axum::middleware::from_fn_with_state(app.clone(), access::guard));
     let listener = match opts.listener {
         Some(l) => {
             l.set_nonblocking(true)?;

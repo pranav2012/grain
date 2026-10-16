@@ -10,6 +10,7 @@ grain runs entirely on your machine. There is no grain server and no account.
 - **GitHub,** through your own `gh` login, to read PRs and post the reviews you submit.
 - **npm,** once, to download TypeScript 7's language server (checksum-verified), and only if you review TypeScript or JavaScript.
 - **models.dev,** once a day, for public model prices, and only if you've turned on AI. Nothing about you or your code is sent.
+- **Tailscale,** only if you run `grain share`. grain asks your own `tailscale` for this computer's name and login, and turns `tailscale serve` on or off. Nothing goes to the public internet.
 - **Your coding agent,** only if you've turned on AI. grain runs your own installed CLI (Claude Code, Codex or OpenCode) read-only.
 
 ## What grain never does

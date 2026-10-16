@@ -4,6 +4,7 @@ mod daemon;
 mod doctor;
 mod domain;
 mod service;
+mod share;
 
 use std::path::PathBuf;
 
@@ -56,6 +57,12 @@ enum Command {
         /// Go back to grain.localhost with Grain's port.
         #[arg(long)]
         remove: bool,
+    },
+    /// Open Grain from your phone, tablet or other computers through Tailscale (only your login gets in).
+    Share {
+        /// Stop sharing.
+        #[arg(long)]
+        stop: bool,
     },
     /// Hands connections on the port-80 socket the OS passes in to Grain's port (`grain domain`).
     #[command(hide = true)]
@@ -132,6 +139,35 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         }
+        Some(Command::Share { stop }) => {
+            let home = grain_store::Home::locate();
+            if stop {
+                match share::stop(&home, cli.port)? {
+                    Some(s) => println!("Stopped sharing {}.", s.url()),
+                    None => println!("Grain isn't shared."),
+                }
+                return Ok(());
+            }
+            ensure_running(cli.port, &build_id())?;
+            let s = share::start(&home, cli.port)?;
+            let url = s.url();
+            println!("Grain is shared at {url}\n");
+            if let Some(code) = share::qr(&url) {
+                println!("{code}");
+            }
+            println!(
+                "On your phone or tablet: install Tailscale, sign in as {}, then scan the code or open the link.",
+                s.login
+            );
+            println!("Only that login gets in; anyone else on your tailnet gets a 403.");
+            if !s.https {
+                println!(
+                    "This is http: Tailscale still encrypts the traffic between your devices. For https, turn on HTTPS Certificates at https://login.tailscale.com/admin/dns and run `grain share` again."
+                );
+            }
+            println!("Stop with `grain share --stop`.");
+            return Ok(());
+        }
         Some(Command::Service { action }) => {
             match action {
                 ServiceAction::Install => {
@@ -176,6 +212,9 @@ async fn main() -> Result<()> {
             match service::installed(cli.port) {
                 Some(f) => println!("Starts on demand ({}); undo with `grain service uninstall`.", f.display()),
                 None => println!("Doesn't start on demand; `grain service install` turns that on."),
+            }
+            if let Some(s) = share::active(&grain_store::Home::locate(), cli.port) {
+                println!("Shared at {} with {}; stop with `grain share --stop`.", s.url(), s.login);
             }
             return Ok(());
         }
@@ -233,31 +272,35 @@ async fn main() -> Result<()> {
         None => None,
     };
     let path = open_pr.as_ref().map(|p| format!("/?pr={}/{}", p.full_repo(), p.number)).unwrap_or_default();
-    let build = build_id();
     let url = format!("{}{path}", domain::url(cli.port));
-    if on_demand(cli.port, &build)? {
-        println!("Grain is running at {url}  (it stops by itself when unused; `grain stop`, `grain logs`)");
-    } else {
-        // Grain is already running: hand it the review if it's this same build; replace an older
-        // build so its outdated server never serves this build's UI.
-        let running = doctor::grain_is_listening(cli.port);
-        if running && doctor::running_build(cli.port).as_deref() != Some(build.as_str()) {
-            println!("Replacing the older Grain running on port {}…", cli.port);
-            if !doctor::replace_running(cli.port) {
-                println!(
-                    "An older Grain is still running on port {} and can't be stopped from here. Stop it (Ctrl+C in its terminal), then run grain again.",
-                    cli.port
-                );
-                std::process::exit(1);
-            }
-        }
-        if !running || doctor::running_build(cli.port).as_deref() != Some(build.as_str()) {
-            daemon::start(cli.port)?;
-        }
-        println!("Grain is running at {url}  (it stops by itself when unused; `grain stop`, `grain logs`)");
-    }
+    ensure_running(cli.port, &build_id())?;
+    println!("Grain is running at {url}  (it stops by itself when unused; `grain stop`, `grain logs`)");
     if !cli.no_open {
         let _ = open::that_detached(&url);
+    }
+    Ok(())
+}
+
+/// Makes sure this build of Grain is the one running, starting it or replacing an older build.
+#[allow(clippy::print_stdout, reason = "the CLI's output")]
+fn ensure_running(port: u16, build: &str) -> Result<()> {
+    if on_demand(port, build)? {
+        return Ok(());
+    }
+    // Grain is already running: keep it if it's this same build; replace an older build so its
+    // outdated server never serves this build's UI.
+    let running = doctor::grain_is_listening(port);
+    if running && doctor::running_build(port).as_deref() != Some(build) {
+        println!("Replacing the older Grain running on port {port}…");
+        if !doctor::replace_running(port) {
+            println!(
+                "An older Grain is still running on port {port} and can't be stopped from here. Stop it (Ctrl+C in its terminal), then run grain again."
+            );
+            std::process::exit(1);
+        }
+    }
+    if !running || doctor::running_build(port).as_deref() != Some(build) {
+        daemon::start(port)?;
     }
     Ok(())
 }

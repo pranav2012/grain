@@ -42,6 +42,7 @@ tracing = "0.1.44"
 tempfile = "3.27.0"
 globset = "0.4.20"
 base64 = "0.22"
+qrcode = { version = "0.14.1", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

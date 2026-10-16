@@ -17,6 +17,7 @@ description: Every grain command and environment variable.
 | `grain serve` | Run the server in this terminal, logging here |
 | `grain service install` / `uninstall` | Start grain on demand when a grain tab opens (macOS launchd, Linux systemd) |
 | `grain domain` | Serve grain at `http://grain.localhost` without a port (asks for your password once; `--remove` undoes it) |
+| `grain share` | Open grain from your phone, tablet or other computers through Tailscale; only your Tailscale login gets in (`--stop` turns it off). See [Other devices](/docs/guides/other-devices) |
 | `grain clean` | Remove checkouts of merged or closed PRs, and of PRs not opened for 14 days (`--all` removes every checkout and clone, but keeps notes and settings) |
 | `grain analyze <repo> <base> <head>` | Print the engine's grouping for a git range (`--json`, `--fast`, `--typescript`) |
 
