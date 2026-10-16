@@ -225,9 +225,27 @@ fn check_port(port: u16) -> Check {
     problem("Port", true, format!("{port} is used by another program."), format!("grain --port {}", port + 1))
 }
 
+/// Whether Grain is what answers at `http://grain.localhost`; `None` when nothing does.
+fn grain_on_port_80() -> Option<bool> {
+    use std::io::{Read, Write};
+    let addr = SocketAddr::from(([127, 0, 0, 1], 80));
+    let mut stream = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)).ok()?;
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+    stream.write_all(b"GET /api/version HTTP/1.0\r\nHost: grain.localhost\r\n\r\n").ok()?;
+    let mut response = String::new();
+    let _ = stream.read_to_string(&mut response);
+    Some(response.contains("\"build\""))
+}
+
 /// Whether Grain answers at grain.localhost without a port.
 fn check_domain(port: u16) -> Check {
     match crate::domain::target() {
+        Some(p) if p == port && grain_on_port_80() == Some(false) => problem(
+            "Address",
+            false,
+            "Another program now answers at http://grain.localhost (port 80)",
+            "stop that program, or run `grain domain --remove`",
+        ),
         Some(p) if p == port && crate::domain::forwarder_exe_exists() => {
             ok("Address", false, "http://grain.localhost".to_string())
         }

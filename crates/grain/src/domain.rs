@@ -69,15 +69,34 @@ fn sh(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
-fn port_80_taken() -> bool {
-    target().is_none()
-        && std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], 80).into(), Duration::from_millis(300)).is_ok()
+/// The program listening on port 80, from `lsof`; it only sees the reviewer's own programs, as
+/// other users' need root to list.
+fn program_on_port_80() -> Option<String> {
+    let out = Command::new("lsof").args(["-nP", "-iTCP:80", "-sTCP:LISTEN", "-Fpc"]).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let pid = text.lines().find_map(|l| l.strip_prefix('p'))?;
+    let name = text.lines().find_map(|l| l.strip_prefix('c'))?;
+    Some(format!("{name} (pid {pid})"))
+}
+
+/// Who else is on port 80, if anyone. Grain's forwarder listens on IPv4 only, so once it's installed
+/// only IPv6 is checked: browsers try `[::1]` first for `grain.localhost`, so a program there would win.
+fn other_on_port_80() -> Option<String> {
+    let v4 = std::net::SocketAddr::from(([127, 0, 0, 1], 80));
+    let v6 = std::net::SocketAddr::from((std::net::Ipv6Addr::LOCALHOST, 80));
+    let addrs: &[std::net::SocketAddr] = if target().is_some() { &[v6] } else { &[v4, v6] };
+    addrs
+        .iter()
+        .any(|a| std::net::TcpStream::connect_timeout(a, Duration::from_millis(300)).is_ok())
+        .then(|| program_on_port_80().unwrap_or_else(|| "another program".into()))
 }
 
 /// Installs (or points at a new port) the port-80 forwarder for `exe`.
 pub(crate) fn install(exe: &Path, port: u16, log: &Path) -> Result<()> {
-    if port_80_taken() {
-        bail!("something else is already using port 80 on this computer (see `sudo lsof -iTCP:80 -sTCP:LISTEN`)");
+    if let Some(other) = other_on_port_80() {
+        bail!(
+            "{other} is already using port 80 on this computer, so grain.localhost can't drop the port. Stop it or move it to another port, then run `grain domain` again (`sudo lsof -iTCP:80 -sTCP:LISTEN` lists every program there)"
+        );
     }
     let staged = std::env::temp_dir().join("grain-domain.unit");
     write_units(&staged, exe, port, log)?;
