@@ -519,7 +519,7 @@ dependencies = [
 
 [[package]]
 name = "grain"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -541,7 +541,7 @@ dependencies = [
 
 [[package]]
 name = "grain-agent"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -552,7 +552,7 @@ dependencies = [
 
 [[package]]
 name = "grain-diagnostics"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -564,7 +564,7 @@ dependencies = [
 
 [[package]]
 name = "grain-engine"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "sem-core",
@@ -576,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "grain-git"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "tempfile",
@@ -584,7 +584,7 @@ dependencies = [
 
 [[package]]
 name = "grain-github"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "globset",
@@ -595,7 +595,7 @@ dependencies = [
 
 [[package]]
 name = "grain-lsp"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -608,7 +608,7 @@ dependencies = [
 
 [[package]]
 name = "grain-server"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -633,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "grain-store"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "dirs",
  "grain-agent",
